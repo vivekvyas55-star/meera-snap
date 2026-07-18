@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { markOpened, markReplayed, markScreenshot, signedUrl } from '../lib/db'
 import { useScreenshotHeuristic } from '../hooks/useScreenshotHeuristic'
+import { CloseIcon, FlipIcon as ReplayIcon } from './Icons'
 
 // Fullscreen "tap and hold to view" snap. Closing it — by timer or by lifting
 // your finger — consumes the snap permanently, exactly one replay aside.
@@ -58,18 +59,24 @@ export default function SnapViewer({ message, onClose, onScreenshot }) {
 
       <div className="viewer-top">
         <button className="viewer-close" onClick={onClose} aria-label="Close">
-          ×
+          <CloseIcon width={18} height={18} />
         </button>
       </div>
 
-      {/* Snapchat allows exactly one replay per snap. */}
+      {/* One replay, and only while you are still on this screen. */}
       {!replayed && remaining !== null && (
         <button
           className="pill"
-          style={{ position: 'absolute', bottom: 40, left: '50%', transform: 'translateX(-50%)' }}
+          style={{
+            position: 'absolute',
+            bottom: 'calc(env(safe-area-inset-bottom, 0px) + 40px)',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 3,
+          }}
           onClick={replay}
         >
-          ↻ Replay
+          <ReplayIcon width={17} height={17} /> Replay
         </button>
       )}
 

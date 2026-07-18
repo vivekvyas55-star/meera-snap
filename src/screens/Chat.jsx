@@ -15,6 +15,7 @@ import { useToast } from '../components/Toast'
 import Avatar from '../components/Avatar'
 import StatusIcon from '../components/StatusIcon'
 import SnapViewer from '../components/SnapViewer'
+import { ArrowIcon, BackIcon } from '../components/Icons'
 
 export default function Chat({ friend, onBack }) {
   const { profile } = useAuth()
@@ -89,11 +90,11 @@ export default function Chat({ friend, onBack }) {
   return (
     <div className="app" style={{ display: 'flex', flexDirection: 'column' }}>
       <div className="header">
-        <button className="icon-btn" onClick={onBack} aria-label="Back">
-          ‹
+        <button className="circle dark" onClick={onBack} aria-label="Back">
+          <BackIcon />
         </button>
         <Avatar profile={friend} size="sm" />
-        <h1 style={{ fontSize: 17 }}>{friend.display_name || friend.username}</h1>
+        <h1 style={{ fontSize: 22 }}>{friend.display_name || friend.username}</h1>
         {/* Snapchat signals "they're in this chat" with the friend's Bitmoji
             holding a phone — not a text badge. This is the nearest equivalent
             available without Bitmoji art. */}
@@ -147,8 +148,8 @@ export default function Chat({ friend, onBack }) {
           placeholder="Send a chat"
           enterKeyHint="send"
         />
-        <button className="icon-btn primary" type="submit" disabled={!draft.trim()} aria-label="Send">
-          ➤
+        <button className="circle dark" type="submit" disabled={!draft.trim()} aria-label="Send">
+          <ArrowIcon />
         </button>
       </form>
 

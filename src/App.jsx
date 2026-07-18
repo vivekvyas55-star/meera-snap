@@ -6,8 +6,14 @@ import Chat from './screens/Chat'
 import CameraScreen from './screens/CameraScreen'
 import Stories from './screens/Stories'
 import { ToastProvider } from './components/Toast'
+import { CameraIcon, ChatIcon, StoriesIcon } from './components/Icons'
+import InstallPrompt from './components/InstallPrompt'
 
-const PANES = ['chat', 'camera', 'stories']
+const PANES = [
+  { key: 'chat', label: 'Chat', Icon: ChatIcon },
+  { key: 'camera', label: 'Camera', Icon: CameraIcon },
+  { key: 'stories', label: 'Stories', Icon: StoriesIcon },
+]
 
 function Shell() {
   const { session, profile, loading } = useAuth()
@@ -90,19 +96,23 @@ function Shell() {
         </div>
       </div>
 
-      <div className="tabbar" style={{ position: 'absolute', bottom: 0, left: 0, right: 0 }}>
-        {PANES.map((name, i) => (
+      <div className="tabbar">
+        {PANES.map(({ key, label, Icon }, i) => (
           <button
-            key={name}
+            key={key}
             className={pane === i ? 'active' : ''}
             onClick={() => setPane(i)}
             aria-current={pane === i}
           >
-            <span className="glyph">{['💬', '📷', '📖'][i]}</span>
-            {['Chat', 'Camera', 'Stories'][i]}
+            <span className="glyph">
+              <Icon />
+            </span>
+            {label}
           </button>
         ))}
       </div>
+
+      <InstallPrompt />
     </div>
   )
 }

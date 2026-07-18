@@ -56,6 +56,31 @@ npm run dev
 
 ---
 
+## Installing on a phone
+
+Meera is a PWA, so it installs from a link with no app store, no Apple
+Developer account, and no 90-day rebuild.
+
+**iPhone — must be Safari.** Open the URL in Safari → Share → **Add to Home
+Screen**. Chrome, Firefox and Edge on iOS are WebKit wrappers with no install
+affordance, so the in-app banner tells those users to switch to Safari.
+
+**Android** — Chrome shows an install prompt; the in-app banner offers a
+one-tap Install button.
+
+Installed, it launches fullscreen with its own icon and no browser chrome. The
+camera works: `getUserMedia` has been available to standalone iOS PWAs since
+14.3.
+
+### Why not a native `.ipa`?
+
+iOS will not install an app from a downloaded file. Distributing outside the
+App Store means TestFlight ($99/yr, review required, builds expire every 90
+days), Ad Hoc (each device's UDID registered, 100/year cap), or the Enterprise
+program (needs a D-U-N-S, internal employees only — Apple revokes certificates
+for public distribution). Wrapping the app in Capacitor solves packaging, not
+distribution. The PWA is the only free, link-shareable route.
+
 ## Deploying
 
 ```bash

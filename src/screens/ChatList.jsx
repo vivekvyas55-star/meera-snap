@@ -15,6 +15,7 @@ import { useAuth } from '../hooks/useAuth'
 import { useToast } from '../components/Toast'
 import Avatar from '../components/Avatar'
 import StatusIcon from '../components/StatusIcon'
+import { CheckIcon, PlusIcon, PowerIcon } from '../components/Icons'
 
 export default function ChatList({ onOpenChat }) {
   const { profile, signOut } = useAuth()
@@ -79,22 +80,19 @@ export default function ChatList({ onOpenChat }) {
   return (
     <>
       <div className="header">
-        <Avatar profile={profile} size="sm" />
         <h1>Chat</h1>
-        <button className="icon-btn" onClick={() => setAdding(true)} aria-label="Add friend">
-          ＋
+        <button className="circle filled" onClick={signOut} aria-label="Log out">
+          <PowerIcon />
         </button>
-        <button className="icon-btn" onClick={signOut} aria-label="Log out">
-          ⏻
+        <button className="circle dark" onClick={() => setAdding(true)} aria-label="Add friend">
+          <PlusIcon />
         </button>
       </div>
 
-      <div className="list" style={{ paddingBottom: 72 }}>
+      <div className="list">
         {requests.length > 0 && (
           <>
-            <div style={{ padding: '10px 16px 4px', fontSize: 12, fontWeight: 800, color: '#8e8e93' }}>
-              FRIEND REQUESTS
-            </div>
+            <div className="section">Requests</div>
             {requests.map((f) => (
               <div className="row" key={f.profile.id}>
                 <Avatar profile={f.profile} />
@@ -103,18 +101,19 @@ export default function ChatList({ onOpenChat }) {
                   <div className="row-sub">wants to be friends</div>
                 </div>
                 <button
-                  className="icon-btn primary"
+                  className="circle dark"
                   onClick={async () => {
                     await acceptFriendRequest(me, f.profile.id)
                     toast('Friend added')
                     load()
                   }}
-                  aria-label="Accept"
+                  aria-label={`Accept ${f.profile.username}`}
                 >
-                  ✓
+                  <CheckIcon />
                 </button>
               </div>
             ))}
+            <div className="section">Chats</div>
           </>
         )}
 
@@ -137,12 +136,7 @@ export default function ChatList({ onOpenChat }) {
               <div className="row-main">
                 <div className="row-name">
                   {f.profile.display_name || f.profile.username}
-                  {streak.count > 0 && (
-                    <span title={`${streak.count} day Snapstreak`}>
-                      🔥 {streak.count}
-                      {streak.expiring && ' ⌛'}
-                    </span>
-                  )}
+                  {streak.expiring && <span title="Snapstreak about to end">⌛</span>}
                 </div>
                 <div className={`row-sub${unread ? ' unread' : ''}`}>
                   {st ? (
@@ -155,7 +149,14 @@ export default function ChatList({ onOpenChat }) {
                   )}
                 </div>
               </div>
-              {last && <div className="row-time">{shortTime(last.created_at)}</div>}
+              <div className="row-right">
+                {last && <span className="row-time">{shortTime(last.created_at)}</span>}
+                {streak.count > 0 && (
+                  <span className="row-streak" title={`${streak.count} day Snapstreak`}>
+                    🔥 {streak.count}
+                  </span>
+                )}
+              </div>
             </button>
           )
         })}
@@ -198,13 +199,13 @@ function AddFriend({ me, onClose, onAdded }) {
       <form className="sheet-body" onClick={(e) => e.stopPropagation()} onSubmit={add}>
         <h2>Add a friend</h2>
         <input
-          className="composer-input"
           style={{
             width: '100%',
-            padding: '13px 16px',
+            padding: '16px 18px',
             fontSize: 16,
-            border: '1px solid #e6e6e6',
-            borderRadius: 12,
+            border: 'none',
+            borderRadius: 'var(--r-row)',
+            background: 'var(--card)',
             marginBottom: 12,
             outline: 'none',
           }}
@@ -215,20 +216,8 @@ function AddFriend({ me, onClose, onAdded }) {
           autoCorrect="off"
           autoFocus
         />
-        <button
-          type="submit"
-          disabled={busy || !username.trim()}
-          style={{
-            width: '100%',
-            padding: 14,
-            borderRadius: 12,
-            background: '#fffc00',
-            fontWeight: 800,
-            fontSize: 16,
-            opacity: busy || !username.trim() ? 0.5 : 1,
-          }}
-        >
-          Send request
+        <button className="btn-dark" type="submit" disabled={busy || !username.trim()}>
+          {busy ? 'Sending…' : 'Send request'}
         </button>
       </form>
     </div>

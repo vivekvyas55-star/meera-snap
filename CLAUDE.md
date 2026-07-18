@@ -67,3 +67,41 @@ property; don't describe it to users as one.
 **Mobile CSS.** `100dvh` not `100vh` (collapsing browser chrome crops the
 camera), `env(safe-area-inset-*)` for notches, and 16px minimum font size on
 inputs to stop iOS zooming on focus.
+
+## Design language
+
+The UI follows an external reference (ABC app, Behance): white ground,
+light-grey rounded cards instead of divider lines, oversized light-weight
+(300) display type, a dark floating tab bar, and circular dark buttons for the
+primary action on a surface. Accents — coral, lime, indigo, lavender — come
+from that reference.
+
+Snapchat's *interaction* grammar is kept even though its palette is not: status
+icons still encode direction by shape (arrow = sent, square = received) and
+state by fill (solid = unopened, hollow = opened), with screenshot as double
+arrows and replay as a circular arrow. Those semantics live in
+`src/lib/status.js`; only the tint was remapped onto the reference palette.
+
+The camera and the snap/story viewers stay fullscreen black — immersive
+surfaces, consistent with the reference's own dark elements.
+
+## PWA
+
+Installable to the home screen; this is the distribution route, since iOS will
+not install a shared `.ipa` without TestFlight or per-device UDID registration.
+
+- `public/manifest.webmanifest`, `public/sw.js`, icons in `public/icons/`
+- `src/lib/pwa.js` — registration + platform detection
+- `src/components/InstallPrompt.jsx` — Chrome install button vs iOS instructions
+
+**iOS only installs from Safari.** Chrome/Firefox/Edge on iOS are WebKit
+wrappers with no Add to Home Screen, so the prompt tells those users to switch
+browsers rather than showing an install button.
+
+**iOS ignores manifest icons** and uses `apple-touch-icon`, which must be PNG —
+an SVG there yields a blank home-screen tile.
+
+**The service worker never caches Supabase traffic** — only the app shell.
+Caching messages or snaps would show already-deleted content and leave expired
+snaps on the device. It is also disabled in dev (`import.meta.env.DEV`) to
+avoid caching Vite's module graph.

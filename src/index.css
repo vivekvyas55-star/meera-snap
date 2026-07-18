@@ -1,23 +1,46 @@
 /* ==========================================================================
    Meera — mobile-first. Designed for a phone browser held in portrait.
+
+   Visual language follows the ABC app reference: white ground, light-grey
+   rounded cards, oversized light-weight display type, a dark floating tab bar,
+   and circular dark buttons for the primary action on a surface.
    ========================================================================== */
 
 :root {
-  --yellow: #fffc00;      /* Snapchat's brand yellow */
-  --ink: #000000;
+  /* Ground and surfaces */
   --bg: #ffffff;
-  --surface: #f7f7f7;
-  --line: #e6e6e6;
-  --muted: #8e8e93;
-  --chat: #00c2ff;
-  --snap: #f23c57;
-  --snap-audio: #b14fe8;
+  --card: #f1f1f3;          /* light-grey card fill; no border, no shadow */
+  --card-press: #e7e7ea;
+  --ink: #16161a;           /* near-black, never pure #000 */
+  --muted: #8a8a8e;
+  --hairline: #e4e4e8;
+
+  /* Accents, taken from the reference's cover cards. */
+  --coral: #e2664a;
+  --lime: #d6e85a;
+  --indigo: #4a52c4;
+  --lavender: #c4a5e8;
+
+  /* Status-icon triad. Shape and fill carry the meaning; these only tint it.
+     Snapchat's red/blue/purple mapped onto the reference palette. */
+  --chat: var(--indigo);
+  --snap: var(--coral);
+  --snap-audio: var(--lavender);
+  --pending: #a8a8ad;
+
+  --r-card: 20px;           /* cards */
+  --r-row: 16px;            /* list rows */
+  --r-pill: 999px;
 
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
 
+  --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+
   color-scheme: light;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+  font-family: var(--font);
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
 }
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -25,265 +48,291 @@
 html, body, #root {
   margin: 0;
   height: 100%;
-  overflow: hidden;                 /* the app scrolls panes, never the page */
-  overscroll-behavior: none;        /* kill pull-to-refresh inside the app */
-  background: var(--ink);
+  overflow: hidden;
+  overscroll-behavior: none;
+  background: var(--bg);
 }
-
-body {
-  /* Fall back to vh where dvh is unsupported; dvh accounts for the collapsing
-     mobile browser chrome that otherwise crops the camera view. */
-  height: 100vh;
-  height: 100dvh;
-}
+body { height: 100vh; height: 100dvh; }
 
 button { font: inherit; border: none; background: none; cursor: pointer; color: inherit; }
 input, textarea { font: inherit; }
 
-/* ==========================================================================
-   App shell — three horizontally paged panes, camera in the middle
-   ========================================================================== */
-.app {
-  position: relative;
-  height: 100dvh;
-  width: 100%;
-  overflow: hidden;
-  background: var(--bg);
+/* Oversized, light-weight page title — the reference's most distinctive move. */
+.display {
+  font-size: clamp(30px, 9vw, 38px);
+  font-weight: 300;
+  letter-spacing: -0.03em;
+  line-height: 1;
+  margin: 0;
 }
 
-/* On a desktop browser, pin the app to a phone-shaped column rather than
-   letting a one-hand layout sprawl across a 27" display. */
-@media (min-width: 560px) {
-  body { display: grid; place-items: center; background: #111; }
-  .app, .auth {
-    width: 420px;
-    max-width: 100%;
-    height: min(100dvh, 900px);
-    box-shadow: 0 24px 70px rgba(0, 0, 0, 0.5);
-    border-radius: 22px;
-    overflow: hidden;
-  }
+/* Section label above a group, e.g. "Recommendations". */
+.section {
+  font-size: 19px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  margin: 22px 16px 10px;
 }
+
+/* ==========================================================================
+   App shell
+   ========================================================================== */
+.app { position: relative; height: 100dvh; width: 100%; overflow: hidden; background: var(--bg); }
 
 .pager {
-  display: flex;
-  height: 100%;
-  width: 300%;
+  display: flex; height: 100%; width: 300%;
   transition: transform 260ms cubic-bezier(0.22, 0.61, 0.36, 1);
   will-change: transform;
 }
 .pager.dragging { transition: none; }
 
 .pane {
-  width: 33.3333%;
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
+  width: 33.3333%; height: 100%;
+  display: flex; flex-direction: column; overflow: hidden;
   background: var(--bg);
 }
 
+@media (min-width: 560px) {
+  body { display: grid; place-items: center; background: #0e0e10; }
+  .app, .auth {
+    width: 420px; max-width: 100%;
+    height: min(100dvh, 900px);
+    box-shadow: 0 24px 70px rgba(0, 0, 0, 0.45);
+    border-radius: 30px; overflow: hidden;
+  }
+}
+
 /* ==========================================================================
-   Headers
+   Header — big light title, circular icon buttons on the right
    ========================================================================== */
 .header {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: calc(var(--safe-top) + 12px) 16px 12px;
-  background: var(--bg);
-  border-bottom: 1px solid var(--line);
-  flex: 0 0 auto;
+  display: flex; align-items: center; gap: 10px;
+  padding: calc(var(--safe-top) + 16px) 16px 12px;
+  flex: 0 0 auto; background: var(--bg);
 }
-.header h1 { font-size: 20px; font-weight: 800; margin: 0; flex: 1; letter-spacing: -0.3px; }
-.header .spacer { flex: 1; }
+.header h1 {
+  font-size: clamp(28px, 8.5vw, 34px);
+  font-weight: 300; letter-spacing: -0.03em; line-height: 1;
+  margin: 0; flex: 1; min-width: 0;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+/* Circular button. `.dark` is the primary action; plain is a quiet one. */
+.circle {
+  width: 40px; height: 40px; border-radius: 50%;
+  display: grid; place-items: center; flex: 0 0 auto;
+  font-size: 17px; color: var(--ink);
+  background: transparent;
+}
+.circle:active { background: var(--card); }
+.circle.dark { background: var(--ink); color: #fff; }
+.circle.dark:active { background: #000; }
+.circle.filled { background: var(--card); }
+.circle.filled:active { background: var(--card-press); }
 
 /* ==========================================================================
-   Avatar (deterministic colour from the profile's stored hue)
+   Avatar
    ========================================================================== */
 .avatar {
-  width: 44px; height: 44px;
-  border-radius: 50%;
+  width: 46px; height: 46px; border-radius: 50%;
   display: grid; place-items: center;
-  font-weight: 800; color: #fff; font-size: 17px;
-  flex: 0 0 auto;
-  user-select: none;
+  font-weight: 500; color: #fff; font-size: 17px;
+  flex: 0 0 auto; user-select: none; letter-spacing: -0.02em;
 }
-.avatar.sm { width: 32px; height: 32px; font-size: 13px; }
-.avatar.lg { width: 84px; height: 84px; font-size: 32px; }
+.avatar.sm { width: 34px; height: 34px; font-size: 13px; }
+.avatar.lg { width: 88px; height: 88px; font-size: 32px; }
 
-/* Story ring: bright while unwatched, grey once seen. */
-.ring { padding: 2.5px; border-radius: 50%; display: inline-grid; background: transparent; }
-.ring.unseen { background: linear-gradient(135deg, var(--yellow), #ff9500); }
-.ring.seen { background: var(--line); }
+/* Story preview ring. Snapchat's rule: present while unwatched, gone once
+   seen — so there is deliberately no "seen" variant here. */
+.ring { padding: 2.5px; border-radius: 50%; display: inline-grid; }
+.ring.unseen { background: linear-gradient(140deg, var(--coral), var(--lavender)); }
 .ring > * { border: 2.5px solid var(--bg); }
 
 /* ==========================================================================
-   Chat list
+   Lists — rows are light-grey rounded cards, not divided lines
    ========================================================================== */
-.list { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+.list {
+  flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch;
+  padding: 4px 12px calc(var(--safe-bottom) + 108px);
+}
 
 .row {
   display: flex; align-items: center; gap: 12px;
-  padding: 12px 16px;
+  padding: 11px 12px; margin-bottom: 8px;
   width: 100%; text-align: left;
-  border-bottom: 1px solid var(--line);
+  background: var(--card); border-radius: var(--r-row);
 }
-.row:active { background: var(--surface); }
+.row:active { background: var(--card-press); }
 .row-main { flex: 1; min-width: 0; }
-.row-name { font-weight: 700; font-size: 16px; display: flex; align-items: center; gap: 5px; }
-.row-sub {
-  display: flex; align-items: center; gap: 6px;
-  font-size: 13px; color: var(--muted); margin-top: 3px;
+.row-name {
+  font-weight: 500; font-size: 15.5px; letter-spacing: -0.02em;
+  display: flex; align-items: center; gap: 5px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.row-sub.unread { color: var(--ink); font-weight: 700; }
-.row-time { font-size: 13px; color: var(--muted); flex: 0 0 auto; }
+.row-sub {
+  display: flex; align-items: center; gap: 5px;
+  font-size: 12.5px; color: var(--muted); margin-top: 2px;
+}
+.row-sub.unread { color: var(--ink); font-weight: 600; }
+.row-right {
+  display: flex; flex-direction: column; align-items: flex-end; gap: 3px; flex: 0 0 auto;
+}
+.row-time { font-size: 12px; color: var(--muted); }
+.row-streak { font-size: 12px; color: var(--muted); font-weight: 500; white-space: nowrap; }
+
+/* Small grey chip, e.g. "Beginner", "220". */
+.chip {
+  display: inline-flex; align-items: center; gap: 5px;
+  background: var(--card); border-radius: var(--r-pill);
+  padding: 5px 11px; font-size: 12.5px; color: var(--ink);
+}
 
 .empty {
-  padding: 56px 32px; text-align: center; color: var(--muted); font-size: 15px; line-height: 1.5;
+  padding: 60px 34px; text-align: center;
+  color: var(--muted); font-size: 15px; line-height: 1.55;
 }
 
 /* ==========================================================================
-   Conversation — Snapchat uses a coloured left bar, not bubbles
+   Conversation
    ========================================================================== */
-.thread { flex: 1; overflow-y: auto; padding: 12px 0 4px; }
+.thread { flex: 1; overflow-y: auto; padding: 8px 12px 4px; }
 
-.msg { padding: 5px 16px 5px 14px; }
+.msg { margin-bottom: 10px; max-width: 84%; }
+.msg.mine { margin-left: auto; }
 .msg-who {
-  font-size: 11px; font-weight: 800; letter-spacing: 0.6px;
-  text-transform: uppercase; color: var(--muted); margin-bottom: 2px;
+  font-size: 10.5px; font-weight: 600; letter-spacing: 0.06em;
+  text-transform: uppercase; color: var(--muted);
+  margin: 0 0 3px 4px;
 }
+.msg.mine .msg-who { text-align: right; margin: 0 4px 3px 0; }
+
+/* Snapchat sets messages against a coloured left bar rather than in bubbles;
+   here that bar sits on the reference's rounded card. */
 .msg-body {
-  border-left: 3px solid var(--chat);
-  padding: 2px 0 2px 9px;
-  font-size: 16px; line-height: 1.35;
+  background: var(--card); border-radius: var(--r-row);
+  border-left: 3px solid var(--indigo);
+  padding: 10px 13px; font-size: 15.5px; line-height: 1.4;
   overflow-wrap: anywhere;
 }
-.msg.saved .msg-body { background: #eef0f2; border-radius: 0 6px 6px 0; }
-.msg.mine .msg-body { border-left-color: var(--snap); }
+.msg.saved .msg-body { background: #e3e3e8; }
 
 .msg-snap {
-  display: flex; align-items: center; gap: 8px;
-  font-weight: 700; font-size: 15px;
-  border-left: 3px solid var(--snap);
-  padding: 8px 0 8px 9px;
+  display: flex; align-items: center; gap: 9px; width: 100%;
+  background: var(--card); border-radius: var(--r-row);
+  border-left: 3px solid var(--coral);
+  padding: 13px; font-weight: 500; font-size: 15px;
 }
-.msg-meta { font-size: 11px; color: var(--muted); margin-top: 2px; }
+.msg-snap:disabled { opacity: 0.62; }
+.msg-meta { font-size: 11px; color: var(--muted); margin: 3px 0 0 4px; }
+.msg.mine .msg-meta { text-align: right; margin: 3px 4px 0 0; }
 
-.typing { padding: 6px 16px 10px; color: var(--muted); font-size: 13px; font-style: italic; }
+.typing { padding: 4px 16px 12px; color: var(--muted); font-size: 13px; }
 
-/* Composer */
+/* Composer — pill input plus a dark circular send button */
 .composer {
-  display: flex; align-items: center; gap: 10px;
-  padding: 10px 12px calc(var(--safe-bottom) + 10px);
-  border-top: 1px solid var(--line);
-  background: var(--bg);
-  flex: 0 0 auto;
+  display: flex; align-items: center; gap: 9px;
+  padding: 10px 12px calc(var(--safe-bottom) + 12px);
+  background: var(--bg); flex: 0 0 auto;
 }
 .composer input {
   flex: 1; min-width: 0;
-  border: 1px solid var(--line); border-radius: 999px;
-  padding: 11px 16px; font-size: 16px;   /* 16px stops iOS zoom-on-focus */
-  background: var(--surface); outline: none;
+  border: none; border-radius: var(--r-pill);
+  padding: 13px 17px; font-size: 16px;   /* 16px stops iOS zoom-on-focus */
+  background: var(--card); outline: none; color: var(--ink);
 }
-.composer input:focus { border-color: var(--muted); }
-.icon-btn {
-  width: 40px; height: 40px; border-radius: 50%;
-  display: grid; place-items: center; font-size: 19px;
-  background: var(--surface); flex: 0 0 auto;
-}
-.icon-btn:active { background: var(--line); }
-.icon-btn.primary { background: var(--yellow); }
+.composer input::placeholder { color: var(--muted); }
 
 /* ==========================================================================
-   Camera
+   Camera — stays fullscreen and dark, as immersive surfaces do in the
+   reference (its tab bar and primary buttons are the same near-black).
    ========================================================================== */
 .camera { position: relative; flex: 1; background: #000; overflow: hidden; }
 .camera video, .camera img {
-  position: absolute; inset: 0;
-  width: 100%; height: 100%; object-fit: cover;
+  position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover;
 }
 .camera video.mirrored { transform: scaleX(-1); }
-
-.cam-controls {
-  position: absolute; left: 0; right: 0;
-  bottom: calc(var(--safe-bottom) + 28px);
-  display: flex; align-items: center; justify-content: center; gap: 40px;
-}
-.shutter {
-  width: 76px; height: 76px; border-radius: 50%;
-  border: 6px solid #fff; background: rgba(255, 255, 255, 0.16);
-}
-.shutter:active { transform: scale(0.94); }
-.cam-side {
-  width: 46px; height: 46px; border-radius: 50%;
-  background: rgba(0, 0, 0, 0.4); color: #fff;
-  display: grid; place-items: center; font-size: 20px;
-}
 
 .cam-top {
   position: absolute; top: calc(var(--safe-top) + 12px); left: 12px; right: 12px;
   display: flex; align-items: center; gap: 10px; z-index: 2;
 }
-
+.cam-controls {
+  position: absolute; left: 0; right: 0;
+  bottom: calc(var(--safe-bottom) + 104px);
+  display: flex; align-items: center; justify-content: center; gap: 44px;
+}
+.shutter {
+  width: 74px; height: 74px; border-radius: 50%;
+  border: 5px solid #fff; background: rgba(255, 255, 255, 0.14);
+}
+.shutter:active { transform: scale(0.94); }
+.shutter:disabled { opacity: 0.4; }
+.cam-side {
+  width: 44px; height: 44px; border-radius: 50%;
+  background: rgba(255, 255, 255, 0.16); color: #fff;
+  display: grid; place-items: center; font-size: 19px;
+  backdrop-filter: blur(8px);
+}
 .cam-error {
-  position: absolute; inset: auto 20px 45%; z-index: 3;
-  color: #fff; text-align: center; font-size: 15px; line-height: 1.5;
-  background: rgba(0, 0, 0, 0.65); padding: 18px; border-radius: 14px;
+  position: absolute; inset: auto 22px 46%; z-index: 3;
+  color: #fff; text-align: center; font-size: 15px; line-height: 1.55;
+  background: rgba(0, 0, 0, 0.7); padding: 20px; border-radius: var(--r-card);
 }
 
-/* Timer / send tray shown over a captured still */
+/* Tray over a captured still */
 .tray {
   position: absolute; left: 0; right: 0;
-  bottom: calc(var(--safe-bottom) + 20px);
-  display: flex; align-items: center; gap: 10px; padding: 0 16px; z-index: 3;
+  bottom: calc(var(--safe-bottom) + 96px);
+  display: flex; align-items: center; gap: 10px; padding: 0 14px; z-index: 3;
 }
 .pill {
-  display: flex; align-items: center; gap: 6px;
-  background: rgba(0, 0, 0, 0.55); color: #fff;
-  border-radius: 999px; padding: 11px 17px;
-  font-weight: 700; font-size: 15px;
+  display: inline-flex; align-items: center; gap: 7px;
+  background: rgba(255, 255, 255, 0.18); color: #fff;
+  backdrop-filter: blur(8px);
+  border-radius: var(--r-pill); padding: 13px 19px;
+  font-weight: 500; font-size: 15px;
 }
-.pill.send { background: var(--yellow); color: #000; margin-left: auto; }
+.pill.send { background: #fff; color: var(--ink); margin-left: auto; }
+.pill:disabled { opacity: 0.5; }
 
 .caption-input {
   position: absolute; left: 0; right: 0; top: 45%;
   background: rgba(0, 0, 0, 0.42); border: none; outline: none;
-  color: #fff; text-align: center; font-size: 17px; padding: 13px; z-index: 3;
+  color: #fff; text-align: center; font-size: 17px; padding: 14px; z-index: 3;
 }
 
 /* ==========================================================================
-   Snap / story viewer (fullscreen, tap zones)
+   Snap / story viewer
    ========================================================================== */
 .viewer { position: fixed; inset: 0; background: #000; z-index: 50; }
 .viewer img { width: 100%; height: 100%; object-fit: contain; }
 .viewer-caption {
-  position: absolute; left: 0; right: 0; top: 50%;
-  transform: translateY(-50%);
+  position: absolute; left: 0; right: 0; top: 50%; transform: translateY(-50%);
   background: rgba(0, 0, 0, 0.42); color: #fff;
-  text-align: center; padding: 13px; font-size: 17px;
+  text-align: center; padding: 14px; font-size: 17px;
 }
 .viewer-top {
-  position: absolute; top: calc(var(--safe-top) + 10px); left: 12px; right: 12px;
+  position: absolute; top: calc(var(--safe-top) + 12px); left: 12px; right: 12px;
   display: flex; align-items: center; gap: 10px; color: #fff; z-index: 2;
 }
-.viewer-name { font-weight: 700; font-size: 15px; }
-.viewer-close { margin-left: auto; font-size: 26px; line-height: 1; padding: 4px 10px; }
-
-/* Countdown / progress bars */
+.viewer-name { font-weight: 500; font-size: 15px; }
+.viewer-close {
+  margin-left: auto; width: 36px; height: 36px; border-radius: 50%;
+  background: rgba(255, 255, 255, 0.18); backdrop-filter: blur(8px);
+  display: grid; place-items: center; font-size: 20px; line-height: 1;
+}
 .timer {
-  position: absolute; top: calc(var(--safe-top) + 10px); right: 16px;
-  color: #fff; font-weight: 800; font-size: 15px; z-index: 3;
+  position: absolute; top: calc(var(--safe-top) + 16px); right: 60px;
+  color: #fff; font-weight: 500; font-size: 15px; z-index: 3;
 }
 .progress {
-  position: absolute; top: calc(var(--safe-top) + 6px); left: 10px; right: 10px;
+  position: absolute; top: calc(var(--safe-top) + 6px); left: 12px; right: 12px;
   display: flex; gap: 4px; z-index: 3;
 }
-.progress span { flex: 1; height: 2.5px; background: rgba(255, 255, 255, 0.35); border-radius: 2px; }
+.progress span { flex: 1; height: 2.5px; background: rgba(255, 255, 255, 0.32); border-radius: 2px; }
 .progress span i { display: block; height: 100%; background: #fff; border-radius: 2px; }
 
-/* Tap zones: left third rewinds, right two-thirds advance. */
-.tapzone { position: absolute; top: 0; bottom: 0; z-index: 1; }
+.tapzone { position: absolute; top: 0; bottom: 0; z-index: 1; background: transparent; }
 .tapzone.back { left: 0; width: 33%; }
 .tapzone.fwd { right: 0; width: 67%; }
 
@@ -291,75 +340,123 @@ input, textarea { font: inherit; }
    Auth
    ========================================================================== */
 .auth {
-  height: 100dvh; background: var(--yellow);
+  height: 100dvh; background: var(--bg);
   display: flex; flex-direction: column; justify-content: center;
-  padding: 32px 28px calc(var(--safe-bottom) + 32px);
+  padding: 32px 22px calc(var(--safe-bottom) + 32px);
 }
-.auth h1 { font-size: 40px; margin: 0 0 6px; letter-spacing: -1.4px; }
-.auth p { margin: 0 0 28px; font-size: 15px; opacity: 0.72; }
+.auth h1 {
+  font-size: clamp(38px, 12vw, 50px);
+  font-weight: 300; letter-spacing: -0.04em; line-height: 1;
+  margin: 0 0 10px;
+}
+.auth p { margin: 0 0 28px; font-size: 15px; color: var(--muted); line-height: 1.5; }
 .auth input {
-  width: 100%; padding: 15px 17px; margin-bottom: 12px;
-  border: 2px solid rgba(0, 0, 0, 0.14); border-radius: 12px;
-  font-size: 16px; background: rgba(255, 255, 255, 0.62); outline: none;
+  width: 100%; padding: 16px 18px; margin-bottom: 10px;
+  border: none; border-radius: var(--r-row);
+  font-size: 16px; background: var(--card); outline: none; color: var(--ink);
 }
-.auth input:focus { border-color: rgba(0, 0, 0, 0.5); background: #fff; }
+.auth input::placeholder { color: var(--muted); }
 .auth button.primary {
-  width: 100%; padding: 16px; border-radius: 12px;
-  background: var(--ink); color: #fff; font-weight: 800; font-size: 16px; margin-top: 6px;
+  width: 100%; padding: 17px; border-radius: var(--r-pill);
+  background: var(--ink); color: #fff;
+  font-weight: 500; font-size: 16px; margin-top: 8px;
 }
-.auth button.primary:disabled { opacity: 0.45; }
-.auth .switch { margin-top: 18px; text-align: center; font-size: 15px; text-decoration: underline; }
+.auth button.primary:disabled { opacity: 0.4; }
+.auth .switch { margin-top: 20px; text-align: center; font-size: 14.5px; color: var(--muted); }
 .auth .error {
-  background: rgba(0, 0, 0, 0.82); color: #fff;
-  padding: 11px 14px; border-radius: 10px; font-size: 14px; margin-bottom: 12px;
+  background: var(--coral); color: #fff;
+  padding: 12px 15px; border-radius: var(--r-row); font-size: 14px; margin-bottom: 12px;
 }
 
 /* ==========================================================================
-   Bottom navigation
+   Bottom navigation — dark floating bar, thin icons, tiny labels
    ========================================================================== */
 .tabbar {
+  position: absolute; z-index: 20;
+  left: 14px; right: 14px;
+  bottom: calc(var(--safe-bottom) + 12px);
   display: flex; align-items: center;
-  border-top: 1px solid var(--line);
-  padding-bottom: var(--safe-bottom);
-  background: var(--bg); flex: 0 0 auto;
+  background: var(--ink); border-radius: 26px;
+  padding: 9px 6px;
 }
 .tabbar button {
-  flex: 1; padding: 11px 0 9px;
-  display: flex; flex-direction: column; align-items: center; gap: 3px;
-  font-size: 10px; font-weight: 700; color: var(--muted);
+  flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px;
+  font-size: 9.5px; font-weight: 500; letter-spacing: 0.01em;
+  color: rgba(255, 255, 255, 0.5);
+  padding: 3px 0;
 }
-.tabbar button .glyph { font-size: 21px; }
-.tabbar button.active { color: var(--ink); }
+.tabbar button.active { color: #fff; }
+.tabbar .glyph { display: grid; place-items: center; height: 22px; }
 
 /* ==========================================================================
    Misc
    ========================================================================== */
 .badge {
-  min-width: 19px; height: 19px; padding: 0 5px;
-  border-radius: 10px; background: var(--snap); color: #fff;
-  font-size: 11px; font-weight: 800;
-  display: grid; place-items: center;
+  min-width: 19px; height: 19px; padding: 0 6px;
+  border-radius: var(--r-pill); background: var(--coral); color: #fff;
+  font-size: 11px; font-weight: 600; display: grid; place-items: center;
 }
 .toast {
   position: fixed; left: 50%; transform: translateX(-50%);
-  bottom: calc(var(--safe-bottom) + 84px);
-  background: rgba(0, 0, 0, 0.86); color: #fff;
-  padding: 11px 18px; border-radius: 999px; font-size: 14px;
+  bottom: calc(var(--safe-bottom) + 96px);
+  background: var(--ink); color: #fff;
+  padding: 12px 19px; border-radius: var(--r-pill); font-size: 14px;
   z-index: 100; max-width: 88vw; text-align: center;
 }
 
 .sheet {
   position: fixed; inset: 0; z-index: 60;
-  background: rgba(0, 0, 0, 0.45);
+  background: rgba(0, 0, 0, 0.35);
   display: flex; align-items: flex-end;
 }
 .sheet-body {
   background: var(--bg); width: 100%;
-  border-radius: 18px 18px 0 0;
-  padding: 18px 16px calc(var(--safe-bottom) + 18px);
+  border-radius: 26px 26px 0 0;
+  padding: 22px 14px calc(var(--safe-bottom) + 20px);
   max-height: 78dvh; overflow-y: auto;
 }
-.sheet-body h2 { margin: 0 0 14px; font-size: 18px; }
+.sheet-body h2 {
+  margin: 0 0 16px 4px; font-size: 26px;
+  font-weight: 300; letter-spacing: -0.03em;
+}
+
+/* ==========================================================================
+   Install banner
+   ========================================================================== */
+.install {
+  position: fixed; z-index: 90;
+  left: 12px; right: 12px;
+  bottom: calc(var(--safe-bottom) + 84px);
+}
+.install-body {
+  display: flex; align-items: center; gap: 12px;
+  background: var(--ink); color: #fff;
+  border-radius: var(--r-card); padding: 12px 14px;
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.28);
+}
+.install-icon { border-radius: 11px; flex: 0 0 auto; }
+.install-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.install-text strong { font-size: 14px; font-weight: 500; }
+.install-text span { font-size: 12.5px; color: rgba(255, 255, 255, 0.66); line-height: 1.35; }
+.install-cta {
+  flex: 0 0 auto; background: #fff; color: var(--ink);
+  border-radius: var(--r-pill); padding: 10px 16px;
+  font-size: 14px; font-weight: 500;
+}
+.install-close {
+  flex: 0 0 auto; width: 30px; height: 30px; border-radius: 50%;
+  color: rgba(255, 255, 255, 0.6); font-size: 14px;
+  display: grid; place-items: center;
+}
+
+/* Full-width dark pill, the reference's "Know" / "Learn" button. */
+.btn-dark {
+  width: 100%; padding: 16px; border-radius: var(--r-pill);
+  background: var(--ink); color: #fff;
+  font-weight: 500; font-size: 15.5px;
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+}
+.btn-dark:disabled { opacity: 0.4; }
 
 @media (prefers-reduced-motion: reduce) {
   .pager { transition: none; }

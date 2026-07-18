@@ -4,6 +4,7 @@ import { useCamera } from '../hooks/useCamera'
 import { useAuth } from '../hooks/useAuth'
 import { useToast } from '../components/Toast'
 import Avatar from '../components/Avatar'
+import { CheckIcon, CloseIcon, FlipIcon } from '../components/Icons'
 
 // Snapchat's timer options: 1-10 seconds, plus "no limit".
 const TIMERS = [1, 2, 3, 5, 10, null]
@@ -111,11 +112,11 @@ export default function CameraScreen({ active, onSent }) {
             <Avatar profile={profile} size="sm" />
           </div>
 
-          <div className="cam-controls" style={{ bottom: 'calc(env(safe-area-inset-bottom,0px) + 90px)' }}>
-            <div style={{ width: 46 }} />
+          <div className="cam-controls">
+            <div style={{ width: 44 }} />
             <button className="shutter" onClick={takeShot} disabled={!ready} aria-label="Take snap" />
             <button className="cam-side" onClick={flip} aria-label="Flip camera">
-              ⟲
+              <FlipIcon />
             </button>
           </div>
         </>
@@ -134,18 +135,19 @@ export default function CameraScreen({ active, onSent }) {
 
           <div className="cam-top">
             <button className="cam-side" onClick={discard} aria-label="Discard">
-              ×
+              <CloseIcon />
             </button>
             <button
               className="cam-side"
               onClick={() => setTimerIdx((i) => (i + 1) % TIMERS.length)}
-              aria-label="Change timer"
+              aria-label={`Display time: ${timerLabel}. Tap to change.`}
+              style={{ fontSize: 15, fontWeight: 500 }}
             >
               {timerLabel}
             </button>
           </div>
 
-          <div className="tray" style={{ bottom: 'calc(env(safe-area-inset-bottom,0px) + 84px)' }}>
+          <div className="tray">
             <button className="pill" onClick={addToStory} disabled={sending}>
               📖 Story
             </button>
@@ -187,27 +189,28 @@ function SendSheet({ friends, sending, onCancel, onSend }) {
             </div>
             <div
               style={{
-                width: 24,
-                height: 24,
+                width: 26,
+                height: 26,
                 borderRadius: '50%',
-                border: '2px solid #e6e6e6',
-                background: selected.includes(f.profile.id) ? '#fffc00' : 'transparent',
+                border: selected.includes(f.profile.id) ? 'none' : '1.5px solid var(--hairline)',
+                background: selected.includes(f.profile.id) ? 'var(--ink)' : 'transparent',
+                color: '#fff',
                 display: 'grid',
                 placeItems: 'center',
-                fontWeight: 800,
+                flex: '0 0 auto',
               }}
             >
-              {selected.includes(f.profile.id) ? '✓' : ''}
+              {selected.includes(f.profile.id) && <CheckIcon width={15} height={15} />}
             </div>
           </button>
         ))}
         <button
-          className="pill send"
-          style={{ width: '100%', justifyContent: 'center', marginTop: 14 }}
+          className="btn-dark"
+          style={{ marginTop: 14 }}
           disabled={selected.length === 0 || sending}
           onClick={() => onSend(selected)}
         >
-          {sending ? 'Sending…' : `Send (${selected.length})`}
+          {sending ? 'Sending…' : `Send${selected.length ? ` (${selected.length})` : ''}`}
         </button>
       </div>
     </div>
