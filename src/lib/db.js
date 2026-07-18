@@ -197,7 +197,7 @@ export async function sendSnapMedia(me, otherId, { file, viewSeconds, caption })
       media_path: path,
       media_type: isVideo ? 'video' : 'image',
       has_audio: isVideo,
-      view_seconds: viewSeconds ?? (isVideo ? null : 3),
+      view_seconds: viewSeconds ?? (isVideo ? null : 45),
       delivered_at: new Date().toISOString(),
     })
     .select()

@@ -8,8 +8,9 @@ import Portal from '../components/Portal'
 import { useAlias } from '../hooks/useAliasClock'
 import { CheckIcon, CloseIcon, FlipIcon } from '../components/Icons'
 
-// Snapchat's timer options: 1-10 seconds, plus "no limit".
-const TIMERS = [1, 2, 3, 5, 10, null]
+// View-time options (seconds), plus "no limit". Default is a comfortable 45s.
+const TIMERS = [10, 30, 45, 60, null]
+const DEFAULT_TIMER_IDX = 2 // 45s
 
 export default function CameraScreen({ active, onSent }) {
   const { profile } = useAuth()
@@ -19,7 +20,7 @@ export default function CameraScreen({ active, onSent }) {
 
   const [shot, setShot] = useState(null) // { blob, url }
   const [caption, setCaption] = useState('')
-  const [timerIdx, setTimerIdx] = useState(2) // default 3s
+  const [timerIdx, setTimerIdx] = useState(DEFAULT_TIMER_IDX) // default 45s
   const [sending, setSending] = useState(false)
   const [picking, setPicking] = useState(false)
   const [friends, setFriends] = useState([])

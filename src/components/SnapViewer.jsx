@@ -12,10 +12,12 @@ export default function SnapViewer({ message, onClose, onScreenshot }) {
   const [ready, setReady] = useState(false) // media actually on screen
   const [remaining, setRemaining] = useState(message.view_seconds ?? null)
   const [saved, setSaved] = useState(false)
+  const [replays, setReplays] = useState(0) // in-viewer replays this session
   const openedRef = useRef(false)
   const isVideo = message.media_type === 'video'
-  const opens = message.open_count ?? 0
-  const reopensLeft = Math.max(0, SNAP_MAX_OPENS - 1 - opens)
+  // This viewing is one open; count prior opens + any in-viewer replays.
+  const openedSoFar = (message.open_count ?? 0) + 1 + replays
+  const reopensLeft = Math.max(0, SNAP_MAX_OPENS - openedSoFar)
 
   // Parent passes fresh callbacks each render; a ref keeps them out of effect
   // deps so a realtime re-render can't reload the snap or reset the timer.
@@ -128,12 +130,26 @@ export default function SnapViewer({ message, onClose, onScreenshot }) {
             zIndex: 3,
           }}
         >
-          <button className="pill" onClick={save} disabled={saved}>
-            {saved ? '✓ Saved' : '⤓ Save to gallery'}
-          </button>
+          <div style={{ display: 'flex', gap: 10 }}>
+            <button className="pill" onClick={save} disabled={saved}>
+              {saved ? '✓ Saved' : '⤓ Save'}
+            </button>
+            {!isVideo && reopensLeft > 0 && ready && (
+              <button
+                className="pill"
+                onClick={() => {
+                  recordSnapOpen(message.id).catch(() => {})
+                  setReplays((r) => r + 1)
+                  setRemaining(message.view_seconds ?? null) // restart the timer
+                }}
+              >
+                ↻ Replay
+              </button>
+            )}
+          </div>
           {reopensLeft > 0 && (
             <span style={{ color: 'rgba(255,255,255,0.75)', fontSize: 12 }}>
-              {reopensLeft} reopen{reopensLeft === 1 ? '' : 's'} left
+              {reopensLeft} replay{reopensLeft === 1 ? '' : 's'} left
             </span>
           )}
         </div>

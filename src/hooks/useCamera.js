@@ -112,7 +112,13 @@ export function useCamera() {
   // screen, so it is un-mirrored here to match what the sender actually saw.
   const capture = useCallback(async (quality = 0.85) => {
     const video = videoRef.current
-    if (!video || !video.videoWidth) return null
+    if (!video) return null
+    // The video can report 0×0 for a beat after play() on slower phones; wait
+    // briefly for real dimensions so the shot doesn't silently fail.
+    for (let i = 0; i < 30 && !video.videoWidth; i++) {
+      await new Promise((r) => setTimeout(r, 33))
+    }
+    if (!video.videoWidth) return null
     const canvas = document.createElement('canvas')
     canvas.width = video.videoWidth
     canvas.height = video.videoHeight
