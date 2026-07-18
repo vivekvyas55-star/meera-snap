@@ -80,9 +80,16 @@ export default function Profile({ onBack }) {
           </div>
           <div style={{ color: 'var(--muted)', fontSize: 14 }}>@{profile.username}</div>
 
-          <div style={{ display: 'flex', gap: 10, marginTop: 6 }}>
-            <div className="chip">🔥 {score ?? '—'} Snap Score</div>
-            <div className="chip">👥 {friendCount ?? '—'} Friends</div>
+          {/* Vibrant stat cards, per the ABC design language. */}
+          <div style={{ display: 'flex', gap: 10, marginTop: 10, width: '100%' }}>
+            <div className="stat-card" style={{ background: 'var(--lavender)' }}>
+              <div className="stat-num">{score ?? '—'}</div>
+              <div className="stat-label">🔥 Snap Score</div>
+            </div>
+            <div className="stat-card" style={{ background: 'var(--lime)' }}>
+              <div className="stat-num">{friendCount ?? '—'}</div>
+              <div className="stat-label">👥 Friends</div>
+            </div>
           </div>
         </div>
 

@@ -132,13 +132,29 @@ replies, voice notes, snap text/draw/sticker overlays, Snapcode QR, Memories
 gallery, opt-in Snap Map. Infeasible in a web PWA and deliberately skipped: AR
 lenses, native Bitmoji, reliable screenshot detection.
 
-## Design language
+## Design language — ABC (Behance) is the identity; follow it for ALL new UI
 
-The UI follows an external reference (ABC app, Behance): white ground,
-light-grey rounded cards instead of divider lines, oversized light-weight
-(300) display type, a dark floating tab bar, and circular dark buttons for the
-primary action on a surface. Accents — coral, lime, indigo, lavender — come
-from that reference.
+Meera's visual identity is the ABC language-app UI (Behance gallery 196137615).
+This is the standard for every new screen/component — match it, don't invent.
+
+**Palette** (defined as CSS vars in `src/index.css`):
+- Ground: white `#ffffff`; neutral card `#f1f1f3`; ink `#16161a`; muted `#8a8a8e`.
+- Vibrant fills — use BOLDLY as full card backgrounds, not just thin accents:
+  lavender `--lavender #c4a5e8`, lime `--lime #d6e85a`, indigo `--indigo #4a52c4`,
+  coral `--coral #e2664a`. (On a coloured card, text is ink; on indigo it's white.)
+
+**Form**:
+- Big rounded cards (radius ~20–24px), one vibrant colour per card, generous padding.
+- Oversized LIGHT-WEIGHT (300) display headings; sentence/title case, tight tracking.
+- Pill chips for metadata ("45s", "Snap Score", "Pre-intermediate").
+- Dark near-black **circular** buttons for the primary action, white glyph (→, +).
+- Dark floating **tab bar** (`.tabbar`) with thin-line icons (`components/Icons.jsx`).
+- Circular quiet icon buttons (speaker/eye/heart/settings) on surfaces.
+
+Icons live in `src/components/Icons.jsx` (thin 1.6px line, 24px grid) and already
+match the reference set. Prefer these over emoji for chrome; emoji are OK for
+content (reactions, avatars). When adding a surface, reach for a vibrant card +
+light display heading + pill chips + a dark circular action, per the reference.
 
 Snapchat's *interaction* grammar is kept even though its palette is not: status
 icons still encode direction by shape (arrow = sent, square = received) and
