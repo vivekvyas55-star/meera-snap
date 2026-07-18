@@ -239,6 +239,8 @@ const UNOPENED_MAX_MS = 31 * DAY_MS
 export function isVisibleTo(message, me) {
   if (message.unsent_at) return false
   if ((message.saved_by ?? []).includes(me)) return true
+  // Snapchat's default: once you've viewed a chat and left, it's gone for you.
+  if ((message.cleared_by ?? []).includes(me)) return false
 
   const age = Date.now() - new Date(message.created_at).getTime()
 
@@ -248,10 +250,19 @@ export function isVisibleTo(message, me) {
     return age < UNOPENED_MAX_MS
   }
 
+  // Chats you haven't cleared yet still fall back to the 24h-after-open /
+  // 31-day-unopened caps, so nothing lingers even if you never reopen the chat.
   if (message.opened_at) {
     return Date.now() - new Date(message.opened_at).getTime() < DAY_MS
   }
   return age < UNOPENED_MAX_MS
+}
+
+// Snapchat "Delete after viewing": call when leaving a conversation to clear
+// the chats this user has already opened.
+export async function clearViewedChats(me, otherId) {
+  const { error } = await supabase.rpc('clear_viewed_chats', { other: otherId })
+  if (error) throw error
 }
 
 // --------------------------------------------------------------------------

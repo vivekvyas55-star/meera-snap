@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import {
+  clearViewedChats,
   isVisibleTo,
   listMessages,
   markOpened,
@@ -28,6 +29,20 @@ export default function Chat({ friend, onBack }) {
   const threadRef = useRef(null)
 
   const { theirTyping, theyArePresent, setTyping } = useConversationPresence(me, friend.id)
+
+  // Snapchat "Delete after viewing": leaving the conversation clears the chats
+  // you've already opened, for you only. Fire on both the Back button and an
+  // unmount (swipe-away, tab switch), so opened chats don't survive the visit.
+  const leave = useCallback(() => {
+    clearViewedChats(me, friend.id).catch(() => {})
+    onBack()
+  }, [me, friend.id, onBack])
+
+  useEffect(() => {
+    return () => {
+      clearViewedChats(me, friend.id).catch(() => {})
+    }
+  }, [me, friend.id])
 
   const load = useCallback(async () => {
     setMessages(await listMessages(me, friend.id))
@@ -90,7 +105,7 @@ export default function Chat({ friend, onBack }) {
   return (
     <div className="app" style={{ display: 'flex', flexDirection: 'column' }}>
       <div className="header">
-        <button className="circle dark" onClick={onBack} aria-label="Back">
+        <button className="circle dark" onClick={leave} aria-label="Back">
           <BackIcon />
         </button>
         <Avatar profile={friend} size="sm" />
