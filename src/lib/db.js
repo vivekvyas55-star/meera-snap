@@ -220,6 +220,46 @@ export async function markChatsOpened(otherId) {
   if (error) throw error
 }
 
+// Send a recorded voice note (audio blob) as a chat-ephemeral message.
+export async function sendVoiceNote(me, otherId, blob) {
+  const path = `${me}/voice/${crypto.randomUUID()}.webm`
+  const { error: upErr } = await supabase.storage
+    .from('media')
+    .upload(path, blob, { contentType: blob.type || 'audio/webm' })
+  if (upErr) throw upErr
+  const { data, error } = await supabase
+    .from('messages')
+    .insert({
+      ...pairFilter(me, otherId),
+      sender_id: me,
+      kind: 'voice',
+      media_path: path,
+      media_type: 'audio',
+      delivered_at: new Date().toISOString(),
+    })
+    .select()
+    .single()
+  if (error) throw error
+  return data
+}
+
+// Send a single emoji as a large sticker.
+export async function sendSticker(me, otherId, emoji) {
+  const { data, error } = await supabase
+    .from('messages')
+    .insert({
+      ...pairFilter(me, otherId),
+      sender_id: me,
+      kind: 'sticker',
+      body: emoji,
+      delivered_at: new Date().toISOString(),
+    })
+    .select()
+    .single()
+  if (error) throw error
+  return data
+}
+
 export async function markOpened(messageId) {
   const { error } = await supabase
     .from('messages')

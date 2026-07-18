@@ -77,3 +77,25 @@ export const PowerIcon = (p) => (
     <path d="M7.5 7a7 7 0 1 0 9 0" />
   </svg>
 )
+
+export const SmileyIcon = (p) => (
+  <svg {...base} {...p}>
+    <circle cx="12" cy="12" r="9" />
+    <path d="M8.5 14.5a4.5 4.5 0 0 0 7 0" />
+    <path d="M9 9.5h.01M15 9.5h.01" />
+  </svg>
+)
+
+export const MicIcon = (p) => (
+  <svg {...base} {...p}>
+    <rect x="9" y="3" width="6" height="11" rx="3" />
+    <path d="M5 11a7 7 0 0 0 14 0" />
+    <path d="M12 18v3" />
+  </svg>
+)
+
+export const PlayIcon = (p) => (
+  <svg {...base} {...p}>
+    <path d="M8 5l11 7-11 7z" />
+  </svg>
+)

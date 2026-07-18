@@ -9,6 +9,9 @@ import {
   reactToMessage,
   sendChat,
   sendSnapMedia,
+  sendSticker,
+  sendVoiceNote,
+  signedUrl,
   SNAP_MAX_OPENS,
   toggleSaved,
   unsend,
@@ -23,7 +26,14 @@ import Avatar from '../components/Avatar'
 import StatusIcon from '../components/StatusIcon'
 import SnapViewer from '../components/SnapViewer'
 import Portal from '../components/Portal'
-import { ArrowIcon, BackIcon, PlusIcon } from '../components/Icons'
+import { ArrowIcon, BackIcon, CloseIcon, MicIcon, PlusIcon, SmileyIcon } from '../components/Icons'
+import { useAudioRecorder } from '../hooks/useAudioRecorder'
+
+const STICKERS = [
+  '😂', '❤️', '🔥', '👍', '👎', '🥳', '😎', '😭',
+  '😍', '🙏', '💯', '👀', '🤩', '😴', '🤔', '🫶',
+  '🎉', '⭐', '🌈', '☀️', '🍕', '⚽', '🎮', '💜',
+]
 
 export default function Chat({ friend, onBack }) {
   const { profile } = useAuth()
@@ -38,8 +48,42 @@ export default function Chat({ friend, onBack }) {
   const [viewing, setViewing] = useState(null)
   const [attaching, setAttaching] = useState(false)
   const [menuMsg, setMenuMsg] = useState(null) // message the action menu targets
+  const [stickers, setStickers] = useState(false)
+  const [recSecs, setRecSecs] = useState(0)
   const threadRef = useRef(null)
   const fileRef = useRef(null)
+  const recTimer = useRef(null)
+  const { recording, start: startRec, stop: stopRec } = useAudioRecorder()
+
+  const startVoice = async () => {
+    const ok = await startRec()
+    if (!ok) {
+      toast('Microphone unavailable')
+      return
+    }
+    setRecSecs(0)
+    recTimer.current = setInterval(() => setRecSecs((s) => s + 1), 1000)
+  }
+  const finishVoice = async (cancel) => {
+    clearInterval(recTimer.current)
+    const blob = await stopRec(cancel)
+    if (cancel || !blob) return
+    try {
+      await sendVoiceNote(me, friend.id, blob)
+      load()
+    } catch (err) {
+      toast(err.message)
+    }
+  }
+  const pickSticker = async (emoji) => {
+    setStickers(false)
+    try {
+      await sendSticker(me, friend.id, emoji)
+      load()
+    } catch (err) {
+      toast(err.message)
+    }
+  }
 
   const { theirTyping, theyArePresent, setTyping } = useConversationPresence(me, friend.id)
 
@@ -210,37 +254,55 @@ export default function Chat({ friend, onBack }) {
         {theirTyping && <div className="typing">{friendName} is typing…</div>}
       </div>
 
-      <form className="composer" onSubmit={submit}>
-        {/* Attach a photo or video from the camera or gallery and send it as a
-            snap to this friend, without leaving the conversation. `capture`
-            hints the camera on mobile; the user can still pick from library. */}
-        <input
-          ref={fileRef}
-          type="file"
-          accept="image/*,video/*"
-          hidden
-          onChange={onPickMedia}
-        />
-        <button
-          type="button"
-          className="circle filled"
-          onClick={() => fileRef.current?.click()}
-          disabled={attaching}
-          aria-label="Send photo or video"
-        >
-          {attaching ? '…' : <PlusIcon />}
-        </button>
-        <input
-          value={draft}
-          onChange={onDraftChange}
-          onBlur={() => setTyping(false)}
-          placeholder="Send a chat"
-          enterKeyHint="send"
-        />
-        <button className="circle dark" type="submit" disabled={!draft.trim()} aria-label="Send">
-          <ArrowIcon />
-        </button>
-      </form>
+      {recording ? (
+        <div className="composer">
+          <button type="button" className="circle filled" onClick={() => finishVoice(true)} aria-label="Cancel">
+            <CloseIcon />
+          </button>
+          <div className="recording-pill">
+            <span className="rec-dot" /> Recording… {recSecs}s
+          </div>
+          <button type="button" className="circle dark" onClick={() => finishVoice(false)} aria-label="Send voice note">
+            <ArrowIcon />
+          </button>
+        </div>
+      ) : (
+        <form className="composer" onSubmit={submit}>
+          {/* Attach a photo or video and send it as a snap, without leaving chat. */}
+          <input ref={fileRef} type="file" accept="image/*,video/*" hidden onChange={onPickMedia} />
+          <button
+            type="button"
+            className="circle filled"
+            onClick={() => fileRef.current?.click()}
+            disabled={attaching}
+            aria-label="Send photo or video"
+          >
+            {attaching ? '…' : <PlusIcon />}
+          </button>
+          <input
+            value={draft}
+            onChange={onDraftChange}
+            onBlur={() => setTyping(false)}
+            placeholder="Send a chat"
+            enterKeyHint="send"
+          />
+          {/* Sticker picker + voice note when the field is empty; send arrow when typing. */}
+          {draft.trim() ? (
+            <button className="circle dark" type="submit" aria-label="Send">
+              <ArrowIcon />
+            </button>
+          ) : (
+            <>
+              <button type="button" className="circle filled" onClick={() => setStickers(true)} aria-label="Stickers">
+                <SmileyIcon />
+              </button>
+              <button type="button" className="circle filled" onClick={startVoice} aria-label="Voice note">
+                <MicIcon />
+              </button>
+            </>
+          )}
+        </form>
+      )}
 
       {viewing && (
         <SnapViewer
@@ -251,6 +313,23 @@ export default function Chat({ friend, onBack }) {
           }}
           onScreenshot={() => toast('Screenshot detected — they were notified')}
         />
+      )}
+
+      {stickers && (
+        <Portal>
+          <div className="sheet" onClick={() => setStickers(false)}>
+            <div className="sheet-body" onClick={(e) => e.stopPropagation()}>
+              <h2>Stickers</h2>
+              <div className="sticker-grid">
+                {STICKERS.map((e) => (
+                  <button key={e} className="sticker-pick" onClick={() => pickSticker(e)}>
+                    {e}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </Portal>
       )}
 
       {menuMsg && (
@@ -279,6 +358,40 @@ export default function Chat({ friend, onBack }) {
         />
       )}
     </div>
+  )
+}
+
+function VoicePlayer({ message, bar }) {
+  const [playing, setPlaying] = useState(false)
+  const audioRef = useRef(null)
+  const toggle = async (e) => {
+    e.stopPropagation()
+    let el = audioRef.current
+    if (!el) {
+      const url = await signedUrl(message.media_path).catch(() => null)
+      if (!url) return
+      el = new Audio(url)
+      el.onended = () => setPlaying(false)
+      audioRef.current = el
+    }
+    if (el.paused) {
+      el.play()
+      setPlaying(true)
+    } else {
+      el.pause()
+      setPlaying(false)
+    }
+  }
+  return (
+    <button className="msg-voice" style={{ borderLeftColor: bar }} onClick={toggle}>
+      <span className="voice-play">{playing ? '❚❚' : '▶'}</span>
+      <span className="voice-wave" aria-hidden>
+        {Array.from({ length: 14 }, (_, i) => (
+          <i key={i} style={{ height: `${6 + ((i * 5) % 16)}px` }} />
+        ))}
+      </span>
+      <span style={{ fontSize: 13, color: 'var(--muted)' }}>Voice</span>
+    </button>
   )
 }
 
@@ -377,6 +490,12 @@ function MessageRow({ message, me, friend, friendName, myProfile, onOpenSnap, on
         <div className="msg-body" style={{ borderLeftColor: bar }} onClick={handleClick}>
           {message.body}
         </div>
+      ) : message.kind === 'sticker' ? (
+        <div className="msg-sticker" onClick={handleClick}>
+          {message.body}
+        </div>
+      ) : message.kind === 'voice' ? (
+        <VoicePlayer message={message} bar={bar} />
       ) : (
         <button
           className="msg-snap"
