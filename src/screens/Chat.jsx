@@ -83,11 +83,18 @@ export default function Chat({ friend, onBack }) {
     return () => supabase.removeChannel(channel)
   }, [me, friend.id, load])
 
-  // Auto-scroll only when already near the bottom, so a realtime update or a
-  // typing indicator doesn't yank someone who scrolled up to read history.
+  // On first load, jump to the latest message (bottom). After that, only
+  // auto-scroll when already near the bottom, so a realtime update or typing
+  // indicator doesn't yank someone who scrolled up to read history.
+  const didInitialScroll = useRef(false)
   useEffect(() => {
     const el = threadRef.current
     if (!el) return
+    if (!didInitialScroll.current && messages.length > 0) {
+      el.scrollTop = el.scrollHeight // instant jump to latest on open
+      didInitialScroll.current = true
+      return
+    }
     const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 120
     if (nearBottom) el.scrollTo({ top: el.scrollHeight })
   }, [messages, theirTyping])
