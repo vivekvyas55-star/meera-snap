@@ -177,20 +177,35 @@ function MessageRow({ message, me, friend, myProfile, onOpenSnap, onToggleSave }
   const bar = barColorFor(mine ? myProfile : friend)
 
   // Long-press saves the message, mirroring Snapchat's tap-to-save gesture.
+  // `longPressed` guards the trailing click so saving a snap doesn't also open
+  // (and thereby consume) it.
   const pressTimer = useRef(null)
+  const longPressed = useRef(false)
   const startPress = () => {
-    pressTimer.current = setTimeout(onToggleSave, 450)
+    longPressed.current = false
+    pressTimer.current = setTimeout(() => {
+      longPressed.current = true
+      onToggleSave()
+    }, 450)
   }
   const endPress = () => clearTimeout(pressTimer.current)
 
   const snapConsumed = message.kind === 'snap' && (mine || Boolean(message.opened_at))
+
+  const handleOpen = () => {
+    // Swallow the click that follows a long-press-to-save.
+    if (longPressed.current) {
+      longPressed.current = false
+      return
+    }
+    onOpenSnap()
+  }
 
   return (
     <div
       className={`msg${mine ? ' mine' : ''}${saved ? ' saved' : ''}`}
       onTouchStart={startPress}
       onTouchEnd={endPress}
-      onTouchMove={endPress}
       onMouseDown={startPress}
       onMouseUp={endPress}
       onMouseLeave={endPress}
@@ -205,7 +220,7 @@ function MessageRow({ message, me, friend, myProfile, onOpenSnap, onToggleSave }
         <button
           className="msg-snap"
           style={{ borderLeftColor: bar, color: status.color, width: '100%' }}
-          onClick={snapConsumed ? undefined : onOpenSnap}
+          onClick={snapConsumed ? undefined : handleOpen}
           disabled={snapConsumed}
         >
           <StatusIcon {...status} size={16} />

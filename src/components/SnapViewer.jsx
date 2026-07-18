@@ -11,6 +11,12 @@ export default function SnapViewer({ message, onClose, onScreenshot }) {
   const [replayed, setReplayed] = useState(Boolean(message.replayed_at))
   const openedRef = useRef(false)
 
+  // The parent passes fresh arrow functions each render; keeping them in effect
+  // deps would re-run the load/timer whenever a realtime update re-renders the
+  // conversation, reloading the snap and resetting the countdown mid-view.
+  const onCloseRef = useRef(onClose)
+  onCloseRef.current = onClose
+
   useScreenshotHeuristic(Boolean(url), async () => {
     await markScreenshot(message.id).catch(() => {})
     onScreenshot?.()
@@ -20,11 +26,11 @@ export default function SnapViewer({ message, onClose, onScreenshot }) {
     let alive = true
     signedUrl(message.media_path)
       .then((u) => alive && setUrl(u))
-      .catch(() => alive && onClose())
+      .catch(() => alive && onCloseRef.current())
     return () => {
       alive = false
     }
-  }, [message.media_path, onClose])
+  }, [message.media_path])
 
   // Mark opened once the image is actually on screen, not when the row is
   // tapped — otherwise a failed load would still burn the snap.
@@ -37,12 +43,12 @@ export default function SnapViewer({ message, onClose, onScreenshot }) {
   useEffect(() => {
     if (!url || remaining === null) return
     if (remaining <= 0) {
-      onClose()
+      onCloseRef.current()
       return
     }
     const t = setTimeout(() => setRemaining((r) => r - 1), 1000)
     return () => clearTimeout(t)
-  }, [url, remaining, onClose])
+  }, [url, remaining])
 
   const replay = async () => {
     await markReplayed(message.id).catch(() => {})

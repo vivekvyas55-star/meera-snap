@@ -99,13 +99,18 @@ export default function CameraScreen({ active, onSent }) {
     <div className="camera">
       {!shot && (
         <>
-          <video
-            ref={videoRef}
-            className={facing === 'user' ? 'mirrored' : ''}
-            playsInline
-            muted
-            autoPlay
-          />
+          {/* Only mount the live video on the active pane. Otherwise the
+              adjacent camera stream bleeds through the edge of the Chat/Stories
+              panes during the swipe transition. */}
+          {active && (
+            <video
+              ref={videoRef}
+              className={facing === 'user' ? 'mirrored' : ''}
+              playsInline
+              muted
+              autoPlay
+            />
+          )}
           {error && <div className="cam-error">{error}</div>}
 
           <div className="cam-top">

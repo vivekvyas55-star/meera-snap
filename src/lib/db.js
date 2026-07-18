@@ -25,13 +25,14 @@ export async function getProfile(userId) {
 }
 
 export async function findByUsername(username) {
-  const { data, error } = await supabase
-    .from('profiles')
-    .select('*')
-    .eq('username', username.trim().toLowerCase())
-    .maybeSingle()
+  // profiles is no longer world-readable (RLS restricts SELECT to self +
+  // relationships), so discovery goes through a SECURITY DEFINER point-lookup
+  // that only ever answers about an exact username the caller already typed.
+  const { data, error } = await supabase.rpc('lookup_username', {
+    u: username.trim().toLowerCase(),
+  })
   if (error) throw error
-  return data
+  return data?.[0] ?? null
 }
 
 export async function sendFriendRequest(me, otherId) {
