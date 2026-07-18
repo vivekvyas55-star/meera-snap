@@ -397,6 +397,24 @@ export async function listMyStoryViews(storyIds) {
   return data ?? []
 }
 
+// Who has viewed a story (author-only, enforced by RLS). Newest first.
+export async function listStoryViewers(storyId) {
+  const { data, error } = await supabase
+    .from('story_views')
+    .select('viewer_id, viewed_at, screenshot_at')
+    .eq('story_id', storyId)
+    .order('viewed_at', { ascending: false })
+  if (error) throw error
+  const rows = data ?? []
+  if (rows.length === 0) return []
+  const { data: profs } = await supabase
+    .from('profiles')
+    .select('id, username, display_name, avatar_emoji, avatar_hue')
+    .in('id', rows.map((r) => r.viewer_id))
+  const byId = new Map((profs ?? []).map((p) => [p.id, p]))
+  return rows.map((r) => ({ ...r, profile: byId.get(r.viewer_id) }))
+}
+
 export async function markStoryViewed(storyId, me) {
   const { error } = await supabase
     .from('story_views')

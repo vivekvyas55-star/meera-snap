@@ -77,9 +77,7 @@ input, textarea { font: inherit; }
 /* ==========================================================================
    App shell
    ========================================================================== */
-/* --app-h tracks the visualViewport (shrinks when the keyboard opens) so the
-   composer stays above it; falls back to dvh before JS sets it. */
-.app { position: relative; height: var(--app-h, 100dvh); width: 100%; overflow: hidden; background: var(--bg); }
+.app { position: relative; height: 100dvh; width: 100%; overflow: hidden; background: var(--bg); }
 
 .pager {
   display: flex; height: 100%; width: 300%;
@@ -382,6 +380,29 @@ input, textarea { font: inherit; }
   position: absolute; inset: 0; display: grid; place-items: center;
   color: rgba(255, 255, 255, 0.7); font-size: 15px;
 }
+
+/* Story "seen by" — eye pill bottom-left of your own story, and its list. */
+.viewer-seen {
+  position: absolute; z-index: 3;
+  left: 14px; bottom: calc(var(--safe-bottom) + 20px);
+  display: inline-flex; align-items: center; gap: 6px;
+  background: rgba(0, 0, 0, 0.5); color: #fff;
+  backdrop-filter: blur(8px);
+  border-radius: 999px; padding: 9px 15px; font-size: 14px; font-weight: 500;
+}
+.seen-sheet {
+  position: absolute; inset: 0; z-index: 5;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex; align-items: flex-end;
+}
+.seen-body {
+  background: var(--bg); width: 100%;
+  border-radius: 26px 26px 0 0;
+  padding: 20px 16px calc(var(--safe-bottom) + 18px);
+  max-height: 70dvh; overflow-y: auto;
+}
+.seen-body h3 { margin: 0 0 12px; font-size: 20px; font-weight: 300; letter-spacing: -0.02em; }
+.seen-body .row { padding: 8px 4px; margin: 0; }
 .viewer-top {
   position: absolute; top: calc(var(--safe-top) + 12px); left: 12px; right: 12px;
   display: flex; align-items: center; gap: 10px; color: #fff; z-index: 2;
@@ -411,7 +432,7 @@ input, textarea { font: inherit; }
    PIN lock
    ========================================================================== */
 .pinlock {
-  height: var(--app-h, 100dvh);
+  height: 100dvh;
   background: var(--bg);
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: 14px; padding: 32px 24px calc(var(--safe-bottom) + 32px);

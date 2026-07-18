@@ -3,6 +3,7 @@ import {
   getProfile,
   listMyStoryViews,
   listStories,
+  listStoryViewers,
   markStoryViewed,
   signedUrl,
 } from '../lib/db'
@@ -131,6 +132,7 @@ function StoryViewer({ group, author, me, onClose, onNextAuthor }) {
   const [url, setUrl] = useState(null)
   const [paused, setPaused] = useState(false)
   const [elapsed, setElapsed] = useState(0)
+  const [viewers, setViewers] = useState(null) // null = closed, [] = open/empty
 
   // Refs so a parent re-render (e.g. a stories realtime event) doesn't re-run
   // the load effect and blank/restart the story you're watching.
@@ -217,6 +219,59 @@ function StoryViewer({ group, author, me, onClose, onNextAuthor }) {
 
       <button className="tapzone back" onClick={back} aria-label="Previous" />
       <button className="tapzone fwd" onClick={advance} aria-label="Next" />
+
+      {/* Own story: an eye + viewer count at bottom-left; tap to see who saw it
+          (like Snapchat / WhatsApp status). */}
+      {group.mine && (
+        <button
+          className="viewer-seen"
+          onClick={async (e) => {
+            e.stopPropagation()
+            setPaused(true)
+            setViewers(await listStoryViewers(story.id).catch(() => []))
+          }}
+        >
+          👁 Seen by
+        </button>
+      )}
+
+      {viewers !== null && (
+        <div
+          className="seen-sheet"
+          onClick={(e) => {
+            e.stopPropagation()
+            setViewers(null)
+            setPaused(false)
+          }}
+        >
+          <div className="seen-body" onClick={(e) => e.stopPropagation()}>
+            <h3>Seen by {viewers.length}</h3>
+            {viewers.length === 0 && <div className="empty">No views yet.</div>}
+            {viewers.map((v) => (
+              <div className="row" key={v.viewer_id} style={{ background: 'transparent' }}>
+                <Avatar profile={v.profile} size="sm" />
+                <div className="row-main">
+                  <div className="row-name">
+                    {v.profile ? alias(v.profile) : 'Someone'}
+                    {v.screenshot_at && <span title="Screenshotted"> 📸</span>}
+                  </div>
+                  <div className="row-sub">@{v.profile?.username}</div>
+                </div>
+              </div>
+            ))}
+            <button
+              className="btn-dark"
+              style={{ marginTop: 12 }}
+              onClick={() => {
+                setViewers(null)
+                setPaused(false)
+              }}
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
     </div>
     </Portal>
   )

@@ -127,25 +127,20 @@ function Shell() {
 }
 
 export default function App() {
-  // A phone browser recalculates viewport height as its chrome collapses; the
-  // camera pane depends on that being accurate. The visualViewport also shrinks
-  // when the keyboard opens — expose that height as --app-h so the chat column
-  // sits above the keyboard instead of behind it (iOS especially).
+  // Keep the focused composer above the on-screen keyboard. Rather than resize
+  // the whole app (which fought iOS's own keyboard scroll and left a white gap),
+  // nudge just the active input into view when the visualViewport shrinks.
   useEffect(() => {
     const vv = window.visualViewport
-    const fix = () => {
-      const h = vv ? vv.height : window.innerHeight
-      document.documentElement.style.setProperty('--app-h', `${h}px`)
+    if (!vv) return
+    const onResize = () => {
+      const el = document.activeElement
+      if (el && /INPUT|TEXTAREA/.test(el.tagName)) {
+        setTimeout(() => el.scrollIntoView({ block: 'center', behavior: 'smooth' }), 50)
+      }
     }
-    fix()
-    window.addEventListener('resize', fix)
-    vv?.addEventListener('resize', fix)
-    vv?.addEventListener('scroll', fix)
-    return () => {
-      window.removeEventListener('resize', fix)
-      vv?.removeEventListener('resize', fix)
-      vv?.removeEventListener('scroll', fix)
-    }
+    vv.addEventListener('resize', onResize)
+    return () => vv.removeEventListener('resize', onResize)
   }, [])
 
   const [unlocked, setUnlocked] = useState(isUnlocked())
