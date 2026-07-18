@@ -68,6 +68,40 @@ property; don't describe it to users as one.
 camera), `env(safe-area-inset-*)` for notches, and 16px minimum font size on
 inputs to stop iOS zooming on focus.
 
+## Live deployment
+
+- **Production:** https://meera.bigadtruck.com (and https://meera-five.vercel.app)
+- **Vercel:** account `vivekvyas55-6385`, scope `meeraapplication` (isolated — no
+  link to the user's other accounts/NIT). Hobby plan.
+- **Supabase:** project ref `mqxfggwncoazgmcswedi`, org `vivekvyas55-star`.
+- Custom domain via Cloudflare: `meera` CNAME → vercel-dns (grey cloud) + a
+  second `_vercel` TXT alongside the pre-existing one. Do not touch the other 13
+  records (apex A, nit/srpce/www CNAMEs, Google MX/SPF).
+- Deploy: `vercel deploy --prod --yes` (CLI is logged into the isolated account).
+
+## Migrations
+
+`schema.sql` is the base. Additional migrations applied on top, in order:
+`hardening.sql` (security), then `chat_vanish.sql` (delete-after-viewing).
+The `avatar_emoji` column was added ad-hoc. Apply new migrations via the
+Supabase SQL editor; they're written idempotently.
+
+## Snapchat parity notes
+
+Delete-after-viewing (`chat_vanish.sql`): a chat clears for a viewer once they
+open it and leave, via a per-user `cleared_by[]` (not the shared `cleared_at`),
+so it never vanishes for the other party first. `clear_viewed_chats` RPC fires
+on Back and on Chat unmount. `isVisibleTo` hides cleared/saved accordingly.
+
+Emoji avatars: `avatar_emoji` on profiles; `Avatar.jsx` renders it over the
+letter+hue fallback. Edited in the Profile screen (tap your avatar in the chat
+list). Profile also shows a snap-score aggregate and friend count.
+
+**Not yet built** (prioritized from the feature research): chat reactions +
+replies, voice notes, video snaps, snap overlays (text/draw/sticker), Snapcode
+QR, Memories gallery, opt-in Snap Map. Infeasible in a web PWA and deliberately
+skipped: AR lenses, native Bitmoji, reliable screenshot detection.
+
 ## Design language
 
 The UI follows an external reference (ABC app, Behance): white ground,
