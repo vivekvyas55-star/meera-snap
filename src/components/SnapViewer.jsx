@@ -57,10 +57,25 @@ export default function SnapViewer({ message, onClose, onScreenshot }) {
     setRemaining(message.view_seconds ?? null)
   }
 
+  const isVideo = message.media_type === 'video'
+
   return (
     <Portal>
     <div className="viewer">
-      {url && <img src={url} alt="" />}
+      {url &&
+        (isVideo ? (
+          <video
+            src={url}
+            autoPlay
+            playsInline
+            // A video snap plays once, then closes — the video length is the
+            // timer, so the countdown pill is hidden for videos.
+            onEnded={onClose}
+            style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+          />
+        ) : (
+          <img src={url} alt="" />
+        ))}
       {message.body && <div className="viewer-caption">{message.body}</div>}
 
       {remaining !== null && <div className="timer">{remaining}</div>}

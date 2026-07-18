@@ -176,6 +176,36 @@ export async function sendSnap(me, otherId, { blob, viewSeconds, caption }) {
   return data
 }
 
+// Send an image OR video snap from a File (e.g. picked via the chat composer's
+// attach button). Images default to a 3s timer; videos play once in full.
+export async function sendSnapMedia(me, otherId, { file, viewSeconds, caption }) {
+  const isVideo = (file.type || '').startsWith('video')
+  const ext = isVideo ? 'mp4' : 'jpg'
+  const path = `${me}/snaps/${crypto.randomUUID()}.${ext}`
+  const { error: upErr } = await supabase.storage
+    .from('media')
+    .upload(path, file, { contentType: file.type || (isVideo ? 'video/mp4' : 'image/jpeg') })
+  if (upErr) throw upErr
+
+  const { data, error } = await supabase
+    .from('messages')
+    .insert({
+      ...pairFilter(me, otherId),
+      sender_id: me,
+      kind: 'snap',
+      body: caption || null,
+      media_path: path,
+      media_type: isVideo ? 'video' : 'image',
+      has_audio: isVideo,
+      view_seconds: viewSeconds ?? (isVideo ? null : 3),
+      delivered_at: new Date().toISOString(),
+    })
+    .select()
+    .single()
+  if (error) throw error
+  return data
+}
+
 export async function markOpened(messageId) {
   const { error } = await supabase
     .from('messages')
