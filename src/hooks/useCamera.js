@@ -16,6 +16,7 @@ export function useCamera() {
   // double-acquiring the camera (black frames / NotReadableError on iOS).
   const [facing, setFacing] = useState('user')
   const facingRef = useRef('user')
+  const streamFacingRef = useRef(null) // which camera the live stream is for
   const [error, setError] = useState(null)
   const [ready, setReady] = useState(false)
   // Bumped on every stop() so a getUserMedia that resolves after we've left the
@@ -26,8 +27,19 @@ export function useCamera() {
     genRef.current += 1
     streamRef.current?.getTracks().forEach((t) => t.stop())
     streamRef.current = null
+    streamFacingRef.current = null
     if (videoRef.current) videoRef.current.srcObject = null
     setReady(false)
+  }, [])
+
+  const liveTrack = () =>
+    streamRef.current?.getVideoTracks().find((t) => t.readyState === 'live')
+
+  // Pause without releasing the camera: keeps the grant so returning to the
+  // camera tab never re-prompts for permission (iOS re-asks on a fresh
+  // getUserMedia). Only stop() (flip / logout) actually releases it.
+  const pause = useCallback(() => {
+    streamRef.current?.getVideoTracks().forEach((t) => (t.enabled = false))
   }, [])
 
   const attach = useCallback(async (stream) => {
@@ -52,7 +64,6 @@ export function useCamera() {
   const start = useCallback(
     async (mode = facingRef.current) => {
       setError(null)
-      facingRef.current = mode
       if (!isSecureContext) {
         setError('Camera needs HTTPS. Open this page over https:// (or localhost).')
         return
@@ -61,6 +72,18 @@ export function useCamera() {
         setError('This browser does not support camera access.')
         return
       }
+      // Reuse an already-granted live stream for the SAME camera — re-attach and
+      // re-enable its tracks instead of calling getUserMedia again (which would
+      // re-prompt on iOS). streamFacingRef records which camera the live stream
+      // is, so a flip (mode change) still acquires fresh.
+      if (liveTrack() && streamFacingRef.current === mode) {
+        facingRef.current = mode
+        streamRef.current.getVideoTracks().forEach((t) => (t.enabled = true))
+        await attach(streamRef.current)
+        setReady(true)
+        return
+      }
+      facingRef.current = mode
       stop()
       const gen = genRef.current
       // Do NOT force a portrait resolution. iOS camera sensors are landscape,
@@ -83,6 +106,7 @@ export function useCamera() {
             return
           }
           streamRef.current = stream
+          streamFacingRef.current = mode
           await attach(stream)
           setReady(true)
           return
@@ -133,5 +157,5 @@ export function useCamera() {
 
   useEffect(() => stop, [stop])
 
-  return { videoRef, start, stop, flip, capture, facing, error, ready }
+  return { videoRef, start, stop, pause, flip, capture, facing, error, ready }
 }

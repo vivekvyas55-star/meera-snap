@@ -16,7 +16,7 @@ export default function CameraScreen({ active, onSent }) {
   const { profile } = useAuth()
   const me = profile.id
   const toast = useToast()
-  const { videoRef, start, stop, flip, capture, facing, error, ready } = useCamera()
+  const { videoRef, start, pause, flip, capture, facing, error, ready } = useCamera()
 
   const [shot, setShot] = useState(null) // { blob, url }
   const [caption, setCaption] = useState('')
@@ -25,12 +25,13 @@ export default function CameraScreen({ active, onSent }) {
   const [picking, setPicking] = useState(false)
   const [friends, setFriends] = useState([])
 
-  // Hold the camera only while this pane is the one on screen; a background
-  // stream keeps the phone's camera light on and drains the battery.
+  // Acquire the camera once, then PAUSE (not stop) when leaving the pane so the
+  // permission grant is kept and returning never re-prompts. The stream is fully
+  // released only on unmount (logout) via useCamera's own cleanup.
   useEffect(() => {
     if (active && !shot) start()
-    else if (!active) stop()
-  }, [active, shot, start, stop])
+    else if (!active) pause()
+  }, [active, shot, start, pause])
 
   useEffect(() => {
     listFriendsWithProfiles(me)
@@ -53,14 +54,14 @@ export default function CameraScreen({ active, onSent }) {
       toast('Could not capture — is the camera ready?')
       return
     }
-    stop()
+    pause() // freeze the preview but keep the grant, so discard doesn't re-prompt
     setShot({ blob, url: URL.createObjectURL(blob) })
   }
 
   const discard = () => {
     setShot(null)
     setCaption('')
-    start()
+    start() // reuses the still-live stream — no permission prompt
   }
 
   const sendTo = async (friendIds) => {
