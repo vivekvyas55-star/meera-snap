@@ -4,7 +4,7 @@ import {
   clearViewedChats,
   isVisibleTo,
   listMessages,
-  markOpened,
+  markChatsOpened,
   pairKey,
   reactToMessage,
   sendChat,
@@ -99,13 +99,15 @@ export default function Chat({ friend, onBack }) {
     if (nearBottom) el.scrollTo({ top: el.scrollHeight })
   }, [messages, theirTyping])
 
-  // Opening the conversation marks their unread *chats* as read. Snaps stay
-  // sealed until explicitly tapped.
+  // Opening the conversation marks their unread *chats* as read (one atomic
+  // call, so the chat-list New indicator clears reliably). Snaps stay sealed
+  // until explicitly tapped.
   useEffect(() => {
-    messages
-      .filter((m) => m.sender_id !== me && m.kind === 'chat' && !m.opened_at)
-      .forEach((m) => markOpened(m.id).catch(() => {}))
-  }, [messages, me])
+    const hasUnopened = messages.some(
+      (m) => m.sender_id !== me && m.kind === 'chat' && !m.opened_at
+    )
+    if (hasUnopened) markChatsOpened(friend.id).catch(() => {})
+  }, [messages, me, friend.id])
 
   const submit = async (e) => {
     e.preventDefault()

@@ -214,6 +214,12 @@ export async function recordSnapOpen(messageId) {
   return data
 }
 
+// Mark all incoming chats in a conversation read, in one atomic call.
+export async function markChatsOpened(otherId) {
+  const { error } = await supabase.rpc('mark_chats_opened', { other: otherId })
+  if (error) throw error
+}
+
 export async function markOpened(messageId) {
   const { error } = await supabase
     .from('messages')
