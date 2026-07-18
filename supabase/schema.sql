@@ -280,6 +280,27 @@ create policy story_views_read on public.story_views
   );
 
 -- ============================================================================
+-- Table privileges
+-- ============================================================================
+-- RLS decides WHICH ROWS a role may touch. It does not grant access to the
+-- table itself — that is a separate, older Postgres mechanism. Without these
+-- GRANTs every query fails with "42501: permission denied", no matter how
+-- permissive the policies are.
+--
+-- Granting broadly to `authenticated` is safe here precisely because every
+-- table above has RLS enabled: the policies remain the real gate, and the
+-- grants are only what lets the policies get evaluated at all. Privileges are
+-- still kept to what each table's policies actually allow.
+grant usage on schema public to anon, authenticated;
+
+grant select, update            on public.profiles    to authenticated;
+grant select, insert, update, delete on public.friendships to authenticated;
+grant select, insert, update    on public.messages    to authenticated;
+grant select                    on public.streaks     to authenticated;
+grant select, insert, delete    on public.stories     to authenticated;
+grant select, insert, update    on public.story_views to authenticated;
+
+-- ============================================================================
 -- Realtime
 -- ============================================================================
 alter publication supabase_realtime add table public.messages;
