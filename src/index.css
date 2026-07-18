@@ -100,6 +100,19 @@ input, textarea { font: inherit; }
     box-shadow: 0 24px 70px rgba(0, 0, 0, 0.45);
     border-radius: 30px; overflow: hidden;
   }
+  /* Overlays are portaled to <body> to escape the pager's transform, so on a
+     wide screen they must be re-constrained to the same centred phone column
+     rather than spanning the whole window. */
+  .sheet { justify-content: center; }
+  .sheet-body { max-width: 420px; border-radius: 26px 26px 0 0; }
+  .viewer {
+    left: 50%; right: auto; transform: translateX(-50%);
+    width: 420px; max-width: 100%;
+  }
+  .install {
+    left: 50%; right: auto; transform: translateX(-50%);
+    width: 420px; max-width: calc(100% - 24px);
+  }
 }
 
 /* ==========================================================================
