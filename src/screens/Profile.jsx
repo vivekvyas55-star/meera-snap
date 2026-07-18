@@ -4,6 +4,7 @@ import { useAuth } from '../hooks/useAuth'
 import { useToast } from '../components/Toast'
 import Avatar from '../components/Avatar'
 import { BackIcon, CheckIcon, PowerIcon } from '../components/Icons'
+import { lockApp } from '../components/PinLock'
 
 // A curated set — the full native emoji keyboard is available by typing into
 // the display-name field, but a tap-grid covers the common picks.
@@ -152,6 +153,17 @@ export default function Profile({ onBack }) {
           onClick={save}
         >
           <CheckIcon width={17} height={17} /> {saving ? 'Saving…' : 'Save profile'}
+        </button>
+
+        <button
+          onClick={lockApp}
+          style={{
+            width: '100%', marginTop: 12, padding: 14, borderRadius: 'var(--r-pill)',
+            background: 'var(--card)', fontWeight: 500, fontSize: 15,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+          }}
+        >
+          🔒 Lock app
         </button>
       </div>
     </div>

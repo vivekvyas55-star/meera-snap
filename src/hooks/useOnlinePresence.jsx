@@ -11,13 +11,14 @@ export function OnlinePresenceProvider({ children }) {
   const { user } = useAuth()
   const [online, setOnline] = useState(new Set())
 
+  const userId = user?.id
   useEffect(() => {
-    if (!user) {
+    if (!userId) {
       setOnline(new Set())
       return
     }
     const channel = supabase.channel('presence:global', {
-      config: { presence: { key: user.id } },
+      config: { presence: { key: userId } },
     })
 
     const sync = () => setOnline(new Set(Object.keys(channel.presenceState())))
@@ -33,7 +34,7 @@ export function OnlinePresenceProvider({ children }) {
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [user])
+  }, [userId])
 
   return <OnlineContext.Provider value={online}>{children}</OnlineContext.Provider>
 }

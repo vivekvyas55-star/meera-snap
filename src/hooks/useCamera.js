@@ -18,8 +18,12 @@ export function useCamera() {
   const facingRef = useRef('user')
   const [error, setError] = useState(null)
   const [ready, setReady] = useState(false)
+  // Bumped on every stop() so a getUserMedia that resolves after we've left the
+  // pane can detect it's stale and shut its own tracks down (no zombie stream).
+  const genRef = useRef(0)
 
   const stop = useCallback(() => {
+    genRef.current += 1
     streamRef.current?.getTracks().forEach((t) => t.stop())
     streamRef.current = null
     if (videoRef.current) videoRef.current.srcObject = null
@@ -58,6 +62,7 @@ export function useCamera() {
         return
       }
       stop()
+      const gen = genRef.current
       // Do NOT force a portrait resolution. iOS camera sensors are landscape,
       // and asking for 1080x1920 makes iOS crop to a heavily zoomed mode. Ask
       // only for the facing direction and let CSS object-fit frame it; add a
@@ -71,6 +76,12 @@ export function useCamera() {
       for (const constraints of attempts) {
         try {
           const stream = await navigator.mediaDevices.getUserMedia(constraints)
+          // If we left the pane while the prompt was up, discard this stream so
+          // the camera light doesn't stay on in the background.
+          if (gen !== genRef.current) {
+            stream.getTracks().forEach((t) => t.stop())
+            return
+          }
           streamRef.current = stream
           await attach(stream)
           setReady(true)

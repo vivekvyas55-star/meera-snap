@@ -59,6 +59,8 @@ export default function ChatList({ onOpenChat, onOpenProfile }) {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, load)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'friendships' }, load)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'streaks' }, load)
+      // A friend changing their emoji/name should reflect here live.
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, load)
       .subscribe()
     return () => supabase.removeChannel(channel)
   }, [load])

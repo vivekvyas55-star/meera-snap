@@ -16,6 +16,10 @@ import { useEffect, useRef } from 'react'
 export function useScreenshotHeuristic(active, onDetected) {
   const firedRef = useRef(false)
   const openedAtRef = useRef(0)
+  // Hold the callback in a ref so a fresh inline `onDetected` each render doesn't
+  // re-run the effect and slide the detection window.
+  const onDetectedRef = useRef(onDetected)
+  onDetectedRef.current = onDetected
 
   useEffect(() => {
     if (!active) {
@@ -27,7 +31,7 @@ export function useScreenshotHeuristic(active, onDetected) {
     const fire = () => {
       if (firedRef.current) return
       firedRef.current = true
-      onDetected()
+      onDetectedRef.current()
     }
 
     const onKey = (e) => {
@@ -51,5 +55,5 @@ export function useScreenshotHeuristic(active, onDetected) {
       window.removeEventListener('keyup', onKey)
       document.removeEventListener('visibilitychange', onHidden)
     }
-  }, [active, onDetected])
+  }, [active])
 }

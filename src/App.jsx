@@ -11,6 +11,7 @@ import { AliasClockProvider } from './hooks/useAliasClock'
 import { OnlinePresenceProvider } from './hooks/useOnlinePresence'
 import { CameraIcon, ChatIcon, StoriesIcon } from './components/Icons'
 import InstallPrompt from './components/InstallPrompt'
+import PinLock, { isUnlocked } from './components/PinLock'
 
 const PANES = [
   { key: 'chat', label: 'Chat', Icon: ChatIcon },
@@ -127,13 +128,33 @@ function Shell() {
 
 export default function App() {
   // A phone browser recalculates viewport height as its chrome collapses; the
-  // camera pane depends on that being accurate.
+  // camera pane depends on that being accurate. The visualViewport also shrinks
+  // when the keyboard opens — expose that height as --app-h so the chat column
+  // sits above the keyboard instead of behind it (iOS especially).
   useEffect(() => {
-    const fix = () => document.documentElement.style.setProperty('--vh', `${window.innerHeight}px`)
+    const vv = window.visualViewport
+    const fix = () => {
+      const h = vv ? vv.height : window.innerHeight
+      document.documentElement.style.setProperty('--app-h', `${h}px`)
+    }
     fix()
     window.addEventListener('resize', fix)
-    return () => window.removeEventListener('resize', fix)
+    vv?.addEventListener('resize', fix)
+    vv?.addEventListener('scroll', fix)
+    return () => {
+      window.removeEventListener('resize', fix)
+      vv?.removeEventListener('resize', fix)
+      vv?.removeEventListener('scroll', fix)
+    }
   }, [])
+
+  const [unlocked, setUnlocked] = useState(isUnlocked())
+  useEffect(() => {
+    const relock = () => setUnlocked(false)
+    window.addEventListener('meera:lock', relock)
+    return () => window.removeEventListener('meera:lock', relock)
+  }, [])
+  if (!unlocked) return <PinLock onUnlock={() => setUnlocked(true)} />
 
   return (
     <AuthProvider>

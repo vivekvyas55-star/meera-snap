@@ -77,7 +77,9 @@ input, textarea { font: inherit; }
 /* ==========================================================================
    App shell
    ========================================================================== */
-.app { position: relative; height: 100dvh; width: 100%; overflow: hidden; background: var(--bg); }
+/* --app-h tracks the visualViewport (shrinks when the keyboard opens) so the
+   composer stays above it; falls back to dvh before JS sets it. */
+.app { position: relative; height: var(--app-h, 100dvh); width: 100%; overflow: hidden; background: var(--bg); }
 
 .pager {
   display: flex; height: 100%; width: 300%;
@@ -193,7 +195,47 @@ input, textarea { font: inherit; }
   background: #2fbf71;
   box-shadow: 0 0 0 2px rgba(47, 191, 113, 0.22);
 }
-.presence-dot.off { background: var(--line); }
+.presence-dot.off { background: var(--hairline); }
+
+/* Message reactions (Apple-style tapback badge on the bubble). */
+.msg-reactions {
+  display: inline-block;
+  margin: 3px 0 0 6px;
+  background: #fff;
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 14px;
+  line-height: 1.2;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+}
+.msg.mine .msg-reactions { margin: 3px 6px 0 0; float: right; }
+
+/* Long-press action menu: reaction row + save/unsend. */
+.reaction-menu {
+  background: var(--bg);
+  width: 100%;
+  border-radius: 26px 26px 0 0;
+  padding: 16px 16px calc(var(--safe-bottom) + 16px);
+}
+.tapbacks {
+  display: flex; justify-content: space-around; gap: 6px;
+  padding: 6px 4px 12px;
+  border-bottom: 1px solid var(--hairline);
+}
+.tapback {
+  font-size: 28px; width: 46px; height: 46px; border-radius: 50%;
+  display: grid; place-items: center;
+}
+.tapback:active { background: var(--card); }
+.tapback.on { background: var(--card); transform: scale(1.05); }
+.menu-action {
+  display: block; width: 100%; text-align: left;
+  padding: 14px 8px; font-size: 16px; font-weight: 500;
+  border-bottom: 1px solid var(--hairline);
+}
+.menu-action:last-child { border-bottom: none; }
+.menu-action.danger { color: var(--coral); }
 .row-sub {
   display: flex; align-items: center; gap: 5px;
   font-size: 12.5px; color: var(--muted); margin-top: 2px;
@@ -336,6 +378,10 @@ input, textarea { font: inherit; }
   background: rgba(0, 0, 0, 0.42); color: #fff;
   text-align: center; padding: 14px; font-size: 17px;
 }
+.viewer-loading {
+  position: absolute; inset: 0; display: grid; place-items: center;
+  color: rgba(255, 255, 255, 0.7); font-size: 15px;
+}
 .viewer-top {
   position: absolute; top: calc(var(--safe-top) + 12px); left: 12px; right: 12px;
   display: flex; align-items: center; gap: 10px; color: #fff; z-index: 2;
@@ -360,6 +406,41 @@ input, textarea { font: inherit; }
 .tapzone { position: absolute; top: 0; bottom: 0; z-index: 1; background: transparent; }
 .tapzone.back { left: 0; width: 33%; }
 .tapzone.fwd { right: 0; width: 67%; }
+
+/* ==========================================================================
+   PIN lock
+   ========================================================================== */
+.pinlock {
+  height: var(--app-h, 100dvh);
+  background: var(--bg);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 14px; padding: 32px 24px calc(var(--safe-bottom) + 32px);
+}
+.pin-title { font-size: 34px; font-weight: 300; letter-spacing: -0.03em; }
+.pin-sub { color: var(--muted); font-size: 15px; margin-bottom: 6px; }
+.pin-dots { display: flex; gap: 18px; margin-bottom: 24px; }
+.pin-dots.shake { animation: shake 0.4s; }
+.pin-dot {
+  width: 14px; height: 14px; border-radius: 50%;
+  border: 1.5px solid var(--ink); background: transparent;
+}
+.pin-dot.filled { background: var(--ink); }
+.pin-pad {
+  display: grid; grid-template-columns: repeat(3, 74px); gap: 18px;
+  justify-content: center;
+}
+.pin-key {
+  width: 74px; height: 74px; border-radius: 50%;
+  font-size: 28px; font-weight: 400; background: var(--card);
+  display: grid; place-items: center;
+}
+.pin-key:active { background: var(--card-press); }
+.pin-back { background: transparent; font-size: 22px; }
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  20%, 60% { transform: translateX(-8px); }
+  40%, 80% { transform: translateX(8px); }
+}
 
 /* ==========================================================================
    Auth

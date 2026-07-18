@@ -6,9 +6,12 @@ import {
   listMessages,
   markOpened,
   pairKey,
+  reactToMessage,
   sendChat,
   sendSnapMedia,
+  SNAP_MAX_OPENS,
   toggleSaved,
+  unsend,
 } from '../lib/db'
 import { barColorFor, statusFor } from '../lib/status'
 import { useAuth } from '../hooks/useAuth'
@@ -19,6 +22,7 @@ import { useToast } from '../components/Toast'
 import Avatar from '../components/Avatar'
 import StatusIcon from '../components/StatusIcon'
 import SnapViewer from '../components/SnapViewer'
+import Portal from '../components/Portal'
 import { ArrowIcon, BackIcon, PlusIcon } from '../components/Icons'
 
 export default function Chat({ friend, onBack }) {
@@ -33,6 +37,7 @@ export default function Chat({ friend, onBack }) {
   const [draft, setDraft] = useState('')
   const [viewing, setViewing] = useState(null)
   const [attaching, setAttaching] = useState(false)
+  const [menuMsg, setMenuMsg] = useState(null) // message the action menu targets
   const threadRef = useRef(null)
   const fileRef = useRef(null)
 
@@ -78,8 +83,13 @@ export default function Chat({ friend, onBack }) {
     return () => supabase.removeChannel(channel)
   }, [me, friend.id, load])
 
+  // Auto-scroll only when already near the bottom, so a realtime update or a
+  // typing indicator doesn't yank someone who scrolled up to read history.
   useEffect(() => {
-    threadRef.current?.scrollTo({ top: threadRef.current.scrollHeight })
+    const el = threadRef.current
+    if (!el) return
+    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 120
+    if (nearBottom) el.scrollTo({ top: el.scrollHeight })
   }, [messages, theirTyping])
 
   // Opening the conversation marks their unread *chats* as read. Snaps stay
@@ -97,6 +107,7 @@ export default function Chat({ friend, onBack }) {
     setTyping(false)
     try {
       await sendChat(me, friend.id, text)
+      load() // show it immediately, don't wait for the realtime echo
     } catch (err) {
       toast(err.message)
       setDraft(text)
@@ -178,9 +189,10 @@ export default function Chat({ friend, onBack }) {
             friendName={friendName}
             myProfile={profile}
             onOpenSnap={() => setViewing(m)}
-            onToggleSave={async () => {
-              const next = await toggleSaved(m, me)
-              toast(next.includes(me) ? 'Saved in chat' : 'Unsaved')
+            onLongPress={() => setMenuMsg(m)}
+            onQuickReact={async () => {
+              const mine = (m.reactions ?? {})[me]
+              await reactToMessage(m.id, mine === '❤️' ? '' : '❤️').catch(() => {})
               load()
             }}
           />
@@ -231,43 +243,115 @@ export default function Chat({ friend, onBack }) {
           onScreenshot={() => toast('Screenshot detected — they were notified')}
         />
       )}
+
+      {menuMsg && (
+        <MessageMenu
+          message={menuMsg}
+          me={me}
+          onClose={() => setMenuMsg(null)}
+          onReact={async (emoji) => {
+            const mine = (menuMsg.reactions ?? {})[me]
+            await reactToMessage(menuMsg.id, mine === emoji ? '' : emoji).catch(() => {})
+            setMenuMsg(null)
+            load()
+          }}
+          onSave={async () => {
+            const next = await toggleSaved(menuMsg, me)
+            toast(next.includes(me) ? 'Saved in chat' : 'Unsaved')
+            setMenuMsg(null)
+            load()
+          }}
+          onUnsend={async () => {
+            await unsend(menuMsg.id)
+            toast('Unsent')
+            setMenuMsg(null)
+            load()
+          }}
+        />
+      )}
     </div>
   )
 }
 
-function MessageRow({ message, me, friend, friendName, myProfile, onOpenSnap, onToggleSave }) {
+const TAPBACKS = ['❤️', '👍', '👎', '😂', '😮', '😢']
+
+function MessageMenu({ message, me, onClose, onReact, onSave, onUnsend }) {
+  const mine = message.sender_id === me
+  const myReaction = (message.reactions ?? {})[me]
+  const saved = (message.saved_by ?? []).includes(me)
+  return (
+    <Portal>
+      <div className="sheet" onClick={onClose}>
+        <div className="reaction-menu" onClick={(e) => e.stopPropagation()}>
+          <div className="tapbacks">
+            {TAPBACKS.map((e) => (
+              <button
+                key={e}
+                className={`tapback${myReaction === e ? ' on' : ''}`}
+                onClick={() => onReact(e)}
+              >
+                {e}
+              </button>
+            ))}
+          </div>
+          <button className="menu-action" onClick={onSave}>
+            {saved ? '💾 Unsave' : '💾 Save in chat'}
+          </button>
+          {mine && (
+            <button className="menu-action danger" onClick={onUnsend}>
+              ↩︎ Unsend
+            </button>
+          )}
+        </div>
+      </div>
+    </Portal>
+  )
+}
+
+function MessageRow({ message, me, friend, friendName, myProfile, onOpenSnap, onLongPress, onQuickReact }) {
   const mine = message.sender_id === me
   const status = statusFor(message, me)
-  const saved = (message.saved_by ?? []).includes(me)
+  const saved = (message.saved_by ?? []).length > 0 // saved by either party
   const who = mine ? 'me' : friendName || friend.username
   // The bar identifies the speaker; the status icon carries the red/blue/purple
   // message-type coding. See barColorFor() for why these are kept separate.
   const bar = barColorFor(mine ? myProfile : friend)
 
-  // Long-press saves the message, mirroring Snapchat's tap-to-save gesture.
-  // `longPressed` guards the trailing click so saving a snap doesn't also open
-  // (and thereby consume) it.
+  // Long-press opens the action menu (react / save / unsend); double-tap is a
+  // quick heart, like Apple Messages. `longPressed` guards the trailing click so
+  // opening the menu doesn't also open (consume) a snap.
   const pressTimer = useRef(null)
   const longPressed = useRef(false)
+  const lastTap = useRef(0)
   const startPress = () => {
     longPressed.current = false
     pressTimer.current = setTimeout(() => {
       longPressed.current = true
-      onToggleSave()
-    }, 450)
+      onLongPress()
+    }, 420)
   }
   const endPress = () => clearTimeout(pressTimer.current)
 
-  const snapConsumed = message.kind === 'snap' && (mine || Boolean(message.opened_at))
+  const snapConsumed =
+    message.kind === 'snap' && (mine || (message.open_count ?? 0) >= SNAP_MAX_OPENS)
 
-  const handleOpen = () => {
-    // Swallow the click that follows a long-press-to-save.
+  const handleClick = () => {
     if (longPressed.current) {
       longPressed.current = false
       return
     }
-    onOpenSnap()
+    // Double-tap → quick heart.
+    const now = Date.now()
+    if (now - lastTap.current < 300) {
+      lastTap.current = 0
+      onQuickReact()
+      return
+    }
+    lastTap.current = now
+    if (message.kind === 'snap' && !snapConsumed) onOpenSnap()
   }
+
+  const reactionEmojis = Object.values(message.reactions ?? {})
 
   return (
     <div
@@ -281,25 +365,29 @@ function MessageRow({ message, me, friend, friendName, myProfile, onOpenSnap, on
       <div className="msg-who">{who}</div>
 
       {message.kind === 'chat' ? (
-        <div className="msg-body" style={{ borderLeftColor: bar }}>
+        <div className="msg-body" style={{ borderLeftColor: bar }} onClick={handleClick}>
           {message.body}
         </div>
       ) : (
         <button
           className="msg-snap"
           style={{ borderLeftColor: bar, color: status.color, width: '100%' }}
-          onClick={snapConsumed ? undefined : handleOpen}
+          onClick={snapConsumed ? undefined : handleClick}
           disabled={snapConsumed}
         >
           <StatusIcon {...status} size={16} />
           <span>
             {mine
               ? status.label
-              : status.label === 'New Snap'
-                ? `Tap to view${message.media_type === 'video' ? ' 🎬' : ''}`
-                : status.label}
+              : (message.open_count ?? 0) > 0
+                ? `Tap to view again${message.media_type === 'video' ? ' 🎬' : ''}`
+                : `Tap to view${message.media_type === 'video' ? ' 🎬' : ''}`}
           </span>
         </button>
+      )}
+
+      {reactionEmojis.length > 0 && (
+        <div className="msg-reactions">{reactionEmojis.join(' ')}</div>
       )}
 
       <div className="msg-meta">

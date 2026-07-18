@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   getProfile,
   listMyStoryViews,
@@ -132,6 +132,13 @@ function StoryViewer({ group, author, me, onClose, onNextAuthor }) {
   const [paused, setPaused] = useState(false)
   const [elapsed, setElapsed] = useState(0)
 
+  // Refs so a parent re-render (e.g. a stories realtime event) doesn't re-run
+  // the load effect and blank/restart the story you're watching.
+  const onCloseRef = useRef(onClose)
+  onCloseRef.current = onClose
+  const onNextAuthorRef = useRef(onNextAuthor)
+  onNextAuthorRef.current = onNextAuthor
+
   const story = group.items[idx]
   const DURATION = 5000
   const TICK = 50
@@ -142,17 +149,17 @@ function StoryViewer({ group, author, me, onClose, onNextAuthor }) {
     setElapsed(0)
     signedUrl(story.media_path)
       .then((u) => alive && setUrl(u))
-      .catch(() => alive && onClose())
+      .catch(() => alive && onCloseRef.current())
     markStoryViewed(story.id, me).catch(() => {})
     return () => {
       alive = false
     }
-  }, [story.id, story.media_path, me, onClose])
+  }, [story.id, story.media_path, me])
 
   const advance = useCallback(() => {
     if (idx + 1 < group.items.length) setIdx(idx + 1)
-    else onNextAuthor()
-  }, [idx, group.items.length, onNextAuthor])
+    else onNextAuthorRef.current()
+  }, [idx, group.items.length])
 
   // Auto-advance, held while the user presses and holds.
   useEffect(() => {

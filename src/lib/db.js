@@ -206,6 +206,14 @@ export async function sendSnapMedia(me, otherId, { file, viewSeconds, caption })
   return data
 }
 
+// Records one recipient view of a snap (atomic increment; stamps opened_at on
+// the first). Returns the new open_count.
+export async function recordSnapOpen(messageId) {
+  const { data, error } = await supabase.rpc('record_snap_open', { msg: messageId })
+  if (error) throw error
+  return data
+}
+
 export async function markOpened(messageId) {
   const { error } = await supabase
     .from('messages')
@@ -234,14 +242,19 @@ export async function markScreenshot(messageId) {
 }
 
 export async function toggleSaved(message, me) {
-  const saved = message.saved_by ?? []
-  const next = saved.includes(me) ? saved.filter((id) => id !== me) : [...saved, me]
-  const { error } = await supabase
-    .from('messages')
-    .update({ saved_by: next })
-    .eq('id', message.id)
+  // Atomic server-side toggle — avoids a stale-array race clobbering the other
+  // party's save. `me` is unused now but kept for call-site compatibility.
+  void me
+  const { data, error } = await supabase.rpc('toggle_saved', { msg: message.id })
   if (error) throw error
-  return next
+  return data ?? []
+}
+
+// Set or clear the current user's emoji reaction on a message (Apple tapback).
+// Pass an empty string to remove. Writes only the caller's own key.
+export async function reactToMessage(messageId, emoji) {
+  const { error } = await supabase.rpc('react_to_message', { msg: messageId, emoji: emoji || '' })
+  if (error) throw error
 }
 
 export async function unsend(messageId) {
@@ -258,6 +271,9 @@ export async function unsend(messageId) {
 const DAY_MS = 24 * 60 * 60 * 1000
 // Snapchat's outer bound for anything unopened is 31 days, not 30.
 const UNOPENED_MAX_MS = 31 * DAY_MS
+// A photo snap may be opened this many times by the recipient (1 first view +
+// 3 reopens) before it's consumed.
+export const SNAP_MAX_OPENS = 4
 
 // Snapchat's default deletion policy: a chat clears 24h after everyone has
 // viewed it, or 31 days after sending if never viewed — whichever comes first.
@@ -268,15 +284,22 @@ const UNOPENED_MAX_MS = 31 * DAY_MS
 // than a per-user flag.
 export function isVisibleTo(message, me) {
   if (message.unsent_at) return false
-  if ((message.saved_by ?? []).includes(me)) return true
+  // Saving is mutual: if either party saved it, it persists for both.
+  if ((message.saved_by ?? []).length > 0) return true
   // Snapchat's default: once you've viewed a chat and left, it's gone for you.
   if ((message.cleared_by ?? []).includes(me)) return false
 
   const age = Date.now() - new Date(message.created_at).getTime()
 
   if (message.kind === 'snap') {
-    // The recipient loses it on open; the sender keeps only the status row.
-    if (message.opened_at && message.sender_id !== me) return false
+    if (message.sender_id !== me) {
+      // Recipient: keep it tappable until opened the max number of times, so it
+      // can be reopened. Within 24h of the first open, or 31 days if untouched.
+      if ((message.open_count ?? 0) >= SNAP_MAX_OPENS) return false
+      if (message.opened_at) return Date.now() - new Date(message.opened_at).getTime() < DAY_MS
+      return age < UNOPENED_MAX_MS
+    }
+    // Sender keeps only the status row (cleared on leave once opened).
     return age < UNOPENED_MAX_MS
   }
 
