@@ -84,7 +84,22 @@ inputs to stop iOS zooming on focus.
 `schema.sql` is the base. Additional migrations applied on top, in order:
 `hardening.sql` (security), then `chat_vanish.sql` (delete-after-viewing).
 The `avatar_emoji` column was added ad-hoc. Apply new migrations via the
-Supabase SQL editor; they're written idempotently.
+Supabase SQL editor; they're written idempotently. When adding a column that
+the client writes, grant it explicitly (`grant update (col) ... to
+authenticated`) — table-wide grants were revoked in hardening, so an
+un-granted column silently fails to write.
+
+## Overlays MUST be portaled
+
+Any fullscreen overlay (`.sheet`, `.viewer`) rendered from a screen inside the
+pager (CameraScreen, Stories, ChatList) **must** be wrapped in
+`components/Portal.jsx`. The pager has a CSS `transform`, and a `position:fixed`
+element inside a transformed ancestor positions relative to that ancestor, not
+the viewport — which pushed sheets off-screen and made them render blank (the
+"Send To shows nothing" bug). Portal re-parents them to `document.body`. On wide
+screens the `min-width:560px` media query re-constrains portaled overlays to the
+420px phone column. Chat.jsx is top-level (replaces the shell), so its own
+SnapViewer would be fine either way, but is portaled for consistency.
 
 ## Snapchat parity notes
 
@@ -97,10 +112,25 @@ Emoji avatars: `avatar_emoji` on profiles; `Avatar.jsx` renders it over the
 letter+hue fallback. Edited in the Profile screen (tap your avatar in the chat
 list). Profile also shows a snap-score aggregate and friend count.
 
+Rotating aliases (`lib/alias.js`, `hooks/useAliasClock.jsx`): each user shows a
+name that rotates through 3-5 aliases derived from their name (VIVEK → V, 5, V5,
+KEVIV, KE), advancing every 30 min. Deterministic on a global time bucket +
+per-user phase, so every viewer sees the same alias at the same time with no
+backend. `@username` stays visible in the send/add sheets as the stable handle.
+
+Live presence (`hooks/useOnlinePresence.jsx`): a single global Realtime
+presence channel every client joins; the chat list and chat header show a green
+dot for online friends, muted grey otherwise. Transient, never persisted.
+
+Chat media (`db.js sendSnapMedia`, `Chat.jsx onPickMedia`): the composer's +
+button attaches a photo or video (file input, `capture` hint) and sends it as a
+snap to that friend. Videos play once in `SnapViewer` (`onEnded` closes, no
+countdown); images use the 3s timer. Messages show timestamps.
+
 **Not yet built** (prioritized from the feature research): chat reactions +
-replies, voice notes, video snaps, snap overlays (text/draw/sticker), Snapcode
-QR, Memories gallery, opt-in Snap Map. Infeasible in a web PWA and deliberately
-skipped: AR lenses, native Bitmoji, reliable screenshot detection.
+replies, voice notes, snap text/draw/sticker overlays, Snapcode QR, Memories
+gallery, opt-in Snap Map. Infeasible in a web PWA and deliberately skipped: AR
+lenses, native Bitmoji, reliable screenshot detection.
 
 ## Design language
 
