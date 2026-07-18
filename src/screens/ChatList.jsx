@@ -15,10 +15,10 @@ import { useAuth } from '../hooks/useAuth'
 import { useToast } from '../components/Toast'
 import Avatar from '../components/Avatar'
 import StatusIcon from '../components/StatusIcon'
-import { CheckIcon, PlusIcon, PowerIcon } from '../components/Icons'
+import { CheckIcon, PlusIcon } from '../components/Icons'
 
-export default function ChatList({ onOpenChat }) {
-  const { profile, signOut } = useAuth()
+export default function ChatList({ onOpenChat, onOpenProfile }) {
+  const { profile } = useAuth()
   const me = profile.id
   const toast = useToast()
 
@@ -80,10 +80,14 @@ export default function ChatList({ onOpenChat }) {
   return (
     <>
       <div className="header">
-        <h1>Chat</h1>
-        <button className="circle filled" onClick={signOut} aria-label="Log out">
-          <PowerIcon />
+        <button
+          onClick={onOpenProfile}
+          aria-label="Your profile"
+          style={{ background: 'none', padding: 0 }}
+        >
+          <Avatar profile={profile} size="sm" />
         </button>
+        <h1>Chat</h1>
         <button className="circle dark" onClick={() => setAdding(true)} aria-label="Add friend">
           <PlusIcon />
         </button>

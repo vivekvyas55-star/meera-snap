@@ -24,6 +24,38 @@ export async function getProfile(userId) {
   return data
 }
 
+export async function updateProfile(userId, fields) {
+  // Only display_name, avatar_emoji, avatar_hue are column-granted to the
+  // authenticated role; username/id are frozen server-side.
+  const allowed = {}
+  for (const k of ['display_name', 'avatar_emoji', 'avatar_hue']) {
+    if (k in fields) allowed[k] = fields[k]
+  }
+  const { data, error } = await supabase
+    .from('profiles')
+    .update(allowed)
+    .eq('id', userId)
+    .select()
+    .single()
+  if (error) throw error
+  return data
+}
+
+// Snapchat-style "snap score": a cheap proxy — snaps sent + snaps received.
+export async function getSnapScore(userId) {
+  const { count: sent } = await supabase
+    .from('messages')
+    .select('id', { count: 'exact', head: true })
+    .eq('sender_id', userId)
+    .eq('kind', 'snap')
+  const { count: recv } = await supabase
+    .from('messages')
+    .select('id', { count: 'exact', head: true })
+    .neq('sender_id', userId)
+    .eq('kind', 'snap')
+  return (sent ?? 0) + (recv ?? 0)
+}
+
 export async function findByUsername(username) {
   // profiles is no longer world-readable (RLS restricts SELECT to self +
   // relationships), so discovery goes through a SECURITY DEFINER point-lookup

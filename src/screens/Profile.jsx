@@ -1,0 +1,159 @@
+import { useEffect, useState } from 'react'
+import { getSnapScore, listFriendsWithProfiles, updateProfile } from '../lib/db'
+import { useAuth } from '../hooks/useAuth'
+import { useToast } from '../components/Toast'
+import Avatar from '../components/Avatar'
+import { BackIcon, CheckIcon, PowerIcon } from '../components/Icons'
+
+// A curated set — the full native emoji keyboard is available by typing into
+// the display-name field, but a tap-grid covers the common picks.
+const EMOJI_CHOICES = [
+  '😎', '😂', '🥳', '😇', '🤩', '😈', '🦋', '🔥',
+  '🌸', '🌈', '⭐', '👑', '🐱', '🐶', '🦊', '🐼',
+  '🦁', '🐢', '🦄', '🍕', '🍦', '⚽', '🎮', '🎧',
+  '🚀', '💎', '🌙', '☀️', '🍀', '💜', '🫶', '✨',
+]
+
+export default function Profile({ onBack }) {
+  const { profile, signOut } = useAuth()
+  const me = profile.id
+  const toast = useToast()
+
+  const [displayName, setDisplayName] = useState(profile.display_name || '')
+  const [emoji, setEmoji] = useState(profile.avatar_emoji || null)
+  const [hue, setHue] = useState(profile.avatar_hue ?? 45)
+  const [friendCount, setFriendCount] = useState(null)
+  const [score, setScore] = useState(null)
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    listFriendsWithProfiles(me)
+      .then((list) => setFriendCount(list.filter((f) => f.status === 'accepted').length))
+      .catch(() => {})
+    getSnapScore(me)
+      .then(setScore)
+      .catch(() => {})
+  }, [me])
+
+  // Live preview object so the avatar updates as you pick.
+  const preview = { ...profile, display_name: displayName, avatar_emoji: emoji, avatar_hue: hue }
+
+  const dirty =
+    displayName !== (profile.display_name || '') ||
+    emoji !== (profile.avatar_emoji || null) ||
+    hue !== (profile.avatar_hue ?? 45)
+
+  const save = async () => {
+    setSaving(true)
+    try {
+      await updateProfile(me, { display_name: displayName.trim(), avatar_emoji: emoji, avatar_hue: hue })
+      toast('Profile saved')
+      // The auth context reloads the profile on next mount; reflect immediately.
+      profile.display_name = displayName.trim()
+      profile.avatar_emoji = emoji
+      profile.avatar_hue = hue
+    } catch (err) {
+      toast(err.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="app" style={{ display: 'flex', flexDirection: 'column', background: '#fff' }}>
+      <div className="header">
+        <button className="circle dark" onClick={onBack} aria-label="Back">
+          <BackIcon />
+        </button>
+        <h1>Profile</h1>
+        <button className="circle filled" onClick={signOut} aria-label="Log out">
+          <PowerIcon />
+        </button>
+      </div>
+
+      <div className="list" style={{ paddingTop: 8 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, padding: '8px 0 18px' }}>
+          <Avatar profile={preview} size="lg" />
+          <div style={{ fontSize: 22, fontWeight: 300, letterSpacing: '-0.02em' }}>
+            {displayName || profile.username}
+          </div>
+          <div style={{ color: 'var(--muted)', fontSize: 14 }}>@{profile.username}</div>
+
+          <div style={{ display: 'flex', gap: 10, marginTop: 6 }}>
+            <div className="chip">🔥 {score ?? '—'} Snap Score</div>
+            <div className="chip">👥 {friendCount ?? '—'} Friends</div>
+          </div>
+        </div>
+
+        <div className="section">Display name</div>
+        <input
+          value={displayName}
+          onChange={(e) => setDisplayName(e.target.value)}
+          maxLength={40}
+          placeholder={profile.username}
+          style={{
+            width: '100%', padding: '14px 16px', fontSize: 16,
+            border: 'none', borderRadius: 'var(--r-row)',
+            background: 'var(--card)', outline: 'none',
+          }}
+        />
+
+        <div className="section">Avatar</div>
+        <div
+          style={{
+            display: 'grid', gridTemplateColumns: 'repeat(8, 1fr)', gap: 6, padding: '0 2px',
+          }}
+        >
+          <button
+            onClick={() => setEmoji(null)}
+            title="Letter avatar"
+            style={{
+              aspectRatio: '1', borderRadius: 12, fontSize: 20,
+              background: emoji === null ? 'var(--ink)' : 'var(--card)',
+              color: emoji === null ? '#fff' : 'var(--ink)',
+              display: 'grid', placeItems: 'center',
+            }}
+          >
+            {(profile.username || '?').charAt(0).toUpperCase()}
+          </button>
+          {EMOJI_CHOICES.map((e) => (
+            <button
+              key={e}
+              onClick={() => setEmoji(e)}
+              style={{
+                aspectRatio: '1', borderRadius: 12, fontSize: 22,
+                background: emoji === e ? 'var(--ink)' : 'var(--card)',
+                display: 'grid', placeItems: 'center',
+              }}
+            >
+              {e}
+            </button>
+          ))}
+        </div>
+
+        {emoji === null && (
+          <>
+            <div className="section">Colour</div>
+            <input
+              type="range"
+              min="0"
+              max="359"
+              value={hue}
+              onChange={(e) => setHue(Number(e.target.value))}
+              style={{ width: '100%', accentColor: `hsl(${hue} 85% 52%)` }}
+            />
+          </>
+        )}
+
+        <button
+          className="btn-dark"
+          style={{ marginTop: 22 }}
+          disabled={!dirty || saving}
+          onClick={save}
+        >
+          <CheckIcon width={17} height={17} /> {saving ? 'Saving…' : 'Save profile'}
+        </button>
+      </div>
+    </div>
+  )
+}

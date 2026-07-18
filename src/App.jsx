@@ -5,6 +5,7 @@ import ChatList from './screens/ChatList'
 import Chat from './screens/Chat'
 import CameraScreen from './screens/CameraScreen'
 import Stories from './screens/Stories'
+import Profile from './screens/Profile'
 import { ToastProvider } from './components/Toast'
 import { CameraIcon, ChatIcon, StoriesIcon } from './components/Icons'
 import InstallPrompt from './components/InstallPrompt'
@@ -19,13 +20,14 @@ function Shell() {
   const { session, profile, loading } = useAuth()
   const [pane, setPane] = useState(1) // camera-first, like the real thing
   const [openChat, setOpenChat] = useState(null)
+  const [showProfile, setShowProfile] = useState(false)
   const [drag, setDrag] = useState(null)
   const touch = useRef(null)
 
   // Horizontal swipe between the three panes. Vertical movement is ignored so
   // the gesture never fights the chat list's scrolling.
   const onTouchStart = (e) => {
-    if (openChat) return
+    if (openChat || showProfile) return
     const t = e.touches[0]
     touch.current = { x: t.clientX, y: t.clientY, axis: null }
   }
@@ -67,6 +69,10 @@ function Shell() {
   if (!session) return <Auth />
   if (!profile) return <div className="app" />
 
+  if (showProfile) {
+    return <Profile onBack={() => setShowProfile(false)} />
+  }
+
   if (openChat) {
     return <Chat friend={openChat} onBack={() => setOpenChat(null)} />
   }
@@ -86,7 +92,7 @@ function Shell() {
     >
       <div className={`pager${drag !== null ? ' dragging' : ''}`} style={style}>
         <div className="pane">
-          <ChatList onOpenChat={goToChat} />
+          <ChatList onOpenChat={goToChat} onOpenProfile={() => setShowProfile(true)} />
         </div>
         <div className="pane">
           <CameraScreen active={pane === 1} onSent={() => setPane(0)} />
