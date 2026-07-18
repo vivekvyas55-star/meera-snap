@@ -1,0 +1,366 @@
+/* ==========================================================================
+   Meera — mobile-first. Designed for a phone browser held in portrait.
+   ========================================================================== */
+
+:root {
+  --yellow: #fffc00;      /* Snapchat's brand yellow */
+  --ink: #000000;
+  --bg: #ffffff;
+  --surface: #f7f7f7;
+  --line: #e6e6e6;
+  --muted: #8e8e93;
+  --chat: #00c2ff;
+  --snap: #f23c57;
+  --snap-audio: #b14fe8;
+
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+
+  color-scheme: light;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+}
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+html, body, #root {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;                 /* the app scrolls panes, never the page */
+  overscroll-behavior: none;        /* kill pull-to-refresh inside the app */
+  background: var(--ink);
+}
+
+body {
+  /* Fall back to vh where dvh is unsupported; dvh accounts for the collapsing
+     mobile browser chrome that otherwise crops the camera view. */
+  height: 100vh;
+  height: 100dvh;
+}
+
+button { font: inherit; border: none; background: none; cursor: pointer; color: inherit; }
+input, textarea { font: inherit; }
+
+/* ==========================================================================
+   App shell — three horizontally paged panes, camera in the middle
+   ========================================================================== */
+.app {
+  position: relative;
+  height: 100dvh;
+  width: 100%;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+/* On a desktop browser, pin the app to a phone-shaped column rather than
+   letting a one-hand layout sprawl across a 27" display. */
+@media (min-width: 560px) {
+  body { display: grid; place-items: center; background: #111; }
+  .app, .auth {
+    width: 420px;
+    max-width: 100%;
+    height: min(100dvh, 900px);
+    box-shadow: 0 24px 70px rgba(0, 0, 0, 0.5);
+    border-radius: 22px;
+    overflow: hidden;
+  }
+}
+
+.pager {
+  display: flex;
+  height: 100%;
+  width: 300%;
+  transition: transform 260ms cubic-bezier(0.22, 0.61, 0.36, 1);
+  will-change: transform;
+}
+.pager.dragging { transition: none; }
+
+.pane {
+  width: 33.3333%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+/* ==========================================================================
+   Headers
+   ========================================================================== */
+.header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: calc(var(--safe-top) + 12px) 16px 12px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--line);
+  flex: 0 0 auto;
+}
+.header h1 { font-size: 20px; font-weight: 800; margin: 0; flex: 1; letter-spacing: -0.3px; }
+.header .spacer { flex: 1; }
+
+/* ==========================================================================
+   Avatar (deterministic colour from the profile's stored hue)
+   ========================================================================== */
+.avatar {
+  width: 44px; height: 44px;
+  border-radius: 50%;
+  display: grid; place-items: center;
+  font-weight: 800; color: #fff; font-size: 17px;
+  flex: 0 0 auto;
+  user-select: none;
+}
+.avatar.sm { width: 32px; height: 32px; font-size: 13px; }
+.avatar.lg { width: 84px; height: 84px; font-size: 32px; }
+
+/* Story ring: bright while unwatched, grey once seen. */
+.ring { padding: 2.5px; border-radius: 50%; display: inline-grid; background: transparent; }
+.ring.unseen { background: linear-gradient(135deg, var(--yellow), #ff9500); }
+.ring.seen { background: var(--line); }
+.ring > * { border: 2.5px solid var(--bg); }
+
+/* ==========================================================================
+   Chat list
+   ========================================================================== */
+.list { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+
+.row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 16px;
+  width: 100%; text-align: left;
+  border-bottom: 1px solid var(--line);
+}
+.row:active { background: var(--surface); }
+.row-main { flex: 1; min-width: 0; }
+.row-name { font-weight: 700; font-size: 16px; display: flex; align-items: center; gap: 5px; }
+.row-sub {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 13px; color: var(--muted); margin-top: 3px;
+}
+.row-sub.unread { color: var(--ink); font-weight: 700; }
+.row-time { font-size: 13px; color: var(--muted); flex: 0 0 auto; }
+
+.empty {
+  padding: 56px 32px; text-align: center; color: var(--muted); font-size: 15px; line-height: 1.5;
+}
+
+/* ==========================================================================
+   Conversation — Snapchat uses a coloured left bar, not bubbles
+   ========================================================================== */
+.thread { flex: 1; overflow-y: auto; padding: 12px 0 4px; }
+
+.msg { padding: 5px 16px 5px 14px; }
+.msg-who {
+  font-size: 11px; font-weight: 800; letter-spacing: 0.6px;
+  text-transform: uppercase; color: var(--muted); margin-bottom: 2px;
+}
+.msg-body {
+  border-left: 3px solid var(--chat);
+  padding: 2px 0 2px 9px;
+  font-size: 16px; line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.msg.saved .msg-body { background: #eef0f2; border-radius: 0 6px 6px 0; }
+.msg.mine .msg-body { border-left-color: var(--snap); }
+
+.msg-snap {
+  display: flex; align-items: center; gap: 8px;
+  font-weight: 700; font-size: 15px;
+  border-left: 3px solid var(--snap);
+  padding: 8px 0 8px 9px;
+}
+.msg-meta { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+.typing { padding: 6px 16px 10px; color: var(--muted); font-size: 13px; font-style: italic; }
+
+/* Composer */
+.composer {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 12px calc(var(--safe-bottom) + 10px);
+  border-top: 1px solid var(--line);
+  background: var(--bg);
+  flex: 0 0 auto;
+}
+.composer input {
+  flex: 1; min-width: 0;
+  border: 1px solid var(--line); border-radius: 999px;
+  padding: 11px 16px; font-size: 16px;   /* 16px stops iOS zoom-on-focus */
+  background: var(--surface); outline: none;
+}
+.composer input:focus { border-color: var(--muted); }
+.icon-btn {
+  width: 40px; height: 40px; border-radius: 50%;
+  display: grid; place-items: center; font-size: 19px;
+  background: var(--surface); flex: 0 0 auto;
+}
+.icon-btn:active { background: var(--line); }
+.icon-btn.primary { background: var(--yellow); }
+
+/* ==========================================================================
+   Camera
+   ========================================================================== */
+.camera { position: relative; flex: 1; background: #000; overflow: hidden; }
+.camera video, .camera img {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%; object-fit: cover;
+}
+.camera video.mirrored { transform: scaleX(-1); }
+
+.cam-controls {
+  position: absolute; left: 0; right: 0;
+  bottom: calc(var(--safe-bottom) + 28px);
+  display: flex; align-items: center; justify-content: center; gap: 40px;
+}
+.shutter {
+  width: 76px; height: 76px; border-radius: 50%;
+  border: 6px solid #fff; background: rgba(255, 255, 255, 0.16);
+}
+.shutter:active { transform: scale(0.94); }
+.cam-side {
+  width: 46px; height: 46px; border-radius: 50%;
+  background: rgba(0, 0, 0, 0.4); color: #fff;
+  display: grid; place-items: center; font-size: 20px;
+}
+
+.cam-top {
+  position: absolute; top: calc(var(--safe-top) + 12px); left: 12px; right: 12px;
+  display: flex; align-items: center; gap: 10px; z-index: 2;
+}
+
+.cam-error {
+  position: absolute; inset: auto 20px 45%; z-index: 3;
+  color: #fff; text-align: center; font-size: 15px; line-height: 1.5;
+  background: rgba(0, 0, 0, 0.65); padding: 18px; border-radius: 14px;
+}
+
+/* Timer / send tray shown over a captured still */
+.tray {
+  position: absolute; left: 0; right: 0;
+  bottom: calc(var(--safe-bottom) + 20px);
+  display: flex; align-items: center; gap: 10px; padding: 0 16px; z-index: 3;
+}
+.pill {
+  display: flex; align-items: center; gap: 6px;
+  background: rgba(0, 0, 0, 0.55); color: #fff;
+  border-radius: 999px; padding: 11px 17px;
+  font-weight: 700; font-size: 15px;
+}
+.pill.send { background: var(--yellow); color: #000; margin-left: auto; }
+
+.caption-input {
+  position: absolute; left: 0; right: 0; top: 45%;
+  background: rgba(0, 0, 0, 0.42); border: none; outline: none;
+  color: #fff; text-align: center; font-size: 17px; padding: 13px; z-index: 3;
+}
+
+/* ==========================================================================
+   Snap / story viewer (fullscreen, tap zones)
+   ========================================================================== */
+.viewer { position: fixed; inset: 0; background: #000; z-index: 50; }
+.viewer img { width: 100%; height: 100%; object-fit: contain; }
+.viewer-caption {
+  position: absolute; left: 0; right: 0; top: 50%;
+  transform: translateY(-50%);
+  background: rgba(0, 0, 0, 0.42); color: #fff;
+  text-align: center; padding: 13px; font-size: 17px;
+}
+.viewer-top {
+  position: absolute; top: calc(var(--safe-top) + 10px); left: 12px; right: 12px;
+  display: flex; align-items: center; gap: 10px; color: #fff; z-index: 2;
+}
+.viewer-name { font-weight: 700; font-size: 15px; }
+.viewer-close { margin-left: auto; font-size: 26px; line-height: 1; padding: 4px 10px; }
+
+/* Countdown / progress bars */
+.timer {
+  position: absolute; top: calc(var(--safe-top) + 10px); right: 16px;
+  color: #fff; font-weight: 800; font-size: 15px; z-index: 3;
+}
+.progress {
+  position: absolute; top: calc(var(--safe-top) + 6px); left: 10px; right: 10px;
+  display: flex; gap: 4px; z-index: 3;
+}
+.progress span { flex: 1; height: 2.5px; background: rgba(255, 255, 255, 0.35); border-radius: 2px; }
+.progress span i { display: block; height: 100%; background: #fff; border-radius: 2px; }
+
+/* Tap zones: left third rewinds, right two-thirds advance. */
+.tapzone { position: absolute; top: 0; bottom: 0; z-index: 1; }
+.tapzone.back { left: 0; width: 33%; }
+.tapzone.fwd { right: 0; width: 67%; }
+
+/* ==========================================================================
+   Auth
+   ========================================================================== */
+.auth {
+  height: 100dvh; background: var(--yellow);
+  display: flex; flex-direction: column; justify-content: center;
+  padding: 32px 28px calc(var(--safe-bottom) + 32px);
+}
+.auth h1 { font-size: 40px; margin: 0 0 6px; letter-spacing: -1.4px; }
+.auth p { margin: 0 0 28px; font-size: 15px; opacity: 0.72; }
+.auth input {
+  width: 100%; padding: 15px 17px; margin-bottom: 12px;
+  border: 2px solid rgba(0, 0, 0, 0.14); border-radius: 12px;
+  font-size: 16px; background: rgba(255, 255, 255, 0.62); outline: none;
+}
+.auth input:focus { border-color: rgba(0, 0, 0, 0.5); background: #fff; }
+.auth button.primary {
+  width: 100%; padding: 16px; border-radius: 12px;
+  background: var(--ink); color: #fff; font-weight: 800; font-size: 16px; margin-top: 6px;
+}
+.auth button.primary:disabled { opacity: 0.45; }
+.auth .switch { margin-top: 18px; text-align: center; font-size: 15px; text-decoration: underline; }
+.auth .error {
+  background: rgba(0, 0, 0, 0.82); color: #fff;
+  padding: 11px 14px; border-radius: 10px; font-size: 14px; margin-bottom: 12px;
+}
+
+/* ==========================================================================
+   Bottom navigation
+   ========================================================================== */
+.tabbar {
+  display: flex; align-items: center;
+  border-top: 1px solid var(--line);
+  padding-bottom: var(--safe-bottom);
+  background: var(--bg); flex: 0 0 auto;
+}
+.tabbar button {
+  flex: 1; padding: 11px 0 9px;
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
+  font-size: 10px; font-weight: 700; color: var(--muted);
+}
+.tabbar button .glyph { font-size: 21px; }
+.tabbar button.active { color: var(--ink); }
+
+/* ==========================================================================
+   Misc
+   ========================================================================== */
+.badge {
+  min-width: 19px; height: 19px; padding: 0 5px;
+  border-radius: 10px; background: var(--snap); color: #fff;
+  font-size: 11px; font-weight: 800;
+  display: grid; place-items: center;
+}
+.toast {
+  position: fixed; left: 50%; transform: translateX(-50%);
+  bottom: calc(var(--safe-bottom) + 84px);
+  background: rgba(0, 0, 0, 0.86); color: #fff;
+  padding: 11px 18px; border-radius: 999px; font-size: 14px;
+  z-index: 100; max-width: 88vw; text-align: center;
+}
+
+.sheet {
+  position: fixed; inset: 0; z-index: 60;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex; align-items: flex-end;
+}
+.sheet-body {
+  background: var(--bg); width: 100%;
+  border-radius: 18px 18px 0 0;
+  padding: 18px 16px calc(var(--safe-bottom) + 18px);
+  max-height: 78dvh; overflow-y: auto;
+}
+.sheet-body h2 { margin: 0 0 14px; font-size: 18px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .pager { transition: none; }
+}
