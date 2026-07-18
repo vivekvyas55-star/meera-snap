@@ -7,12 +7,15 @@ import {
   signedUrl,
 } from '../lib/db'
 import { useAuth } from '../hooks/useAuth'
+import { useAlias } from '../hooks/useAliasClock'
 import Avatar from '../components/Avatar'
+import Portal from '../components/Portal'
 import { supabase } from '../lib/supabase'
 
 export default function Stories({ active }) {
   const { profile } = useAuth()
   const me = profile.id
+  const alias = useAlias()
 
   const [stories, setStories] = useState([])
   const [authors, setAuthors] = useState({})
@@ -87,7 +90,7 @@ export default function Stories({ active }) {
               <Avatar profile={author} ring={g.allSeen ? null : 'unseen'} />
               <div className="row-main">
                 <div className="row-name">
-                  {g.mine ? 'My Story' : author.display_name || author.username}
+                  {g.mine ? 'My Story' : alias(author)}
                 </div>
                 <div className="row-sub">
                   {g.items.length} {g.items.length === 1 ? 'snap' : 'snaps'} ·{' '}
@@ -123,6 +126,7 @@ export default function Stories({ active }) {
 }
 
 function StoryViewer({ group, author, me, onClose, onNextAuthor }) {
+  const alias = useAlias()
   const [idx, setIdx] = useState(0)
   const [url, setUrl] = useState(null)
   const [paused, setPaused] = useState(false)
@@ -171,6 +175,7 @@ function StoryViewer({ group, author, me, onClose, onNextAuthor }) {
   }
 
   return (
+    <Portal>
     <div
       className="viewer"
       onPointerDown={() => setPaused(true)}
@@ -194,7 +199,7 @@ function StoryViewer({ group, author, me, onClose, onNextAuthor }) {
       <div className="viewer-top" style={{ top: 'calc(env(safe-area-inset-top,0px) + 22px)' }}>
         <Avatar profile={author} size="sm" />
         <span className="viewer-name">
-          {group.mine ? 'My Story' : author.display_name || author.username}
+          {group.mine ? 'My Story' : alias(author)}
         </span>
         <button className="viewer-close" onClick={onClose} aria-label="Close">
           ×
@@ -206,6 +211,7 @@ function StoryViewer({ group, author, me, onClose, onNextAuthor }) {
       <button className="tapzone back" onClick={back} aria-label="Previous" />
       <button className="tapzone fwd" onClick={advance} aria-label="Next" />
     </div>
+    </Portal>
   )
 }
 

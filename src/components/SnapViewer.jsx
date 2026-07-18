@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { markOpened, markReplayed, markScreenshot, signedUrl } from '../lib/db'
 import { useScreenshotHeuristic } from '../hooks/useScreenshotHeuristic'
 import { CloseIcon, FlipIcon as ReplayIcon } from './Icons'
+import Portal from './Portal'
 
 // Fullscreen "tap and hold to view" snap. Closing it — by timer or by lifting
 // your finger — consumes the snap permanently, exactly one replay aside.
@@ -57,6 +58,7 @@ export default function SnapViewer({ message, onClose, onScreenshot }) {
   }
 
   return (
+    <Portal>
     <div className="viewer">
       {url && <img src={url} alt="" />}
       {message.body && <div className="viewer-caption">{message.body}</div>}
@@ -93,5 +95,6 @@ export default function SnapViewer({ message, onClose, onScreenshot }) {
         style={{ background: 'transparent' }}
       />
     </div>
+    </Portal>
   )
 }

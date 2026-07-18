@@ -7,6 +7,8 @@ import CameraScreen from './screens/CameraScreen'
 import Stories from './screens/Stories'
 import Profile from './screens/Profile'
 import { ToastProvider } from './components/Toast'
+import { AliasClockProvider } from './hooks/useAliasClock'
+import { OnlinePresenceProvider } from './hooks/useOnlinePresence'
 import { CameraIcon, ChatIcon, StoriesIcon } from './components/Icons'
 import InstallPrompt from './components/InstallPrompt'
 
@@ -136,7 +138,11 @@ export default function App() {
   return (
     <AuthProvider>
       <ToastProvider>
-        <Shell />
+        <OnlinePresenceProvider>
+          <AliasClockProvider>
+            <Shell />
+          </AliasClockProvider>
+        </OnlinePresenceProvider>
       </ToastProvider>
     </AuthProvider>
   )

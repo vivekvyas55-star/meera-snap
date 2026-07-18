@@ -12,15 +12,20 @@ import {
 } from '../lib/db'
 import { statusFor } from '../lib/status'
 import { useAuth } from '../hooks/useAuth'
+import { useAlias } from '../hooks/useAliasClock'
+import { useOnline } from '../hooks/useOnlinePresence'
 import { useToast } from '../components/Toast'
 import Avatar from '../components/Avatar'
 import StatusIcon from '../components/StatusIcon'
+import Portal from '../components/Portal'
 import { CheckIcon, PlusIcon } from '../components/Icons'
 
 export default function ChatList({ onOpenChat, onOpenProfile }) {
   const { profile } = useAuth()
   const me = profile.id
   const toast = useToast()
+  const alias = useAlias()
+  const isOnline = useOnline()
 
   const [friends, setFriends] = useState([])
   const [lastByFriend, setLastByFriend] = useState({})
@@ -101,8 +106,8 @@ export default function ChatList({ onOpenChat, onOpenProfile }) {
               <div className="row" key={f.profile.id}>
                 <Avatar profile={f.profile} />
                 <div className="row-main">
-                  <div className="row-name">{f.profile.display_name || f.profile.username}</div>
-                  <div className="row-sub">wants to be friends</div>
+                  <div className="row-name">{alias(f.profile)}</div>
+                  <div className="row-sub">@{f.profile.username} · wants to be friends</div>
                 </div>
                 <button
                   className="circle dark"
@@ -139,7 +144,11 @@ export default function ChatList({ onOpenChat, onOpenProfile }) {
               <Avatar profile={f.profile} />
               <div className="row-main">
                 <div className="row-name">
-                  {f.profile.display_name || f.profile.username}
+                  <span
+                    className={`presence-dot ${isOnline(f.profile.id) ? 'live' : 'off'}`}
+                    title={isOnline(f.profile.id) ? 'Active now' : 'Offline'}
+                  />
+                  {alias(f.profile)}
                   {streak.expiring && <span title="Snapstreak about to end">⌛</span>}
                 </div>
                 <div className={`row-sub${unread ? ' unread' : ''}`}>
@@ -199,6 +208,7 @@ function AddFriend({ me, onClose, onAdded }) {
   }
 
   return (
+    <Portal>
     <div className="sheet" onClick={onClose}>
       <form className="sheet-body" onClick={(e) => e.stopPropagation()} onSubmit={add}>
         <h2>Add a friend</h2>
@@ -225,6 +235,7 @@ function AddFriend({ me, onClose, onAdded }) {
         </button>
       </form>
     </div>
+    </Portal>
   )
 }
 

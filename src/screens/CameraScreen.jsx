@@ -4,6 +4,8 @@ import { useCamera } from '../hooks/useCamera'
 import { useAuth } from '../hooks/useAuth'
 import { useToast } from '../components/Toast'
 import Avatar from '../components/Avatar'
+import Portal from '../components/Portal'
+import { useAlias } from '../hooks/useAliasClock'
 import { CheckIcon, CloseIcon, FlipIcon } from '../components/Icons'
 
 // Snapchat's timer options: 1-10 seconds, plus "no limit".
@@ -177,10 +179,12 @@ export default function CameraScreen({ active, onSent }) {
 
 function SendSheet({ friends, sending, onCancel, onSend }) {
   const [selected, setSelected] = useState([])
+  const alias = useAlias()
   const toggle = (id) =>
     setSelected((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]))
 
   return (
+    <Portal>
     <div className="sheet" onClick={onCancel}>
       <div className="sheet-body" onClick={(e) => e.stopPropagation()}>
         <h2>Send to</h2>
@@ -189,7 +193,7 @@ function SendSheet({ friends, sending, onCancel, onSend }) {
           <button className="row" key={f.profile.id} onClick={() => toggle(f.profile.id)}>
             <Avatar profile={f.profile} />
             <div className="row-main">
-              <div className="row-name">{f.profile.display_name || f.profile.username}</div>
+              <div className="row-name">{alias(f.profile)}</div>
               <div className="row-sub">@{f.profile.username}</div>
             </div>
             <div
@@ -219,5 +223,6 @@ function SendSheet({ friends, sending, onCancel, onSend }) {
         </button>
       </div>
     </div>
+    </Portal>
   )
 }

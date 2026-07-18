@@ -11,6 +11,8 @@ import {
 } from '../lib/db'
 import { barColorFor, statusFor } from '../lib/status'
 import { useAuth } from '../hooks/useAuth'
+import { useAlias } from '../hooks/useAliasClock'
+import { useOnline } from '../hooks/useOnlinePresence'
 import { useConversationPresence } from '../hooks/usePresence'
 import { useToast } from '../components/Toast'
 import Avatar from '../components/Avatar'
@@ -22,6 +24,9 @@ export default function Chat({ friend, onBack }) {
   const { profile } = useAuth()
   const me = profile.id
   const toast = useToast()
+  const alias = useAlias()
+  const isOnline = useOnline()
+  const friendName = alias(friend)
 
   const [messages, setMessages] = useState([])
   const [draft, setDraft] = useState('')
@@ -109,13 +114,19 @@ export default function Chat({ friend, onBack }) {
           <BackIcon />
         </button>
         <Avatar profile={friend} size="sm" />
-        <h1 style={{ fontSize: 22 }}>{friend.display_name || friend.username}</h1>
+        <h1 style={{ fontSize: 22, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span
+            className={`presence-dot ${isOnline(friend.id) ? 'live' : 'off'}`}
+            title={isOnline(friend.id) ? 'Active now' : 'Offline'}
+          />
+          {friendName}
+        </h1>
         {/* Snapchat signals "they're in this chat" with the friend's Bitmoji
             holding a phone — not a text badge. This is the nearest equivalent
             available without Bitmoji art. */}
         {theyArePresent && (
           <span
-            title={`${friend.display_name || friend.username} is in the chat`}
+            title={`${friendName} is in the chat`}
             style={{ fontSize: 18 }}
             role="img"
             aria-label="in the chat"
@@ -140,6 +151,7 @@ export default function Chat({ friend, onBack }) {
             message={m}
             me={me}
             friend={friend}
+            friendName={friendName}
             myProfile={profile}
             onOpenSnap={() => setViewing(m)}
             onToggleSave={async () => {
@@ -150,9 +162,7 @@ export default function Chat({ friend, onBack }) {
           />
         ))}
 
-        {theirTyping && (
-          <div className="typing">{friend.display_name || friend.username} is typing…</div>
-        )}
+        {theirTyping && <div className="typing">{friendName} is typing…</div>}
       </div>
 
       <form className="composer" onSubmit={submit}>
@@ -182,11 +192,11 @@ export default function Chat({ friend, onBack }) {
   )
 }
 
-function MessageRow({ message, me, friend, myProfile, onOpenSnap, onToggleSave }) {
+function MessageRow({ message, me, friend, friendName, myProfile, onOpenSnap, onToggleSave }) {
   const mine = message.sender_id === me
   const status = statusFor(message, me)
   const saved = (message.saved_by ?? []).includes(me)
-  const who = mine ? 'me' : friend.username
+  const who = mine ? 'me' : friendName || friend.username
   // The bar identifies the speaker; the status icon carries the red/blue/purple
   // message-type coding. See barColorFor() for why these are kept separate.
   const bar = barColorFor(mine ? myProfile : friend)
