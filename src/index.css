@@ -113,6 +113,10 @@ input, textarea { font: inherit; }
     left: 50%; right: auto; transform: translateX(-50%);
     width: 420px; max-width: calc(100% - 24px);
   }
+  .call-scrim {
+    left: 50%; right: auto; transform: translateX(-50%);
+    width: 420px; max-width: 100%;
+  }
 }
 
 /* ==========================================================================
@@ -128,6 +132,11 @@ input, textarea { font: inherit; }
   font-weight: 300; letter-spacing: -0.03em; line-height: 1;
   margin: 0; flex: 1; min-width: 0;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+/* Tappable friend area (avatar + name) in the chat header → friend info sheet. */
+.chat-peer {
+  background: none; padding: 0; border: none; text-align: left;
+  display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0;
 }
 
 /* Circular button. `.dark` is the primary action; plain is a quiet one. */
@@ -268,9 +277,9 @@ input, textarea { font: inherit; }
 /* ==========================================================================
    Conversation
    ========================================================================== */
-.thread { flex: 1; overflow-y: auto; padding: 8px 12px 4px; }
+.thread { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 8px 12px 4px; }
 
-.msg { margin-bottom: 10px; max-width: 84%; }
+.msg { margin-bottom: 10px; max-width: 84%; position: relative; }
 .msg.mine { margin-left: auto; }
 .msg-who {
   font-size: 10.5px; font-weight: 600; letter-spacing: 0.06em;
@@ -288,14 +297,107 @@ input, textarea { font: inherit; }
   overflow-wrap: anywhere;
 }
 .msg.saved .msg-body { background: #e3e3e8; }
-
-.msg-snap {
-  display: flex; align-items: center; gap: 9px; width: 100%;
-  background: var(--card); border-radius: var(--r-row);
-  border-left: 3px solid var(--coral);
-  padding: 13px; font-weight: 500; font-size: 15px;
+.msg.pending .msg-body { opacity: 0.55; }
+.msg-pending-tag {
+  font-size: 11.5px; color: var(--muted);
+  text-align: right; margin: 3px 4px 0 0;
 }
-.msg-snap:disabled { opacity: 0.62; }
+/* Swipe-to-reply gesture hint + quoted-reply preview */
+.msg-swipe-hint {
+  position: absolute; right: -30px; top: 50%; transform: translateY(-50%);
+  font-size: 19px; color: var(--muted); pointer-events: none;
+}
+.msg-reply-quote {
+  font-size: 12.5px; color: var(--muted);
+  border-left: 2px solid var(--indigo); padding: 2px 8px; margin-bottom: 3px;
+  max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.msg-reply-who { font-weight: 600; margin-right: 5px; color: var(--ink); }
+.reply-bar {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 14px; margin: 0 10px -2px;
+  background: var(--card); border-radius: var(--r-row) var(--r-row) 0 0;
+  border-left: 3px solid var(--indigo);
+}
+.reply-bar-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.reply-bar-who { font-size: 12px; color: var(--indigo); font-weight: 600; }
+.reply-bar-preview {
+  font-size: 13.5px; color: var(--muted);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.reply-bar-x { font-size: 15px; color: var(--muted); padding: 9px 10px; flex: 0 0 auto; }
+
+/* "Days together" chip above the thread */
+.anniv-chip {
+  align-self: center; max-width: 92%; text-align: center;
+  margin: 8px 12px 0; padding: 7px 15px;
+  background: var(--card); border-radius: var(--r-pill);
+  font-size: 12.5px; color: var(--muted); font-weight: 500;
+}
+.anniv-chip.celebrate {
+  background: linear-gradient(90deg, var(--lavender), var(--lime));
+  color: var(--ink); font-weight: 600; font-size: 13.5px;
+}
+
+/* Friendship charms (FriendSheet) */
+.charms { align-self: stretch; display: flex; flex-wrap: wrap; gap: 6px; margin-top: 2px; }
+.charm-chip {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 6px 11px; border-radius: var(--r-pill);
+  background: var(--card); font-size: 12.5px; color: var(--ink); font-weight: 500;
+}
+.charm-e { font-size: 14px; }
+
+/* Forward-to friend picker */
+.fwd-row {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  padding: 10px 8px; border-radius: var(--r-row); font-size: 15px;
+}
+.fwd-row:active { background: var(--card); }
+.fwd-row:disabled { opacity: 0.5; }
+
+/* Photo / video snap tile — a consistent box across unopened / opened / saved.
+   The coloured square thumb carries the "snap" identity; state is conveyed by
+   the label + the thumb fill (coral = unopened, grey = opened), so the box
+   itself keeps the same shape and never dims between states. */
+.msg-photo {
+  display: flex; align-items: center; gap: 11px; width: 100%; text-align: left;
+  background: var(--card); border-radius: var(--r-row); padding: 10px 12px;
+}
+.msg-photo .pt-thumb {
+  width: 42px; height: 42px; border-radius: 13px; flex: 0 0 auto;
+  display: grid; place-items: center;
+  background: var(--coral); color: #fff;
+}
+.msg-photo.opened .pt-thumb { background: #e7e7ec; color: var(--muted); }
+.msg-photo .pt-text { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+.msg-photo .pt-title { font-weight: 600; font-size: 14.5px; color: var(--ink); }
+.msg-photo .pt-sub { font-size: 12px; color: var(--muted); margin-top: 1px; }
+.msg-photo:disabled { cursor: default; }
+
+/* Snap Map */
+.map-wrap { flex: 1; position: relative; overflow: hidden; }
+.map-canvas { position: absolute; inset: 0; }
+.leaflet-container { background: #e6e6ea; font-family: var(--font); }
+.map-avatar {
+  width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center;
+  font-size: 18px; font-weight: 700; color: #16161a;
+  border: 3px solid #fff; box-shadow: 0 3px 10px rgba(0, 0, 0, 0.3);
+}
+.map-panel {
+  position: absolute; left: 12px; right: 12px; bottom: calc(var(--safe-bottom) + 16px); z-index: 1000;
+  background: var(--bg); border-radius: var(--r-card); padding: 16px 18px;
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.2); display: flex; flex-direction: column; gap: 12px;
+}
+.map-panel-txt { font-size: 14px; color: var(--ink); line-height: 1.45; }
+
+/* Call-log row in the thread (voice/video, placed/missed). */
+.msg-call {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  background: var(--card); border-radius: var(--r-row); padding: 10px 13px;
+  font-size: 14px; font-weight: 500; color: var(--ink);
+}
+.msg-call svg { color: var(--indigo); flex: 0 0 auto; }
 .msg-meta { font-size: 11px; color: var(--muted); margin: 3px 0 0 4px; }
 .msg.mine .msg-meta { text-align: right; margin: 3px 4px 0 0; }
 
@@ -338,6 +440,123 @@ input, textarea { font: inherit; }
   display: grid; place-items: center;
 }
 .sticker-pick:active { background: var(--card); }
+
+/* Segmented toggle (add-friend sheet: Add a friend / My Snapcode) */
+.seg {
+  display: flex; gap: 4px; padding: 4px; margin-bottom: 16px;
+  background: var(--card); border-radius: var(--r-pill);
+}
+.seg button {
+  flex: 1; padding: 10px; border: none; background: transparent;
+  border-radius: var(--r-pill); font-size: 14px; font-weight: 600;
+  color: var(--muted);
+}
+.seg button.on { background: var(--ink); color: #fff; }
+
+/* Snapcode — a scannable QR of your add-me deep link */
+.snapcode {
+  display: flex; flex-direction: column; align-items: center;
+  text-align: center; gap: 10px; padding: 2px 0;
+}
+.snapcode-tile {
+  background: #fff; border-radius: 24px; padding: 16px;
+  width: 232px; height: 232px; display: grid; place-items: center;
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.1);
+}
+.snapcode-tile img { width: 100%; height: 100%; display: block; }
+.snapcode-loading { color: #8a8a8e; font-size: 26px; }
+.snapcode-name { font-size: 18px; font-weight: 600; color: var(--ink); }
+.snapcode-hint { font-size: 13px; color: var(--muted); max-width: 32ch; line-height: 1.4; }
+.snapcode-share { margin-top: 6px; }
+
+/* Memories gallery */
+.mem-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.mem-thumb {
+  position: relative; aspect-ratio: 1; border-radius: 14px; overflow: hidden;
+  background: var(--card); padding: 0;
+}
+.mem-thumb img, .mem-thumb video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.mem-ph { width: 100%; height: 100%; background: var(--card); }
+.mem-play {
+  position: absolute; bottom: 6px; right: 8px; color: #fff; font-size: 13px;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+}
+.mem-actions {
+  position: absolute; bottom: calc(env(safe-area-inset-bottom, 0px) + 30px);
+  left: 0; right: 0; z-index: 3; padding: 0 12px;
+  display: flex; justify-content: center; gap: 8px; flex-wrap: wrap;
+}
+.pill.danger { background: var(--coral); color: #fff; }
+
+/* Snap editor — draw & text over a captured photo */
+.snap-edit { position: absolute; inset: 0; touch-action: none; }
+.snap-edit > img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.snap-edit-canvas { position: absolute; inset: 0; z-index: 1; }
+.snap-text {
+  position: absolute; transform: translate(-50%, -50%); z-index: 2;
+  font: 700 clamp(22px, 7vw, 34px)/1.05 -apple-system, system-ui, sans-serif;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.45); white-space: pre; max-width: 88%;
+  padding: 2px 6px; text-align: center; cursor: move;
+}
+.snap-text input {
+  font: inherit; color: inherit; text-align: center;
+  background: rgba(0, 0, 0, 0.3); border: none; outline: none;
+  border-radius: 8px; width: 7em; max-width: 68vw; padding: 2px 6px;
+}
+.snap-tools {
+  position: absolute; right: 12px; top: 22%; z-index: 4;
+  display: flex; flex-direction: column; gap: 10px;
+}
+.snap-tools button {
+  width: 42px; height: 42px; border-radius: 50%; border: none;
+  background: rgba(0, 0, 0, 0.45); color: #fff; font-size: 18px; font-weight: 700;
+  display: grid; place-items: center;
+}
+.snap-colors {
+  position: absolute; left: 12px; top: 22%; z-index: 4;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.snap-colors .swatch {
+  width: 32px; height: 32px; border-radius: 50%; padding: 0;
+  border: 2px solid rgba(255, 255, 255, 0.85);
+}
+.snap-colors .swatch.on { transform: scale(1.25); box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.35); }
+
+/* Voice / video call overlay */
+.call-scrim {
+  position: fixed; inset: 0; z-index: 100; background: #0d0d10; color: #fff;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  /* No safe-area padding here — the absolutely-positioned children add their own
+     insets, so padding the scrim too would double-count and letterbox the video. */
+}
+.call-ring { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.call-name { font-size: 26px; font-weight: 300; letter-spacing: -0.02em; }
+.call-sub { color: rgba(255, 255, 255, 0.7); font-size: 15px; }
+.call-sub.light, .call-name.light { color: #fff; }
+.call-ring-actions { display: flex; gap: 46px; margin-top: 42px; }
+.call-btn {
+  width: 66px; height: 66px; border-radius: 50%; border: none; color: #fff; font-size: 25px;
+}
+.call-btn.accept { background: #34c759; }
+.call-btn.decline { background: #ff3b30; }
+.call-remote { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; background: #000; }
+.call-voice { flex: 1; display: grid; place-items: center; }
+.call-local {
+  position: absolute; top: calc(env(safe-area-inset-top, 0) + 14px); right: 14px;
+  width: 92px; height: 132px; object-fit: cover; border-radius: 14px;
+  border: 2px solid rgba(255, 255, 255, 0.55); background: #000; z-index: 2;
+}
+.call-top { position: absolute; top: calc(env(safe-area-inset-top, 0) + 38px); left: 0; right: 0; text-align: center; z-index: 2; }
+.call-top .call-sub { margin-top: 3px; text-shadow: 0 1px 4px rgba(0,0,0,.5); }
+.call-controls {
+  position: absolute; bottom: calc(env(safe-area-inset-bottom, 0) + 40px); left: 0; right: 0;
+  display: flex; justify-content: center; gap: 20px; z-index: 3;
+}
+.call-ctl {
+  width: 56px; height: 56px; border-radius: 50%; border: none;
+  background: rgba(255, 255, 255, 0.18); color: #fff; font-size: 22px;
+}
+.call-ctl.on { background: #fff; color: #16161a; }
 
 /* Composer — pill input plus a dark circular send button */
 .composer {
@@ -391,6 +610,21 @@ input, textarea { font: inherit; }
 }
 
 /* Tray over a captured still */
+.cam-filtered { position: absolute; inset: 0; }
+.cam-filters {
+  position: absolute; left: 0; right: 0;
+  bottom: calc(var(--safe-bottom) + 148px); z-index: 3;
+  display: flex; gap: 8px; overflow-x: auto; padding: 4px 14px;
+  -webkit-overflow-scrolling: touch; scrollbar-width: none;
+}
+.cam-filters::-webkit-scrollbar { display: none; }
+.cam-filter {
+  flex: 0 0 auto; padding: 10px 15px; border-radius: var(--r-pill);
+  background: rgba(0, 0, 0, 0.4); color: #fff; font-size: 13px; font-weight: 500;
+  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+}
+.cam-filter.on { background: #fff; color: var(--ink); }
+
 .tray {
   position: absolute; left: 0; right: 0;
   bottom: calc(var(--safe-bottom) + 96px);
@@ -540,6 +774,20 @@ input, textarea { font: inherit; }
   background: var(--coral); color: #fff;
   padding: 12px 15px; border-radius: var(--r-row); font-size: 14px; margin-bottom: 12px;
 }
+/* Security-question controls (used in Auth signup/reset and the Profile screen). */
+.auth-select {
+  width: 100%; padding: 16px 44px 16px 18px; margin-bottom: 10px;
+  border: none; border-radius: var(--r-row);
+  font-size: 16px; background-color: var(--card); color: var(--ink); outline: none;
+  -webkit-appearance: none; appearance: none;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%238a8a8e' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'/></svg>");
+  background-repeat: no-repeat; background-position: right 16px center;
+}
+.auth-q {
+  padding: 14px 16px; margin-bottom: 10px;
+  border-radius: var(--r-row); background: var(--lavender);
+  font-size: 15px; font-weight: 500; color: var(--ink);
+}
 
 /* ==========================================================================
    Bottom navigation — dark floating bar, thin icons, tiny labels
@@ -633,4 +881,76 @@ input, textarea { font: inherit; }
 
 @media (prefers-reduced-motion: reduce) {
   .pager { transition: none; }
+}
+
+/* ==========================================================================
+   Decoy markets screen (shown during a PIN lockout — see PinLock.jsx)
+   Intentionally shares NOTHING with Meera's visual language: no lavender/lime,
+   no light display headings, no rounded vibrant cards. It has to read as a
+   different, duller app at a glance. Do not "bring it on brand".
+   ========================================================================== */
+.mk {
+  position: fixed; inset: 0; z-index: 999;
+  background: #ffffff; color: #111418;
+  font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+  display: flex; flex-direction: column;
+  padding-top: env(safe-area-inset-top, 0px);
+  overflow-y: auto;
+}
+.mk-top {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 16px 10px;
+}
+.mk-brand { font-size: 19px; font-weight: 700; letter-spacing: -0.01em; }
+.mk-avatar {
+  width: 30px; height: 30px; border-radius: 50%;
+  background: #e8ebef; border: 1px solid #d8dde3;
+}
+.mk-tabs {
+  display: flex; gap: 20px; padding: 0 16px;
+  border-bottom: 1px solid #e8ebef; font-size: 13.5px; color: #6b7280;
+}
+.mk-tabs span { padding: 9px 0 10px; }
+.mk-tabs span.on {
+  color: #111418; font-weight: 600; box-shadow: inset 0 -2px 0 #2b6cb0;
+}
+.mk-hero { padding: 20px 16px 16px; border-bottom: 8px solid #f3f5f7; }
+.mk-hero-label { font-size: 12px; color: #6b7280; text-transform: uppercase; letter-spacing: 0.04em; }
+.mk-hero-value { font-size: 30px; font-weight: 700; margin-top: 4px; font-variant-numeric: tabular-nums; }
+.mk-hero-delta { font-size: 14px; font-weight: 600; margin-top: 3px; font-variant-numeric: tabular-nums; }
+.mk-hero-sub { font-size: 12.5px; color: #6b7280; margin-top: 8px; }
+.mk-hero-delta.up, .mk-pct.up { color: #12a150; }
+.mk-hero-delta.down, .mk-pct.down { color: #e5484d; }
+.mk-list-head {
+  display: flex; justify-content: space-between;
+  padding: 12px 16px 8px; font-size: 11.5px; color: #6b7280;
+  text-transform: uppercase; letter-spacing: 0.04em;
+}
+.mk-list { flex: 1; }
+.mk-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 11px 16px; border-bottom: 1px solid #f1f3f5;
+}
+.mk-row-main { flex: 1; min-width: 0; }
+.mk-sym { font-size: 14.5px; font-weight: 600; }
+.mk-name { font-size: 12px; color: #6b7280; margin-top: 2px; font-variant-numeric: tabular-nums; }
+.mk-spark { width: 58px; height: 26px; flex: 0 0 auto; }
+.mk-row-right { text-align: right; font-variant-numeric: tabular-nums; }
+.mk-ltp { font-size: 14.5px; font-weight: 600; }
+.mk-pct { font-size: 12px; font-weight: 600; margin-top: 2px; }
+.mk-foot {
+  padding: 16px; text-align: center; font-size: 11px; color: #9aa3ad;
+  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 16px);
+}
+/* On a wide screen the rest of the app is a centred 420px phone column. The
+   decoy has to match, or its full-bleed layout is itself a tell that this is
+   not the app that normally lives here. */
+@media (min-width: 560px) {
+  .mk {
+    position: fixed; inset: 0; margin: auto;
+    width: 420px; max-width: 100%;
+    height: min(100dvh, 900px);
+    border-radius: 30px; overflow: hidden auto;
+    box-shadow: 0 24px 70px rgba(0, 0, 0, 0.45);
+  }
 }

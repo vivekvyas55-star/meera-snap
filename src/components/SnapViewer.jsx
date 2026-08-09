@@ -7,17 +7,19 @@ import Portal from './Portal'
 // Fullscreen snap viewer. A photo shows for its timer; a video plays once.
 // Each open counts toward the reopen limit (recorded server-side); reopening is
 // done by tapping the snap again in the chat, so there's no in-viewer replay.
-export default function SnapViewer({ message, onClose, onScreenshot }) {
+export default function SnapViewer({ message, me, onClose, onScreenshot }) {
+  const isMine = message.sender_id === me
   const [url, setUrl] = useState(null)
   const [ready, setReady] = useState(false) // media actually on screen
-  const [remaining, setRemaining] = useState(message.view_seconds ?? null)
+  // Own snaps: no countdown, view as long as you like.
+  const [remaining, setRemaining] = useState(isMine ? null : (message.view_seconds ?? null))
   const [saved, setSaved] = useState(false)
   const [replays, setReplays] = useState(0) // in-viewer replays this session
   const openedRef = useRef(false)
   const isVideo = message.media_type === 'video'
   // This viewing is one open; count prior opens + any in-viewer replays.
   const openedSoFar = (message.open_count ?? 0) + 1 + replays
-  const reopensLeft = Math.max(0, SNAP_MAX_OPENS - openedSoFar)
+  const reopensLeft = isMine ? Infinity : Math.max(0, SNAP_MAX_OPENS - openedSoFar)
 
   // Parent passes fresh callbacks each render; a ref keeps them out of effect
   // deps so a realtime re-render can't reload the snap or reset the timer.
@@ -46,7 +48,7 @@ export default function SnapViewer({ message, onClose, onScreenshot }) {
     setReady(true)
     if (openedRef.current) return
     openedRef.current = true
-    recordSnapOpen(message.id).catch(() => {})
+    if (!isMine) recordSnapOpen(message.id).catch(() => {}) // own views don't burn the recipient's count
   }
 
   // Photo countdown starts when the image is on screen (videos use their own
@@ -93,6 +95,7 @@ export default function SnapViewer({ message, onClose, onScreenshot }) {
               src={url}
               autoPlay
               playsInline
+              preload="auto"
               controls={false}
               onPlaying={countOpen}
               onEnded={() => onCloseRef.current()}
@@ -134,7 +137,7 @@ export default function SnapViewer({ message, onClose, onScreenshot }) {
             <button className="pill" onClick={save} disabled={saved}>
               {saved ? '✓ Saved' : '⤓ Save'}
             </button>
-            {!isVideo && reopensLeft > 0 && ready && (
+            {!isVideo && !isMine && reopensLeft > 0 && ready && (
               <button
                 className="pill"
                 onClick={() => {
@@ -147,7 +150,7 @@ export default function SnapViewer({ message, onClose, onScreenshot }) {
               </button>
             )}
           </div>
-          {reopensLeft > 0 && (
+          {!isMine && reopensLeft > 0 && (
             <span style={{ color: 'rgba(255,255,255,0.75)', fontSize: 12 }}>
               {reopensLeft} replay{reopensLeft === 1 ? '' : 's'} left
             </span>

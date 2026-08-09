@@ -39,6 +39,12 @@ export function useCamera() {
   // camera tab never re-prompts for permission (iOS re-asks on a fresh
   // getUserMedia). Only stop() (flip / logout) actually releases it.
   const pause = useCallback(() => {
+    // Invalidate any getUserMedia still in flight from a start() on this pane:
+    // if it resolves after we've swiped away, the gen check inside start() now
+    // stops its tracks instead of storing a live, enabled stream that would
+    // keep the camera indicator on in the background. Bumping gen is safe for
+    // the reuse path, which never reads it.
+    genRef.current += 1
     streamRef.current?.getVideoTracks().forEach((t) => (t.enabled = false))
   }, [])
 

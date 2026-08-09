@@ -62,7 +62,9 @@ export default function Stories({ active }) {
         allSeen: items.every((s) => seenIds.has(s.id)),
         mine: userId === me,
       }))
-      .sort((a, b) => Number(a.mine) - Number(b.mine) || Number(a.allSeen) - Number(b.allSeen))
+      // My Story first (like Snapchat/WhatsApp), then friends with unseen
+      // stories, then already-seen — so you always see your own at the top.
+      .sort((a, b) => Number(b.mine) - Number(a.mine) || Number(a.allSeen) - Number(b.allSeen))
   }, [stories, views, me])
 
   return (
@@ -88,7 +90,7 @@ export default function Stories({ active }) {
               {/* Snapchat's indicator is present-vs-absent, not the
                   filled-vs-grey ring Instagram uses: once you've watched a
                   friend's story the preview disappears entirely. */}
-              <Avatar profile={author} ring={g.allSeen ? null : 'unseen'} />
+              <Avatar profile={author} ring={g.mine || g.allSeen ? null : 'unseen'} />
               <div className="row-main">
                 <div className="row-name">
                   {g.mine ? 'My Story' : alias(author)}
@@ -105,6 +107,12 @@ export default function Stories({ active }) {
 
       {openIdx !== null && groups[openIdx] && (
         <StoryViewer
+          // Keyed by author: advancing to the next author must reset the
+          // within-author index. Without this the viewer kept the previous
+          // author's idx, and moving from a 3-story author to a 1-story one
+          // indexed past the end — group.items[idx] undefined, and reading
+          // story.id threw before anything rendered.
+          key={groups[openIdx].userId}
           group={groups[openIdx]}
           author={authors[groups[openIdx].userId]}
           me={me}
@@ -152,32 +160,35 @@ function StoryViewer({ group, author, me, onClose, onNextAuthor }) {
     signedUrl(story.media_path)
       .then((u) => alive && setUrl(u))
       .catch(() => alive && onCloseRef.current())
-    markStoryViewed(story.id, me).catch(() => {})
+    if (!group.mine) markStoryViewed(story.id, me).catch(() => {}) // don't record self-views
     return () => {
       alive = false
     }
-  }, [story.id, story.media_path, me])
+  }, [story.id, story.media_path, me, group.mine])
 
   const advance = useCallback(() => {
+    // Reset the bar as part of advancing, so the completion effect below can't
+    // observe a filled bar again against the next story.
+    setElapsed(0)
     if (idx + 1 < group.items.length) setIdx(idx + 1)
     else onNextAuthorRef.current()
   }, [idx, group.items.length])
 
-  // Auto-advance, held while the user presses and holds.
+  // Auto-advance, held while the user presses and holds. The interval only
+  // fills the bar; advancing happens in the effect below.
   useEffect(() => {
     if (!url || paused) return
-    const t = setInterval(() => {
-      setElapsed((e) => {
-        if (e + TICK >= DURATION) {
-          clearInterval(t)
-          advance()
-          return DURATION
-        }
-        return e + TICK
-      })
-    }, TICK)
+    const t = setInterval(() => setElapsed((e) => Math.min(e + TICK, DURATION)), TICK)
     return () => clearInterval(t)
-  }, [url, paused, advance])
+  }, [url, paused])
+
+  // Advance when the bar fills. This deliberately does NOT live inside the
+  // setElapsed updater: updaters must be pure, and StrictMode double-invokes
+  // them in development — which called advance() twice per boundary and skipped
+  // every other story.
+  useEffect(() => {
+    if (elapsed >= DURATION) advance()
+  }, [elapsed, advance])
 
   const back = () => {
     if (idx > 0) setIdx(idx - 1)
@@ -228,7 +239,7 @@ function StoryViewer({ group, author, me, onClose, onNextAuthor }) {
           onClick={async (e) => {
             e.stopPropagation()
             setPaused(true)
-            setViewers(await listStoryViewers(story.id).catch(() => []))
+            setViewers(await listStoryViewers(story.id, me).catch(() => []))
           }}
         >
           👁 Seen by

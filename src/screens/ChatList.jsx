@@ -5,7 +5,7 @@ import {
   findByUsername,
   getStreaks,
   listFriendsWithProfiles,
-  listMessages,
+  listLatestPerFriend,
   pairKey,
   sendFriendRequest,
   streakState,
@@ -18,9 +18,10 @@ import { useToast } from '../components/Toast'
 import Avatar from '../components/Avatar'
 import StatusIcon from '../components/StatusIcon'
 import Portal from '../components/Portal'
-import { CheckIcon, PlusIcon } from '../components/Icons'
+import Snapcode from '../components/Snapcode'
+import { CheckIcon, MapIcon, PlusIcon } from '../components/Icons'
 
-export default function ChatList({ onOpenChat, onOpenProfile }) {
+export default function ChatList({ onOpenChat, onOpenProfile, onOpenMap }) {
   const { profile } = useAuth()
   const me = profile.id
   const toast = useToast()
@@ -32,19 +33,23 @@ export default function ChatList({ onOpenChat, onOpenProfile }) {
   const [streaks, setStreaks] = useState([])
   const [adding, setAdding] = useState(false)
 
+  // One round trip for the previews, not one per friend. This runs on every
+  // realtime event below, so it has to stay cheap — it used to pull a 200-row
+  // page per accepted friend, i.e. a full N x 200 refetch per message received.
   const load = useCallback(async () => {
-    const list = await listFriendsWithProfiles(me)
+    const [list, streakRows, latest] = await Promise.all([
+      listFriendsWithProfiles(me),
+      getStreaks(me),
+      // Degrade to a preview-less list rather than an empty screen if the
+      // latest_messages RPC is missing (chatlist_perf.sql not applied yet).
+      listLatestPerFriend(me).catch((err) => {
+        console.warn('chat previews unavailable:', err.message)
+        return {}
+      }),
+    ])
     setFriends(list)
-    setStreaks(await getStreaks(me))
-
-    const accepted = list.filter((f) => f.status === 'accepted')
-    const entries = await Promise.all(
-      accepted.map(async (f) => {
-        const msgs = await listMessages(me, f.profile.id)
-        return [f.profile.id, msgs[msgs.length - 1] ?? null]
-      })
-    )
-    setLastByFriend(Object.fromEntries(entries))
+    setStreaks(streakRows)
+    setLastByFriend(latest)
   }, [me])
 
   useEffect(() => {
@@ -84,6 +89,21 @@ export default function ChatList({ onOpenChat, onOpenProfile }) {
       })
   }, [friends, lastByFriend])
 
+  // Your best friend = strongest active Snapstreak (Snapchat's 💛 is the friend
+  // you snap the most). Whoever has the highest streak count wears the heart.
+  const bestFriendId = useMemo(() => {
+    let bestId = null
+    let bestCount = 0
+    for (const f of accepted) {
+      const c = streakFor(f.profile.id).count
+      if (c > bestCount) {
+        bestCount = c
+        bestId = f.profile.id
+      }
+    }
+    return bestId
+  }, [accepted, streakFor])
+
   return (
     <>
       <div className="header">
@@ -95,6 +115,9 @@ export default function ChatList({ onOpenChat, onOpenProfile }) {
           <Avatar profile={profile} size="sm" />
         </button>
         <h1>Chat</h1>
+        <button className="circle filled" onClick={onOpenMap} aria-label="Snap Map">
+          <MapIcon />
+        </button>
         <button className="circle dark" onClick={() => setAdding(true)} aria-label="Add friend">
           <PlusIcon />
         </button>
@@ -140,7 +163,9 @@ export default function ChatList({ onOpenChat, onOpenProfile }) {
           const last = lastByFriend[f.profile.id]
           const st = last ? statusFor(last, me) : null
           const streak = streakFor(f.profile.id)
-          const unread = last && last.sender_id !== me && !last.opened_at
+          // Call logs never carry an "unread" state — exclude them so a call as
+          // the last message doesn't leave a permanent New badge.
+          const unread = last && last.sender_id !== me && last.kind !== 'call' && !last.opened_at
           return (
             <button className="row" key={f.profile.id} onClick={() => onOpenChat(f.profile)}>
               <Avatar profile={f.profile} />
@@ -151,6 +176,8 @@ export default function ChatList({ onOpenChat, onOpenProfile }) {
                     title={isOnline(f.profile.id) ? 'Active now' : 'Offline'}
                   />
                   {alias(f.profile)}
+                  {f.profile.id === bestFriendId && <span title="Best friend">💛</span>}
+                  {streak.count >= 100 && <span title="100-day Snapstreak!">💯</span>}
                   {streak.expiring && <span title="Snapstreak about to end">⌛</span>}
                 </div>
                 <div className={`row-sub${unread ? ' unread' : ''}`}>
@@ -177,12 +204,15 @@ export default function ChatList({ onOpenChat, onOpenProfile }) {
         })}
       </div>
 
-      {adding && <AddFriend me={me} onClose={() => setAdding(false)} onAdded={load} />}
+      {adding && (
+        <AddFriend me={me} profile={profile} onClose={() => setAdding(false)} onAdded={load} />
+      )}
     </>
   )
 }
 
-function AddFriend({ me, onClose, onAdded }) {
+function AddFriend({ me, profile, onClose, onAdded }) {
+  const [mode, setMode] = useState('add') // 'add' | 'code'
   const [username, setUsername] = useState('')
   const [busy, setBusy] = useState(false)
   const toast = useToast()
@@ -212,30 +242,54 @@ function AddFriend({ me, onClose, onAdded }) {
   return (
     <Portal>
     <div className="sheet" onClick={onClose}>
-      <form className="sheet-body" onClick={(e) => e.stopPropagation()} onSubmit={add}>
-        <h2>Add a friend</h2>
-        <input
-          style={{
-            width: '100%',
-            padding: '16px 18px',
-            fontSize: 16,
-            border: 'none',
-            borderRadius: 'var(--r-row)',
-            background: 'var(--card)',
-            marginBottom: 12,
-            outline: 'none',
-          }}
-          placeholder="username"
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
-          autoCapitalize="none"
-          autoCorrect="off"
-          autoFocus
-        />
-        <button className="btn-dark" type="submit" disabled={busy || !username.trim()}>
-          {busy ? 'Sending…' : 'Send request'}
-        </button>
-      </form>
+      <div className="sheet-body" onClick={(e) => e.stopPropagation()}>
+        <div className="seg" role="tablist">
+          <button
+            className={mode === 'add' ? 'on' : ''}
+            onClick={() => setMode('add')}
+            role="tab"
+            aria-selected={mode === 'add'}
+          >
+            Add a friend
+          </button>
+          <button
+            className={mode === 'code' ? 'on' : ''}
+            onClick={() => setMode('code')}
+            role="tab"
+            aria-selected={mode === 'code'}
+          >
+            My Snapcode
+          </button>
+        </div>
+
+        {mode === 'add' ? (
+          <form onSubmit={add}>
+            <input
+              style={{
+                width: '100%',
+                padding: '16px 18px',
+                fontSize: 16,
+                border: 'none',
+                borderRadius: 'var(--r-row)',
+                background: 'var(--card)',
+                marginBottom: 12,
+                outline: 'none',
+              }}
+              placeholder="username"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              autoCapitalize="none"
+              autoCorrect="off"
+              autoFocus
+            />
+            <button className="btn-dark" type="submit" disabled={busy || !username.trim()}>
+              {busy ? 'Sending…' : 'Send request'}
+            </button>
+          </form>
+        ) : (
+          <Snapcode profile={profile} />
+        )}
+      </div>
     </div>
     </Portal>
   )

@@ -99,3 +99,65 @@ export const PlayIcon = (p) => (
     <path d="M8 5l11 7-11 7z" />
   </svg>
 )
+
+export const ImageIcon = (p) => (
+  <svg {...base} {...p}>
+    <rect x="3" y="4" width="18" height="16" rx="2.5" />
+    <circle cx="8.5" cy="9" r="1.6" />
+    <path d="M4 17l4.5-4.5 3 3L15 11l5 5" />
+  </svg>
+)
+
+export const PhoneIcon = (p) => (
+  <svg {...base} {...p}>
+    <path d="M6.5 4h3l1.4 3.6-1.8 1.3a10.5 10.5 0 0 0 4.9 4.9l1.3-1.8L19 13.5v3a2 2 0 0 1-2.2 2A15.5 15.5 0 0 1 4.5 6.2 2 2 0 0 1 6.5 4z" />
+  </svg>
+)
+
+export const VideoIcon = (p) => (
+  <svg {...base} {...p}>
+    <rect x="3" y="6.5" width="12" height="11" rx="2.4" />
+    <path d="M15 10.2l5.5-2.7v9l-5.5-2.7z" />
+  </svg>
+)
+
+export const VideoOffIcon = (p) => (
+  <svg {...base} {...p}>
+    <rect x="3" y="6.5" width="12" height="11" rx="2.4" />
+    <path d="M15 10.2l5.5-2.7v9l-5.5-2.7z" />
+    <path d="M4 4l16 16" />
+  </svg>
+)
+
+export const MicOffIcon = (p) => (
+  <svg {...base} {...p}>
+    <rect x="9" y="3" width="6" height="11" rx="3" />
+    <path d="M5 11a7 7 0 0 0 14 0" />
+    <path d="M12 18v3" />
+    <path d="M4 4l16 16" />
+  </svg>
+)
+
+// Phone handset rotated to the universal "hang up" pose.
+export const HangupIcon = (p) => (
+  <svg {...base} {...p}>
+    <g transform="rotate(133 12 12)">
+      <path d="M6.5 4h3l1.4 3.6-1.8 1.3a10.5 10.5 0 0 0 4.9 4.9l1.3-1.8L19 13.5v3a2 2 0 0 1-2.2 2A15.5 15.5 0 0 1 4.5 6.2 2 2 0 0 1 6.5 4z" />
+    </g>
+  </svg>
+)
+
+export const SpeakerIcon = (p) => (
+  <svg {...base} {...p}>
+    <path d="M4 9v6h3.5L13 19V5L7.5 9z" />
+    <path d="M16.5 9.2a4 4 0 0 1 0 5.6" />
+    <path d="M19 6.7a7.5 7.5 0 0 1 0 10.6" />
+  </svg>
+)
+
+export const MapIcon = (p) => (
+  <svg {...base} {...p}>
+    <path d="M12 21s-6-5.3-6-10a6 6 0 0 1 12 0c0 4.7-6 10-6 10z" />
+    <circle cx="12" cy="11" r="2.2" />
+  </svg>
+)

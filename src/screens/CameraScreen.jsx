@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from 'react'
-import { listFriendsWithProfiles, postStory, sendSnap } from '../lib/db'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { listFriendsWithProfiles, postStory, saveToMemory, sendSnap } from '../lib/db'
 import { useCamera } from '../hooks/useCamera'
 import { useAuth } from '../hooks/useAuth'
 import { useToast } from '../components/Toast'
 import Avatar from '../components/Avatar'
 import Portal from '../components/Portal'
+import SnapEditor from '../components/SnapEditor'
 import { useAlias } from '../hooks/useAliasClock'
 import { CheckIcon, CloseIcon, FlipIcon } from '../components/Icons'
 
@@ -12,7 +13,31 @@ import { CheckIcon, CloseIcon, FlipIcon } from '../components/Icons'
 const TIMERS = [10, 30, 45, 60, null]
 const DEFAULT_TIMER_IDX = 2 // 45s
 
-export default function CameraScreen({ active, onSent }) {
+// Colour filters — a CSS filter string applied to the live preview AND baked
+// into the outgoing blob (via canvas) so the sent snap matches what you saw.
+const FILTERS = {
+  none: { label: 'None', css: 'none' },
+  mono: { label: 'B&W', css: 'grayscale(1) contrast(1.08)' },
+  warm: { label: 'Warm', css: 'saturate(1.35) sepia(0.22) contrast(1.04)' },
+  cool: { label: 'Cool', css: 'saturate(1.2) hue-rotate(-12deg) brightness(1.04)' },
+  vivid: { label: 'Vivid', css: 'saturate(1.6) contrast(1.14)' },
+  fade: { label: 'Fade', css: 'contrast(0.9) brightness(1.1) saturate(0.82)' },
+}
+
+// Canvas 2D `ctx.filter` only landed in Safari 17; on older engines it's a
+// silent no-op, which would ship an UNfiltered photo while the preview looked
+// filtered. Detect it and only offer filters where the bake actually works, so
+// preview and sent image always agree.
+const CTX_FILTER_SUPPORTED = (() => {
+  try {
+    const c = document.createElement('canvas').getContext('2d')
+    return !!c && 'filter' in c
+  } catch {
+    return false
+  }
+})()
+
+export default function CameraScreen({ active, onSent, onEditing }) {
   const { profile } = useAuth()
   const me = profile.id
   const toast = useToast()
@@ -22,8 +47,42 @@ export default function CameraScreen({ active, onSent }) {
   const [caption, setCaption] = useState('')
   const [timerIdx, setTimerIdx] = useState(DEFAULT_TIMER_IDX) // default 45s
   const [sending, setSending] = useState(false)
+  const [savedMemory, setSavedMemory] = useState(false)
   const [picking, setPicking] = useState(false)
   const [friends, setFriends] = useState([])
+  const editorRef = useRef(null)
+  const [filter, setFilter] = useState('none')
+
+  // Bake the chosen colour filter into a blob via canvas (after any doodle/text
+  // is flattened), so the sent snap matches the filtered preview.
+  const applyFilter = async (blob) => {
+    if (filter === 'none') return blob
+    let img
+    try {
+      img = await createImageBitmap(blob)
+      const c = document.createElement('canvas')
+      c.width = img.width
+      c.height = img.height
+      const ctx = c.getContext('2d')
+      ctx.filter = FILTERS[filter].css
+      ctx.drawImage(img, 0, 0)
+      return (await new Promise((r) => c.toBlob(r, 'image/jpeg', 0.92))) || blob
+    } catch {
+      return blob // filter unsupported on this browser — send the original
+    } finally {
+      img?.close?.() // free the decoded bitmap
+    }
+  }
+
+  // Flatten the photo + any doodle/text. When there are edits the editor bakes
+  // the filter itself, per layer, so it lands on exactly the layers the preview
+  // filters (photo + doodle, not text) — filtering the flattened result here
+  // would tint text stickers that were never tinted on screen. With no edits
+  // there are no layers to distinguish, so the whole blob is filtered.
+  const composeBlob = async () => {
+    if (editorRef.current?.hasEdits()) return editorRef.current.compose(FILTERS[filter].css)
+    return applyFilter(shot.blob)
+  }
 
   // Acquire the camera once, then PAUSE (not stop) when leaving the pane so the
   // permission grant is kept and returning never re-prompts. The stream is fully
@@ -46,6 +105,13 @@ export default function CameraScreen({ active, onSent }) {
     }
   }, [shot])
 
+  // Tell the shell a snap is being edited, so a drawing stroke doesn't also
+  // swipe between panes.
+  useEffect(() => {
+    onEditing?.(!!shot)
+    return () => onEditing?.(false)
+  }, [shot, onEditing])
+
   const viewSeconds = TIMERS[timerIdx]
 
   const takeShot = async () => {
@@ -55,21 +121,37 @@ export default function CameraScreen({ active, onSent }) {
       return
     }
     pause() // freeze the preview but keep the grant, so discard doesn't re-prompt
+    setSavedMemory(false)
     setShot({ blob, url: URL.createObjectURL(blob) })
   }
 
   const discard = () => {
     setShot(null)
     setCaption('')
+    setSavedMemory(false)
     start() // reuses the still-live stream — no permission prompt
+  }
+
+  const saveMemory = async () => {
+    setSending(true)
+    try {
+      await saveToMemory(me, await composeBlob(), caption)
+      setSavedMemory(true)
+      toast('Saved to Memories')
+    } catch (err) {
+      toast(err.message)
+    } finally {
+      setSending(false)
+    }
   }
 
   const sendTo = async (friendIds) => {
     if (friendIds.length === 0) return
     setSending(true)
     try {
+      const blob = await composeBlob()
       for (const id of friendIds) {
-        await sendSnap(me, id, { blob: shot.blob, viewSeconds, caption })
+        await sendSnap(me, id, { blob, viewSeconds, caption })
       }
       toast(`Snap sent to ${friendIds.length} ${friendIds.length === 1 ? 'friend' : 'friends'}`)
       setPicking(false)
@@ -86,7 +168,7 @@ export default function CameraScreen({ active, onSent }) {
   const addToStory = async () => {
     setSending(true)
     try {
-      await postStory(me, shot.blob, caption)
+      await postStory(me, await composeBlob(), caption)
       toast('Added to your Story')
       setShot(null)
       setCaption('')
@@ -133,14 +215,7 @@ export default function CameraScreen({ active, onSent }) {
 
       {shot && (
         <>
-          <img src={shot.url} alt="Your snap" />
-
-          <input
-            className="caption-input"
-            placeholder="Add a caption"
-            value={caption}
-            onChange={(e) => setCaption(e.target.value)}
-          />
+          <SnapEditor ref={editorRef} shot={shot} filter={FILTERS[filter].css} />
 
           <div className="cam-top">
             <button className="cam-side" onClick={discard} aria-label="Discard">
@@ -156,7 +231,25 @@ export default function CameraScreen({ active, onSent }) {
             </button>
           </div>
 
+          {CTX_FILTER_SUPPORTED && (
+            <div className="cam-filters">
+              {Object.entries(FILTERS).map(([k, f]) => (
+                <button
+                  key={k}
+                  type="button"
+                  className={`cam-filter${filter === k ? ' on' : ''}`}
+                  onClick={() => setFilter(k)}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
+          )}
+
           <div className="tray">
+            <button className="pill" onClick={saveMemory} disabled={sending || savedMemory}>
+              {savedMemory ? '✓ Saved' : '💾 Save'}
+            </button>
             <button className="pill" onClick={addToStory} disabled={sending}>
               📖 Story
             </button>

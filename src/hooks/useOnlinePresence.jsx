@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from './useAuth'
 
@@ -39,7 +39,9 @@ export function OnlinePresenceProvider({ children }) {
   return <OnlineContext.Provider value={online}>{children}</OnlineContext.Provider>
 }
 
+// Stable until the presence set actually changes, so it is safe in a dependency
+// array (same reasoning as useAlias).
 export function useOnline() {
   const online = useContext(OnlineContext)
-  return (id) => online.has(id)
+  return useCallback((id) => online.has(id), [online])
 }

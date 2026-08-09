@@ -1,22 +1,29 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import {
   clearViewedChats,
+  getAnniversary,
+  getCharms,
+  getSnapScore,
   isVisibleTo,
+  listFriendsWithProfiles,
   listMessages,
   markChatsOpened,
   pairKey,
   reactToMessage,
+  removeFriend,
   sendChat,
   sendSnapMedia,
   sendSticker,
   sendVoiceNote,
+  setAnniversaryDate,
   signedUrl,
   SNAP_MAX_OPENS,
   toggleSaved,
   unsend,
 } from '../lib/db'
 import { barColorFor, statusFor } from '../lib/status'
+import { enqueue, flushOutbox, looksOffline, outboxFor } from '../lib/outbox'
 import { useAuth } from '../hooks/useAuth'
 import { useAlias } from '../hooks/useAliasClock'
 import { useOnline } from '../hooks/useOnlinePresence'
@@ -26,8 +33,9 @@ import Avatar from '../components/Avatar'
 import StatusIcon from '../components/StatusIcon'
 import SnapViewer from '../components/SnapViewer'
 import Portal from '../components/Portal'
-import { ArrowIcon, BackIcon, CloseIcon, MicIcon, PlusIcon, SmileyIcon } from '../components/Icons'
+import { ArrowIcon, BackIcon, CheckIcon, CloseIcon, ImageIcon, MicIcon, PhoneIcon, PlayIcon, PlusIcon, SmileyIcon, VideoIcon } from '../components/Icons'
 import { useAudioRecorder } from '../hooks/useAudioRecorder'
+import { useCall } from '../hooks/useCall'
 
 const STICKERS = [
   '😂', '❤️', '🔥', '👍', '👎', '🥳', '😎', '😭',
@@ -35,34 +43,101 @@ const STICKERS = [
   '🎉', '⭐', '🌈', '☀️', '🍕', '⚽', '🎮', '💜',
 ]
 
+// Turn the friendship_charms payload into a list of fun chips.
+function deriveCharms(c, friendName) {
+  if (!c) return []
+  const out = []
+  if (c.streak > 0) out.push({ e: '🔥', t: `${c.streak}-day streak` })
+  if (c.friends_since) {
+    out.push({
+      e: '🤝',
+      t: `Friends since ${new Date(c.friends_since).toLocaleDateString(undefined, { month: 'short', year: 'numeric' })}`,
+    })
+  }
+  if (c.snaps > 0) out.push({ e: '📸', t: `${c.snaps} snaps lately` })
+  const my = c.my_msgs || 0
+  const their = c.their_msgs || 0
+  if (my + their > 10) {
+    out.push({
+      e: '💬',
+      t: my > their * 1.3 ? 'You text more' : their > my * 1.3 ? `${friendName} texts more` : 'Evenly matched',
+    })
+  }
+  const night = c.night_msgs || 0
+  const morning = c.morning_msgs || 0
+  if (night + morning > 5) {
+    out.push(night >= morning ? { e: '🌙', t: 'Night owls' } : { e: '☀️', t: 'Early birds' })
+  }
+  return out
+}
+
+// Days/years together from a "started_on" date string (YYYY-MM-DD).
+function togetherStats(startedOn) {
+  if (!startedOn) return null
+  const start = new Date(`${startedOn}T00:00:00`)
+  if (Number.isNaN(start.getTime())) return null
+  const now = new Date()
+  const days = Math.floor((now - start) / 86400000)
+  let years = now.getFullYear() - start.getFullYear()
+  let months = now.getMonth() - start.getMonth()
+  if (now.getDate() < start.getDate()) months -= 1
+  if (months < 0) {
+    years -= 1
+    months += 12
+  }
+  const isAnniversary =
+    now.getMonth() === start.getMonth() && now.getDate() === start.getDate() && days > 0
+  return { days, years, months, isAnniversary, start }
+}
+
 export default function Chat({ friend, onBack }) {
   const { profile } = useAuth()
   const me = profile.id
   const toast = useToast()
   const alias = useAlias()
   const isOnline = useOnline()
+  const { startCall } = useCall()
   const friendName = alias(friend)
 
   const [messages, setMessages] = useState([])
+  const [, tick] = useState(0) // periodic re-render so time-based UI (privacy scramble) updates
   const [draft, setDraft] = useState('')
   const [viewing, setViewing] = useState(null)
   const [attaching, setAttaching] = useState(false)
   const [menuMsg, setMenuMsg] = useState(null) // message the action menu targets
+  const [replyingTo, setReplyingTo] = useState(null) // message being replied to
+  const [forwardMsg, setForwardMsg] = useState(null) // chat being forwarded
+  const [anniv, setAnniv] = useState(null) // "together since" date for this pair
   const [stickers, setStickers] = useState(false)
+  const [friendSheet, setFriendSheet] = useState(false)
   const [recSecs, setRecSecs] = useState(0)
   const threadRef = useRef(null)
   const fileRef = useRef(null)
+  const [hasMore, setHasMore] = useState(false) // older history remains to load
+  const oldestRef = useRef(null) // created_at cursor for scroll-back paging
+  const loadingOlderRef = useRef(false)
+  const [pending, setPending] = useState(() => outboxFor(me, friend.id)) // offline outbox
   const recTimer = useRef(null)
   const { recording, start: startRec, stop: stopRec } = useAudioRecorder()
 
+  const startingVoiceRef = useRef(false)
   const startVoice = async () => {
-    const ok = await startRec()
-    if (!ok) {
-      toast('Microphone unavailable')
-      return
+    // Guard the double-tap: while the mic is still acquiring, `recording` is
+    // still false so the mic button stays tappable — a second tap would hit the
+    // recorder's own busy-guard and wrongly toast "unavailable".
+    if (startingVoiceRef.current) return
+    startingVoiceRef.current = true
+    try {
+      const ok = await startRec()
+      if (!ok) {
+        toast('Microphone unavailable')
+        return
+      }
+      setRecSecs(0)
+      recTimer.current = setInterval(() => setRecSecs((s) => s + 1), 1000)
+    } finally {
+      startingVoiceRef.current = false
     }
-    setRecSecs(0)
-    recTimer.current = setInterval(() => setRecSecs((s) => s + 1), 1000)
   }
   const finishVoice = async (cancel) => {
     clearInterval(recTimer.current)
@@ -87,27 +162,73 @@ export default function Chat({ friend, onBack }) {
 
   const { theirTyping, theyArePresent, setTyping } = useConversationPresence(me, friend.id)
 
-  // Snapchat "Delete after viewing": leaving the conversation clears the chats
-  // you've already opened, for you only. Fire on both the Back button and an
-  // unmount (swipe-away, tab switch), so opened chats don't survive the visit.
+  // Ephemeral chats: each time you open a conversation and leave, the chats
+  // you've already seen count ONE "view" toward the 3-view limit
+  // (clear_viewed_chats increments a per-user counter and clears at 3, for you
+  // only). Fire this exactly once per visit — from the unmount cleanup, which
+  // covers every exit path (Back, swipe-away, tab switch, relock, logout).
+  // Calling it from leave() as well would double-count and burn two of the
+  // three views on a single Back. The same cleanup releases the mic and its
+  // timer if a voice note was still recording when the chat closed.
   const leave = useCallback(() => {
-    clearViewedChats(me, friend.id).catch(() => {})
     onBack()
-  }, [me, friend.id, onBack])
+  }, [onBack])
 
   useEffect(() => {
     return () => {
       clearViewedChats(me, friend.id).catch(() => {})
+      clearInterval(recTimer.current)
+      stopRec(true).catch(() => {})
+    }
+  }, [me, friend.id, stopRec])
+
+  const load = useCallback(async () => {
+    const { messages: rows, oldestCursor, hasMore: more } = await listMessages(me, friend.id)
+    setMessages(rows)
+    oldestRef.current = oldestCursor
+    setHasMore(more)
+  }, [me, friend.id])
+
+  // Scroll-back: fetch the next older page and prepend it, holding the visual
+  // scroll position so history loads seamlessly as you scroll up.
+  const loadOlder = useCallback(async () => {
+    if (loadingOlderRef.current || !oldestRef.current) return
+    loadingOlderRef.current = true
+    try {
+      const el = threadRef.current
+      const prevH = el ? el.scrollHeight : 0
+      const prevTop = el ? el.scrollTop : 0
+      const { messages: older, oldestCursor, hasMore: more } = await listMessages(me, friend.id, oldestRef.current)
+      if (oldestCursor) oldestRef.current = oldestCursor
+      setHasMore(more)
+      if (older.length) {
+        setMessages((cur) => [...older, ...cur])
+        requestAnimationFrame(() => {
+          if (el) el.scrollTop = prevTop + (el.scrollHeight - prevH)
+        })
+      }
+    } finally {
+      loadingOlderRef.current = false
     }
   }, [me, friend.id])
 
-  const load = useCallback(async () => {
-    setMessages(await listMessages(me, friend.id))
-  }, [me, friend.id])
+  const onThreadScroll = () => {
+    const el = threadRef.current
+    if (el && el.scrollTop < 80 && hasMore && !loadingOlderRef.current) loadOlder()
+  }
 
   useEffect(() => {
     load()
   }, [load])
+
+  useEffect(() => {
+    getAnniversary(me, friend.id).then(setAnniv).catch(() => {})
+  }, [me, friend.id])
+
+  useEffect(() => {
+    const iv = setInterval(() => tick((n) => n + 1), 30000)
+    return () => clearInterval(iv)
+  }, [])
 
   // Live updates scoped to this pair.
   useEffect(() => {
@@ -120,7 +241,17 @@ export default function Chat({ friend, onBack }) {
         (payload) => {
           const row = payload.new ?? payload.old
           if (row?.user_b !== user_b) return
-          load()
+          // Append new inserts (keeps any scrolled-back history in place);
+          // updates/deletes (reactions, unsend, clears) fall back to a reload.
+          if (payload.eventType === 'INSERT' && payload.new) {
+            setMessages((cur) => {
+              if (cur.some((m) => m.id === payload.new.id)) return cur
+              if (!isVisibleTo(payload.new, me)) return cur
+              return [...cur, payload.new]
+            })
+          } else {
+            load()
+          }
         }
       )
       .subscribe()
@@ -143,29 +274,71 @@ export default function Chat({ friend, onBack }) {
     if (nearBottom) el.scrollTo({ top: el.scrollHeight })
   }, [messages, theirTyping])
 
-  // Opening the conversation marks their unread *chats* as read (one atomic
-  // call, so the chat-list New indicator clears reliably). Snaps stay sealed
-  // until explicitly tapped.
+  // Opening the conversation marks their unread chats, voice notes and stickers
+  // as read (one atomic call, so the chat-list New indicator clears reliably)
+  // and starts them on the 3-view clear. Snaps stay sealed until tapped.
   useEffect(() => {
     const hasUnopened = messages.some(
-      (m) => m.sender_id !== me && m.kind === 'chat' && !m.opened_at
+      (m) =>
+        m.sender_id !== me &&
+        (m.kind === 'chat' || m.kind === 'voice' || m.kind === 'sticker') &&
+        !m.opened_at
     )
     if (hasUnopened) markChatsOpened(friend.id).catch(() => {})
   }, [messages, me, friend.id])
 
   const submit = async (e) => {
     e.preventDefault()
-    const text = draft
+    const text = draft.trim()
+    if (!text) return
+    const replyTo = replyingTo?.id ?? null
     setDraft('')
     setTyping(false)
+    setReplyingTo(null)
+    // Offline: queue it and show it as pending — it auto-sends on reconnect.
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      setPending((p) => [...p, enqueue({ me, otherId: friend.id, text, replyTo })])
+      return
+    }
     try {
-      await sendChat(me, friend.id, text)
-      load() // show it immediately, don't wait for the realtime echo
+      const data = await sendChat(me, friend.id, text, replyTo)
+      // Show it immediately (realtime echo dedupes on id), without resetting any
+      // scrolled-back history.
+      if (data) setMessages((cur) => (cur.some((m) => m.id === data.id) ? cur : [...cur, data]))
     } catch (err) {
-      toast(err.message)
-      setDraft(text)
+      // A network failure queues instead of erroring; a real error still shows.
+      if (looksOffline(err)) {
+        setPending((p) => [...p, enqueue({ me, otherId: friend.id, text, replyTo })])
+      } else {
+        toast(err.message)
+        setDraft(text)
+        setReplyingTo(replyingTo) // restore the reply context on a real failure
+      }
     }
   }
+
+  // Flush the outbox on mount and whenever the connection returns. Anything the
+  // queue gives up on (undeliverable, or too old) is reported rather than
+  // disappearing quietly — a queued message must never just evaporate.
+  const flush = useCallback(async () => {
+    const { sent, dropped } = await flushOutbox(
+      (item) => sendChat(item.me, item.otherId, item.text, item.replyTo),
+      me
+    )
+    if (dropped.length) {
+      toast(`${dropped.length} queued message${dropped.length === 1 ? '' : 's'} couldn’t be sent`)
+    }
+    if (sent.length || dropped.length) {
+      setPending(outboxFor(me, friend.id))
+      if (sent.length) load()
+    }
+  }, [me, friend.id, load, toast])
+
+  useEffect(() => {
+    flush()
+    window.addEventListener('online', flush)
+    return () => window.removeEventListener('online', flush)
+  }, [flush])
 
   const onDraftChange = (e) => {
     setDraft(e.target.value)
@@ -194,6 +367,11 @@ export default function Chat({ friend, onBack }) {
   }
 
   const visible = messages.filter((m) => isVisibleTo(m, me))
+  const byId = useMemo(() => {
+    const map = {}
+    for (const m of messages) map[m.id] = m
+    return map
+  }, [messages])
 
   return (
     <div className="app" style={{ display: 'flex', flexDirection: 'column' }}>
@@ -201,14 +379,16 @@ export default function Chat({ friend, onBack }) {
         <button className="circle dark" onClick={leave} aria-label="Back">
           <BackIcon />
         </button>
-        <Avatar profile={friend} size="sm" />
-        <h1 style={{ fontSize: 22, display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span
-            className={`presence-dot ${isOnline(friend.id) ? 'live' : 'off'}`}
-            title={isOnline(friend.id) ? 'Active now' : 'Offline'}
-          />
-          {friendName}
-        </h1>
+        <button className="chat-peer" onClick={() => setFriendSheet(true)} aria-label="Friend info">
+          <Avatar profile={friend} size="sm" />
+          <h1 style={{ fontSize: 22, display: 'flex', alignItems: 'center', gap: 8, margin: 0 }}>
+            <span
+              className={`presence-dot ${isOnline(friend.id) ? 'live' : 'off'}`}
+              title={isOnline(friend.id) ? 'Active now' : 'Offline'}
+            />
+            {friendName}
+          </h1>
+        </button>
         {/* Snapchat signals "they're in this chat" with the friend's Bitmoji
             holding a phone — not a text badge. This is the nearest equivalent
             available without Bitmoji art. */}
@@ -222,9 +402,29 @@ export default function Chat({ friend, onBack }) {
             📱
           </span>
         )}
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+          <button className="circle filled" onClick={() => startCall(friend, false)} aria-label="Voice call">
+            <PhoneIcon />
+          </button>
+          <button className="circle filled" onClick={() => startCall(friend, true)} aria-label="Video call">
+            <VideoIcon />
+          </button>
+        </div>
       </div>
 
-      <div className="thread" ref={threadRef}>
+      {anniv && (() => {
+        // Only surface on the actual anniversary day — a celebration, not a
+        // permanent chip under the name. The everyday count lives in FriendSheet.
+        const s = togetherStats(anniv)
+        if (!s || !s.isAnniversary) return null
+        return (
+          <div className="anniv-chip celebrate">
+            💛 Happy anniversary — {s.years} year{s.years === 1 ? '' : 's'} with {friendName} today!
+          </div>
+        )
+      })()}
+
+      <div className="thread" ref={threadRef} onScroll={onThreadScroll}>
         {visible.length === 0 && (
           <div className="empty">
             Nothing here yet.
@@ -243,6 +443,8 @@ export default function Chat({ friend, onBack }) {
             myProfile={profile}
             onOpenSnap={() => setViewing(m)}
             onLongPress={() => setMenuMsg(m)}
+            onReply={() => setReplyingTo(m)}
+            repliedTo={m.reply_to ? byId[m.reply_to] : null}
             onQuickReact={async () => {
               const mine = (m.reactions ?? {})[me]
               await reactToMessage(m.id, mine === '❤️' ? '' : '❤️').catch(() => {})
@@ -251,8 +453,37 @@ export default function Chat({ friend, onBack }) {
           />
         ))}
 
+        {pending.map((p) => (
+          <div key={p.tempId} className="msg mine pending">
+            <div className="msg-who">me</div>
+            <div className="msg-body" style={{ borderLeftColor: barColorFor(profile) }}>
+              {p.text}
+            </div>
+            <div className="msg-pending-tag">⏳ Pending · sends when you’re back online</div>
+          </div>
+        ))}
+
         {theirTyping && <div className="typing">{friendName} is typing…</div>}
       </div>
+
+      {replyingTo && !recording && (
+        <div className="reply-bar">
+          <div className="reply-bar-text">
+            <span className="reply-bar-who">
+              Replying to {replyingTo.sender_id === me ? 'yourself' : friendName}
+            </span>
+            <span className="reply-bar-preview">{replyPreview(replyingTo)}</span>
+          </div>
+          <button
+            type="button"
+            className="reply-bar-x"
+            onClick={() => setReplyingTo(null)}
+            aria-label="Cancel reply"
+          >
+            ✕
+          </button>
+        </div>
+      )}
 
       {recording ? (
         <div className="composer">
@@ -307,11 +538,25 @@ export default function Chat({ friend, onBack }) {
       {viewing && (
         <SnapViewer
           message={viewing}
+          me={me}
           onClose={() => {
             setViewing(null)
             load()
           }}
           onScreenshot={() => toast('Screenshot detected — they were notified')}
+        />
+      )}
+
+      {friendSheet && (
+        <FriendSheet
+          friend={friend}
+          friendName={friendName}
+          me={me}
+          onClose={() => setFriendSheet(false)}
+          onRemoved={() => {
+            setFriendSheet(false)
+            onBack()
+          }}
         />
       )}
 
@@ -355,31 +600,79 @@ export default function Chat({ friend, onBack }) {
             setMenuMsg(null)
             load()
           }}
+          onReply={() => {
+            setReplyingTo(menuMsg)
+            setMenuMsg(null)
+          }}
+          onForward={() => {
+            setForwardMsg(menuMsg)
+            setMenuMsg(null)
+          }}
         />
+      )}
+
+      {forwardMsg && (
+        <ForwardSheet me={me} message={forwardMsg} onClose={() => setForwardMsg(null)} />
       )}
     </div>
   )
 }
 
+// Only one voice note plays at a time across the whole thread; starting one
+// pauses whatever else is playing. Tracked at module scope so every VoicePlayer
+// coordinates through it.
+let currentVoice = null
+
 function VoicePlayer({ message, bar }) {
   const [playing, setPlaying] = useState(false)
   const audioRef = useRef(null)
+  const loadingRef = useRef(false)
+  const aliveRef = useRef(true)
+
+  // Stop and release the audio if this row unmounts mid-playback (leaving the
+  // chat, or the message clearing / being unsent) — otherwise a detached
+  // <audio> keeps playing with no control left to stop it.
+  useEffect(() => {
+    return () => {
+      aliveRef.current = false
+      const el = audioRef.current
+      if (el) {
+        el.onplay = el.onpause = el.onended = null
+        el.pause()
+        if (currentVoice === el) currentVoice = null
+      }
+    }
+  }, [])
+
   const toggle = async (e) => {
     e.stopPropagation()
     let el = audioRef.current
     if (!el) {
+      if (loadingRef.current) return // a signed-URL fetch is already in flight
+      loadingRef.current = true
       const url = await signedUrl(message.media_path).catch(() => null)
-      if (!url) return
+      loadingRef.current = false
+      // Bail if the chat was closed while the URL was fetching — otherwise we'd
+      // create and play an <audio> the unmount cleanup already ran past.
+      if (!url || !aliveRef.current) return
       el = new Audio(url)
-      el.onended = () => setPlaying(false)
+      // Drive the ▶/❚❚ state off the element's own events, so a pause triggered
+      // by another row (below) also flips this button back to ▶.
+      el.onplay = () => setPlaying(true)
+      el.onpause = () => setPlaying(false)
+      el.onended = () => {
+        setPlaying(false)
+        if (currentVoice === el) currentVoice = null
+      }
       audioRef.current = el
     }
     if (el.paused) {
-      el.play()
-      setPlaying(true)
+      if (currentVoice && currentVoice !== el) currentVoice.pause()
+      currentVoice = el
+      el.play().catch(() => setPlaying(false))
     } else {
       el.pause()
-      setPlaying(false)
+      if (currentVoice === el) currentVoice = null
     }
   }
   return (
@@ -395,9 +688,177 @@ function VoicePlayer({ message, bar }) {
   )
 }
 
+// Friend info: view their profile + remove-friend, opened from the chat header.
+function FriendSheet({ friend, friendName, me, onClose, onRemoved }) {
+  const toast = useToast()
+  const [score, setScore] = useState(null)
+  const [anniv, setAnniv] = useState(null)
+  const [charms, setCharms] = useState(null)
+  const [busy, setBusy] = useState(false)
+  useEffect(() => {
+    getSnapScore(friend.id).then(setScore).catch(() => {})
+    getAnniversary(me, friend.id).then(setAnniv).catch(() => {})
+    getCharms(friend.id).then(setCharms).catch(() => {})
+  }, [friend.id, me])
+  const charmList = deriveCharms(charms, friendName)
+  const st = anniv ? togetherStats(anniv) : null
+  const saveAnniv = async (d) => {
+    if (!d) return
+    setAnniv(d)
+    try {
+      await setAnniversaryDate(me, friend.id, d)
+      toast('Anniversary saved 💛')
+    } catch (err) {
+      toast(err.message)
+    }
+  }
+  const remove = async () => {
+    setBusy(true)
+    try {
+      await removeFriend(me, friend.id)
+      toast(`Removed @${friend.username}`)
+      onRemoved()
+    } catch (err) {
+      toast(err.message)
+      setBusy(false)
+    }
+  }
+  return (
+    <Portal>
+      <div className="sheet" onClick={onClose}>
+        <div className="sheet-body" onClick={(e) => e.stopPropagation()}>
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: 8,
+              padding: '4px 0 16px',
+            }}
+          >
+            <Avatar profile={friend} size="lg" />
+            <div style={{ fontSize: 22, fontWeight: 300, letterSpacing: '-0.02em' }}>{friendName}</div>
+            <div style={{ color: 'var(--muted)', fontSize: 14 }}>@{friend.username}</div>
+            <div style={{ display: 'flex', gap: 8, alignSelf: 'stretch', marginTop: 8 }}>
+              <div className="stat-card" style={{ background: 'var(--lavender)', flex: 1 }}>
+                <div className="stat-num">{score ?? '—'}</div>
+                <div className="stat-label">🔥 Snap Score</div>
+              </div>
+              <div className="stat-card" style={{ background: 'var(--lime)', flex: 1 }}>
+                <div className="stat-num">{st ? st.days.toLocaleString() : '—'}</div>
+                <div className="stat-label">💛 Days together</div>
+              </div>
+            </div>
+            {st && (
+              <div style={{ fontSize: 13, color: 'var(--muted)', alignSelf: 'stretch' }}>
+                {st.years > 0 && `${st.years} yr${st.years === 1 ? '' : 's'} `}
+                {st.months > 0 && `${st.months} mo `}
+                together · since{' '}
+                {st.start.toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' })}
+              </div>
+            )}
+            <label style={{ alignSelf: 'stretch', fontSize: 13, color: 'var(--muted)' }}>
+              Together since
+              <input
+                type="date"
+                value={anniv || ''}
+                max={new Date().toISOString().slice(0, 10)}
+                onChange={(e) => saveAnniv(e.target.value)}
+                style={{
+                  width: '100%', marginTop: 4, padding: '11px 13px', fontSize: 16,
+                  border: 'none', borderRadius: 'var(--r-row)', background: 'var(--card)', outline: 'none',
+                }}
+              />
+            </label>
+            {charmList.length > 0 && (
+              <div className="charms">
+                {charmList.map((c, i) => (
+                  <span key={i} className="charm-chip">
+                    <span className="charm-e">{c.e}</span> {c.t}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+          <button className="menu-action danger" onClick={remove} disabled={busy}>
+            {busy ? 'Removing…' : '✕ Remove friend'}
+          </button>
+        </div>
+      </div>
+    </Portal>
+  )
+}
+
 const TAPBACKS = ['❤️', '👍', '👎', '😂', '😮', '😢']
 
-function MessageMenu({ message, me, onClose, onReact, onSave, onUnsend }) {
+// Forward a chat message: pick one or more friends, send its text on to each.
+// Every recipient gets a fresh send (its own ephemeral message), not a shared
+// reference — so each copy lives and clears on its own schedule.
+function ForwardSheet({ me, message, onClose }) {
+  const toast = useToast()
+  const [friends, setFriends] = useState([])
+  const [selected, setSelected] = useState([])
+  const [sending, setSending] = useState(false)
+  useEffect(() => {
+    listFriendsWithProfiles(me)
+      .then((l) => setFriends(l.filter((f) => f.status === 'accepted')))
+      .catch(() => {})
+  }, [me])
+  const toggle = (id) =>
+    setSelected((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]))
+  const send = async () => {
+    if (selected.length === 0) return
+    setSending(true)
+    // Report per-recipient: one failure shouldn't silently swallow the rest.
+    let ok = 0
+    for (const id of selected) {
+      try {
+        await sendChat(me, id, message.body)
+        ok += 1
+      } catch { /* counted below */ }
+    }
+    if (ok === selected.length) toast(`Forwarded to ${ok} ${ok === 1 ? 'friend' : 'friends'}`)
+    else if (ok > 0) toast(`Forwarded to ${ok} of ${selected.length}`)
+    else toast('Couldn’t forward that message')
+    setSending(false)
+    onClose()
+  }
+  return (
+    <Portal>
+      <div className="sheet" onClick={onClose}>
+        <div className="sheet-body" onClick={(e) => e.stopPropagation()}>
+          <h2 style={{ margin: '0 0 12px', fontWeight: 300, fontSize: 20 }}>Forward to</h2>
+          {friends.length === 0 && <div className="empty">No one to forward to.</div>}
+          {friends.map((f) => (
+            <button
+              key={f.profile.id}
+              className="fwd-row"
+              onClick={() => toggle(f.profile.id)}
+              disabled={sending}
+              aria-pressed={selected.includes(f.profile.id)}
+            >
+              <Avatar profile={f.profile} size="sm" />
+              <span style={{ flex: 1, textAlign: 'left' }}>{f.profile.display_name || f.profile.username}</span>
+              {selected.includes(f.profile.id) && <CheckIcon width={16} height={16} />}
+            </button>
+          ))}
+          {friends.length > 0 && (
+            <button
+              className="btn-dark"
+              style={{ marginTop: 14 }}
+              disabled={selected.length === 0 || sending}
+              onClick={send}
+            >
+              {sending ? 'Forwarding…' : `Forward${selected.length ? ` (${selected.length})` : ''}`}
+            </button>
+          )}
+        </div>
+      </div>
+    </Portal>
+  )
+}
+
+function MessageMenu({ message, me, onClose, onReact, onSave, onUnsend, onReply, onForward }) {
   const mine = message.sender_id === me
   const myReaction = (message.reactions ?? {})[me]
   const saved = (message.saved_by ?? []).includes(me)
@@ -416,6 +877,16 @@ function MessageMenu({ message, me, onClose, onReact, onSave, onUnsend }) {
               </button>
             ))}
           </div>
+          {message.kind !== 'call' && (
+            <button className="menu-action" onClick={onReply}>
+              ↩︎ Reply
+            </button>
+          )}
+          {message.kind === 'chat' && (
+            <button className="menu-action" onClick={onForward}>
+              ➡️ Forward
+            </button>
+          )}
           <button className="menu-action" onClick={onSave}>
             {saved ? '💾 Unsave' : '💾 Save in chat'}
           </button>
@@ -430,7 +901,20 @@ function MessageMenu({ message, me, onClose, onReact, onSave, onUnsend }) {
   )
 }
 
-function MessageRow({ message, me, friend, friendName, myProfile, onOpenSnap, onLongPress, onQuickReact }) {
+// Short preview of the message being quoted in a reply.
+function replyPreview(m) {
+  if (!m) return 'Message'
+  if (m.kind === 'snap') return '📷 Snap'
+  if (m.kind === 'voice') return '🎤 Voice note'
+  if (m.kind === 'sticker') return m.body || '💟 Sticker'
+  if (m.kind === 'call') return '📞 Call'
+  return (m.body || '').slice(0, 60)
+}
+
+function MessageRow({
+  message, me, friend, friendName, myProfile,
+  onOpenSnap, onLongPress, onQuickReact, onReply, repliedTo,
+}) {
   const mine = message.sender_id === me
   const status = statusFor(message, me)
   const saved = (message.saved_by ?? []).length > 0 // saved by either party
@@ -446,6 +930,7 @@ function MessageRow({ message, me, friend, friendName, myProfile, onOpenSnap, on
   const longPressed = useRef(false)
   const lastTap = useRef(0)
   const startPress = () => {
+    if (message.kind === 'call') return // call logs are not actionable
     longPressed.current = false
     pressTimer.current = setTimeout(() => {
       longPressed.current = true
@@ -454,10 +939,61 @@ function MessageRow({ message, me, friend, friendName, myProfile, onOpenSnap, on
   }
   const endPress = () => clearTimeout(pressTimer.current)
 
+  // Swipe LEFT on a message to reply to it (WhatsApp/Snapchat gesture). The
+  // bubble follows your finger; releasing past the threshold triggers the reply.
+  const startX = useRef(0)
+  const startY = useRef(0)
+  const swipeAmt = useRef(0)
+  const swiping = useRef(false)
+  const [dragX, setDragX] = useState(0)
+  const onTouchStart = (e) => {
+    startX.current = e.touches[0].clientX
+    startY.current = e.touches[0].clientY
+    swiping.current = false
+    swipeAmt.current = 0
+    startPress()
+  }
+  const onTouchMove = (e) => {
+    const dx = e.touches[0].clientX - startX.current
+    const dy = e.touches[0].clientY - startY.current
+    if (!swiping.current && Math.abs(dx) > 8 && Math.abs(dx) > Math.abs(dy) * 1.3) {
+      swiping.current = true
+      clearTimeout(pressTimer.current) // a swipe, not a long-press
+    }
+    if (swiping.current) {
+      const off = Math.max(Math.min(dx, 0), -80) // leftward only, capped at 80px
+      swipeAmt.current = off
+      setDragX(off)
+    }
+  }
+  const onTouchEnd = () => {
+    endPress()
+    if (swipeAmt.current <= -52 && message.kind !== 'call') {
+      longPressed.current = true // guard the trailing click
+      onReply?.()
+    }
+    swipeAmt.current = 0
+    setDragX(0)
+    swiping.current = false
+  }
+
+  // Your own sent snaps stay openable (view your own shared media); a received
+  // snap is consumed once opened the max number of times.
   const snapConsumed =
-    message.kind === 'snap' && (mine || (message.open_count ?? 0) >= SNAP_MAX_OPENS)
+    message.kind === 'snap' && !mine && (message.open_count ?? 0) >= SNAP_MAX_OPENS
+  const snapOpened = message.kind === 'snap' && (message.open_count ?? 0) > 0
+  const snapLabel = saved
+    ? 'Saved'
+    : mine
+      ? status.label
+      : snapConsumed
+        ? 'Opened'
+        : snapOpened
+          ? 'Tap to view again'
+          : 'Tap to view'
 
   const handleClick = () => {
+    if (message.kind === 'call') return // call logs are not actionable
     if (longPressed.current) {
       longPressed.current = false
       return
@@ -478,17 +1014,36 @@ function MessageRow({ message, me, friend, friendName, myProfile, onOpenSnap, on
   return (
     <div
       className={`msg${mine ? ' mine' : ''}${saved ? ' saved' : ''}`}
-      onTouchStart={startPress}
-      onTouchEnd={endPress}
+      style={{
+        transform: dragX ? `translateX(${dragX}px)` : undefined,
+        transition: dragX ? 'none' : 'transform .18s ease-out',
+      }}
+      onTouchStart={onTouchStart}
+      onTouchMove={onTouchMove}
+      onTouchEnd={onTouchEnd}
       onMouseDown={startPress}
       onMouseUp={endPress}
       onMouseLeave={endPress}
     >
+      {dragX < -6 && (
+        <div className="msg-swipe-hint" style={{ opacity: Math.min(1, -dragX / 52) }} aria-hidden="true">
+          ↩
+        </div>
+      )}
       <div className="msg-who">{who}</div>
+
+      {message.reply_to && (
+        <div className="msg-reply-quote">
+          <span className="msg-reply-who">
+            {repliedTo ? (repliedTo.sender_id === me ? 'You' : friendName) : ''}
+          </span>
+          {replyPreview(repliedTo)}
+        </div>
+      )}
 
       {message.kind === 'chat' ? (
         <div className="msg-body" style={{ borderLeftColor: bar }} onClick={handleClick}>
-          {message.body}
+          {privacyBody(message, me)}
         </div>
       ) : message.kind === 'sticker' ? (
         <div className="msg-sticker" onClick={handleClick}>
@@ -496,21 +1051,37 @@ function MessageRow({ message, me, friend, friendName, myProfile, onOpenSnap, on
         </div>
       ) : message.kind === 'voice' ? (
         <VoicePlayer message={message} bar={bar} />
+      ) : message.kind === 'call' ? (
+        <div className="msg-call">
+          {(message.body || '').startsWith('video') ? (
+            <VideoIcon width={16} height={16} />
+          ) : (
+            <PhoneIcon width={16} height={16} />
+          )}
+          <span>{callLabel(message, me)}</span>
+        </div>
       ) : (
+        // Photo / video snap: one consistent Snapchat-style tile across every
+        // state (unopened → opened → saved). The square thumb is filled while
+        // unopened and goes hollow once opened; the box keeps the same shape and
+        // never dims, so open and save read as the same box.
         <button
-          className="msg-snap"
-          style={{ borderLeftColor: bar, color: status.color, width: '100%' }}
+          className={`msg-photo${snapOpened ? ' opened' : ''}`}
           onClick={snapConsumed ? undefined : handleClick}
           disabled={snapConsumed}
         >
-          <StatusIcon {...status} size={16} />
-          <span>
-            {mine
-              ? status.label
-              : (message.open_count ?? 0) > 0
-                ? `Tap to view again${message.media_type === 'video' ? ' 🎬' : ''}`
-                : `Tap to view${message.media_type === 'video' ? ' 🎬' : ''}`}
+          <span className="pt-thumb">
+            {message.media_type === 'video' ? (
+              <PlayIcon width={19} height={19} />
+            ) : (
+              <ImageIcon width={19} height={19} />
+            )}
           </span>
+          <span className="pt-text">
+            <span className="pt-title">{message.media_type === 'video' ? 'Video' : 'Photo'}</span>
+            <span className="pt-sub">{snapLabel}</span>
+          </span>
+          <StatusIcon {...status} size={15} />
         </button>
       )}
 
@@ -520,13 +1091,41 @@ function MessageRow({ message, me, friend, friendName, myProfile, onOpenSnap, on
 
       <div className="msg-meta">
         {messageTime(message.created_at)}
-        {' · '}
-        {status.label}
+        {message.kind !== 'call' && (
+          <>
+            {' · '}
+            {status.label}
+          </>
+        )}
         {saved && ' · Saved'}
         {message.screenshot_at && ' · 📸 Screenshot'}
       </div>
     </div>
   )
+}
+
+// Privacy: your OWN sent chats scramble (reverse) on your screen a minute after
+// sending — an over-the-shoulder glance later can't read them. The recipient
+// always sees them the right way round.
+function privacyBody(message, me) {
+  const body = message.body || ''
+  if (message.sender_id !== me) return body
+  const age = Date.now() - new Date(message.created_at).getTime()
+  return age > 60000 ? [...body].reverse().join('') : body
+}
+
+// Label for a call-log row. body is "<type>|<status>" and view_seconds is the
+// duration for connected calls.
+function callLabel(message, me) {
+  const [type, callStatus] = (message.body || '').split('|')
+  const mine = message.sender_id === me
+  if (callStatus === 'missed') return mine ? 'No answer' : 'Missed call'
+  const label = type === 'video' ? 'Video call' : 'Voice call'
+  const s = message.view_seconds || 0
+  if (s <= 0) return label
+  const m = Math.floor(s / 60)
+  const r = Math.floor(s % 60)
+  return `${label} · ${m > 0 ? `${m}m ${r}s` : `${r}s`}`
 }
 
 // Clock time for recent messages, date + time for older ones.

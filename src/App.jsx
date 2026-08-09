@@ -6,7 +6,13 @@ import Chat from './screens/Chat'
 import CameraScreen from './screens/CameraScreen'
 import Stories from './screens/Stories'
 import Profile from './screens/Profile'
-import { ToastProvider } from './components/Toast'
+import SnapMap from './screens/SnapMap'
+import { ToastProvider, useToast } from './components/Toast'
+import { CallProvider } from './hooks/useCall'
+import CallOverlay from './components/CallOverlay'
+import { findByUsername, sendFriendRequest } from './lib/db'
+import { primeRing } from './lib/ringtone'
+import { saveSubscription } from './lib/push'
 import { AliasClockProvider } from './hooks/useAliasClock'
 import { OnlinePresenceProvider } from './hooks/useOnlinePresence'
 import { CameraIcon, ChatIcon, StoriesIcon } from './components/Icons'
@@ -21,16 +27,19 @@ const PANES = [
 
 function Shell() {
   const { session, profile, loading } = useAuth()
-  const [pane, setPane] = useState(1) // camera-first, like the real thing
+  const toast = useToast()
+  const [pane, setPane] = useState(2) // open on Stories (camera stays off until swiped to)
   const [openChat, setOpenChat] = useState(null)
   const [showProfile, setShowProfile] = useState(false)
+  const [showMap, setShowMap] = useState(false)
+  const [editing, setEditing] = useState(false) // a captured snap is open in the editor
   const [drag, setDrag] = useState(null)
   const touch = useRef(null)
 
   // Horizontal swipe between the three panes. Vertical movement is ignored so
   // the gesture never fights the chat list's scrolling.
   const onTouchStart = (e) => {
-    if (openChat || showProfile) return
+    if (openChat || showProfile || editing) return
     const t = e.touches[0]
     touch.current = { x: t.clientX, y: t.clientY, axis: null }
   }
@@ -68,6 +77,46 @@ function Shell() {
     setOpenChat(friend)
   }, [])
 
+  // A browser can rotate a push subscription on its own; the service worker
+  // re-subscribes and hands the new one here, because only the page holds the
+  // Supabase session needed to persist it. Without this the stored endpoint
+  // goes stale and notifications silently stop.
+  useEffect(() => {
+    if (!profile || !('serviceWorker' in navigator)) return
+    const onMessage = (e) => {
+      if (e.data?.type === 'push-resubscribed' && e.data.subscription) {
+        const s = e.data.subscription
+        saveSubscription(profile.id, { toJSON: () => s }).catch(() => {})
+      }
+    }
+    navigator.serviceWorker.addEventListener('message', onMessage)
+    return () => navigator.serviceWorker.removeEventListener('message', onMessage)
+  }, [profile])
+
+  // A scanned Snapcode opens the app at ?add=<username>; once signed in, send
+  // that friend request, then strip the param so it can't fire twice.
+  useEffect(() => {
+    if (!profile) return
+    const add = new URLSearchParams(window.location.search).get('add')
+    if (!add) return
+    const url = new URL(window.location.href)
+    url.searchParams.delete('add')
+    window.history.replaceState({}, '', url)
+    ;(async () => {
+      try {
+        const target = await findByUsername(add)
+        if (!target) toast(`No user called @${add}`)
+        else if (target.id === profile.id) toast('That is your own Snapcode 🙂')
+        else {
+          await sendFriendRequest(profile.id, target.id)
+          toast(`Friend request sent to @${target.username}`)
+        }
+      } catch (err) {
+        toast(err.message)
+      }
+    })()
+  }, [profile, toast])
+
   if (loading) return <div className="app" />
   if (!session) return <Auth />
   if (!profile) return <div className="app" />
@@ -76,8 +125,14 @@ function Shell() {
     return <Profile onBack={() => setShowProfile(false)} />
   }
 
+  if (showMap) {
+    return <SnapMap onBack={() => setShowMap(false)} />
+  }
+
   if (openChat) {
-    return <Chat friend={openChat} onBack={() => setOpenChat(null)} />
+    // key per friend → a fresh Chat instance when switching, so no message/ref
+    // state from one conversation ever bleeds into another.
+    return <Chat key={openChat.id} friend={openChat} onBack={() => setOpenChat(null)} />
   }
 
   const offset = -pane * (100 / PANES.length)
@@ -95,10 +150,14 @@ function Shell() {
     >
       <div className={`pager${drag !== null ? ' dragging' : ''}`} style={style}>
         <div className="pane">
-          <ChatList onOpenChat={goToChat} onOpenProfile={() => setShowProfile(true)} />
+          <ChatList
+            onOpenChat={goToChat}
+            onOpenProfile={() => setShowProfile(true)}
+            onOpenMap={() => setShowMap(true)}
+          />
         </div>
         <div className="pane">
-          <CameraScreen active={pane === 1} onSent={() => setPane(0)} />
+          <CameraScreen active={pane === 1} onSent={() => setPane(0)} onEditing={setEditing} />
         </div>
         <div className="pane">
           <Stories active={pane === 2} />
@@ -130,6 +189,11 @@ export default function App() {
   // Keep the focused composer above the on-screen keyboard. Rather than resize
   // the whole app (which fought iOS's own keyboard scroll and left a white gap),
   // nudge just the active input into view when the visualViewport shrinks.
+  // Unlock the call ringtone on the first user gesture (mobile autoplay policy).
+  useEffect(() => {
+    primeRing()
+  }, [])
+
   useEffect(() => {
     const vv = window.visualViewport
     if (!vv) return
@@ -156,7 +220,10 @@ export default function App() {
       <ToastProvider>
         <OnlinePresenceProvider>
           <AliasClockProvider>
-            <Shell />
+            <CallProvider>
+              <Shell />
+              <CallOverlay />
+            </CallProvider>
           </AliasClockProvider>
         </OnlinePresenceProvider>
       </ToastProvider>

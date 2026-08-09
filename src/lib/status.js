@@ -17,6 +17,7 @@ export const COLORS = {
 
 export function colorFor(message) {
   if (message.kind === 'chat') return COLORS.chat
+  if (message.kind === 'call') return COLORS.pending
   return message.has_audio ? COLORS.snapAudio : COLORS.snap
 }
 
@@ -31,6 +32,25 @@ export function barColorFor(profile) {
 // Returns everything the chat-list row and the message row need to render.
 export function statusFor(message, me) {
   const outgoing = message.sender_id === me
+
+  // Call logs are their own thing — direction still reads as arrow/square, but
+  // there's no "unopened" state. Missed calls get the alert-red tint.
+  if (message.kind === 'call') {
+    const [type, status] = String(message.body || '').split('|')
+    const noun = type === 'video' ? 'Video call' : 'Voice call'
+    const missed = status === 'missed'
+    return {
+      shape: outgoing ? 'arrow' : 'square',
+      filled: false,
+      color: missed && !outgoing ? COLORS.snap : COLORS.pending,
+      label: missed
+        ? outgoing
+          ? `${noun} · no answer`
+          : `Missed ${type === 'video' ? 'video' : 'voice'} call`
+        : noun,
+    }
+  }
+
   const color = colorFor(message)
 
   if (outgoing) {
@@ -75,16 +95,9 @@ export function statusFor(message, me) {
 // Besties, 😎 Mutual BFs, 🔥 Streak, ⌛ Streak ending, 🎂 Birthday. (Snapchat's
 // own name for 💛 is "yellow heart", not gold.)
 //
-// All but the last three derive from a private best-friend ranking model that
-// this app has no equivalent of, so only the honestly-computable ones ship.
-// 💯 for a 100-day streak is deliberately absent — it is folklore that no
-// longer appears in Snapchat's official emoji list.
-export function friendEmojis({ streak, birthdayToday }) {
-  const out = []
-  if (streak?.count > 0) {
-    out.push({ emoji: '🔥', title: `${streak.count} day Snapstreak` })
-    if (streak.expiring) out.push({ emoji: '⌛', title: 'Snapstreak about to end!' })
-  }
-  if (birthdayToday) out.push({ emoji: '🎂', title: 'Birthday today' })
-  return out
-}
+// All but the streak ones derive from a private best-friend ranking model this
+// app has no equivalent of, so only the honestly-computable ones ship. What
+// does ship is built inline in ChatList (🔥 streak, ⌛ expiring, 💛 highest
+// streak, 💯 at 100 days); there is deliberately no shared helper here, because
+// the one that used to live at this spot had no callers and its comment
+// contradicted what ChatList actually rendered.

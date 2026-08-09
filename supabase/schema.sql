@@ -108,7 +108,7 @@ create table if not exists public.streaks (
 );
 
 -- ---------------------------------------------------------------------------
--- stories  (24h expiry)
+-- stories  (48h / 2-day expiry)
 -- ---------------------------------------------------------------------------
 create table if not exists public.stories (
   id           uuid primary key default gen_random_uuid(),
@@ -117,7 +117,7 @@ create table if not exists public.stories (
   media_type   text not null default 'image' check (media_type in ('image','video')),
   caption      text,
   created_at   timestamptz not null default now(),
-  expires_at   timestamptz not null default now() + interval '24 hours'
+  expires_at   timestamptz not null default now() + interval '48 hours'
 );
 create index if not exists stories_user_idx on public.stories (user_id, created_at desc);
 create index if not exists stories_expiry_idx on public.stories (expires_at);

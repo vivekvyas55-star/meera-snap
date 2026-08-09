@@ -40,11 +40,38 @@ row-level security is what actually stops one user reading another's messages.
 Any new table needs its policies added in the same change, or it is either
 world-readable or completely inaccessible.
 
-**Streaks are computed in the database**, by the `bump_streak` trigger in
-`schema.sql` — not in JS. The rule is Snapchat's: both sides must send a *snap*
-(not a chat) within each 24-hour window, and a one-sided burst does not advance
-the count. Client code reads `streaks` and calls `streakState()` for display
-only.
+**PostgREST caps result rows (~1000) — never load an unbounded ascending list.**
+`listMessages` loads a conversation NEWEST-first with a `MESSAGE_PAGE` (200)
+limit, reverses for display, and pages older history in on scroll-up
+(`loadOlder` in `Chat.jsx`, prepending while holding scroll position). This was a
+real production incident: the original query ordered `created_at` **ascending
+with no limit**, so once the busiest chat passed 1000 messages the cap returned
+the *oldest* 1000 and silently **clipped the newest** — new sends and replies
+stopped appearing (looked like "sending is broken" with no error, on that one
+chat only). Realtime INSERTs are appended to state (not a full reload) so
+scrolled-back history isn't lost when a message arrives.
+
+A page is filtered by `isVisibleTo` *after* it is fetched, so a page can come
+back **entirely empty** while visible history still exists further back (every
+message in it already cleared for this viewer). Returning that empty page
+dead-ends the UI: Chat renders "Nothing here yet" and has nothing to scroll, so
+the scroll-up handler that would fetch the next page never fires. `listMessages`
+therefore keeps pulling pages until something is visible, bounded by
+`MAX_EMPTY_PAGES` so one open can't turn into an unbounded fetch loop.
+
+**Streaks are computed in the database**, by the `bump_streak` trigger — not in
+JS. The rule is intentionally friendlier than Snapchat's snaps-only version:
+both sides must send **any real message** (chat / snap / voice / sticker — not
+call logs) within each **~36h window**, and a one-sided burst does not advance
+the count. It advances at most once per ~20h (once a day). Real usage showed the
+snaps-only 24h rule left pairs stuck at 1 (one person snaps, the other texts);
+`streak_fix.sql` broadened it to any two-way daily messaging with a forgiving
+36h break. Client code reads `streaks` and calls `streakState()` (db.js, 36h
+display window / 30h hourglass) for display only. `bump_streak` is redefined
+across migrations — **last applied wins**; the current version is in
+`streak_fix.sql`. The same last-wins rule applies to `clear_viewed_chats`,
+`mark_chats_opened`, `record_snap_open`, etc. — grep all `supabase/*.sql` for a
+function before assuming `schema.sql` holds the live definition.
 
 **Auth uses synthetic emails.** Usernames map to `username@meera.local` via
 `emailForUsername()`. Email confirmation must stay disabled in the Supabase
@@ -81,13 +108,246 @@ inputs to stop iOS zooming on focus.
 
 ## Migrations
 
-`schema.sql` is the base. Additional migrations applied on top, in order:
-`hardening.sql` (security), then `chat_vanish.sql` (delete-after-viewing).
-The `avatar_emoji` column was added ad-hoc. Apply new migrations via the
-Supabase SQL editor; they're written idempotently. When adding a column that
-the client writes, grant it explicitly (`grant update (col) ... to
-authenticated`) — table-wide grants were revoked in hardening, so an
-un-granted column silently fails to write.
+`schema.sql` is the base. Additional migrations applied on top (roughly in
+order — functions get redefined, so **last applied wins**; grep before trusting
+any one file):
+`hardening.sql` (security), `chat_vanish.sql` → `chat_views.sql` (ephemeral
+chats), `composer.sql` (voice/sticker kinds), `features.sql` (message reactions +
+makes the ad-hoc `avatar_emoji` column reproducible), `mark_read.sql` (atomic
+mark-incoming-read on open), `repair.sql` (rebuild drifted columns/RPCs),
+`stories_fix.sql` (stories INSERT grant + 48h expiry), `ephemeral_media.sql`
+(voice/stickers clear like chats — the current 3-visit `view_leaves` model),
+`chat_backup.sql` (3-day backend backup), `memories.sql` (private saved-snaps
+gallery), `bots.sql` + `cron.sql` (motivation bots — 5 seed bot accounts DM a
+daily quote to real users via pg_cron, 01:30 UTC; run `cron.sql` standalone, not
+batched), `call_log.sql` (adds `'call'` to the messages kind check),
+`snap_map.sql` (opt-in `locations` table, Ghost Mode default), `security_qa.sql`
+(security-question password recovery), `call_fix.sql` (call-log constraint +
+mark-opened fix), `security_qa_hardening.sql` (recovery: reject empty answers,
+guess lockout, cost-10 bcrypt), `core_fixes.sql` (call-log clear, streak
+cadence, snap-score RPC), `streak_fix.sql` (streaks count any two-way daily
+messaging, forgiving 36h — supersedes the streak logic in `core_fixes.sql`),
+`reply.sql` (adds `messages.reply_to` for quoted replies), `anniversaries.sql`
+(`anniversaries` pair table for "days together"; seeds vivek+sneha **2018-05-28**
+— `started_on` is the START date: together since 28 May 2018, so the 4-year mark
+landed on 28 May 2022. It is NOT the milestone date; the counter derives years),
+`charms.sql` (`friendship_charms(other)` RPC — fun per-pair stats; night/day in
+IST), `bot_quotes_lock.sql` (security-audit fix: RLS **on** + grants revoked on
+`bot_quotes`, so no signed-in user can inject a quote that `send_morning_quotes`
+would DM to everyone as a trusted "bot"; that RPC is SECURITY DEFINER and keeps
+working), `recovery_hardening_2.sql` (**revokes sessions on password reset**,
+rolling guess-lockout window, snap score scoped to self+friends — supersedes
+`reset_password` in `security_qa_hardening.sql` and `get_snap_score` in
+`core_fixes.sql`), `chatlist_perf.sql` (`latest_messages(per_pair)` RPC + a
+`(user_a, user_b, created_at desc)` index, so the chat list is one query rather
+than one 200-row page per friend), `memories_thumbs.sql` (`memories.thumb_path`
+— the grid loaded full-size originals into ~120px tiles), `push.sql`
+(`push_subscriptions` for Web Push). **Superseded
+(historical, do not trust as
+current):** `snap_reopen.sql` (said 3 reopens/4 views; live `SNAP_MAX_OPENS`=6 =
+1+5) and `chat_recall.sql` (two-stage delete, replaced by the `view_leaves`
+counter).
+Apply new migrations via the Supabase SQL editor; they're written idempotently.
+
+**`recovery_hardening_2.sql`** — (1) `reset_password` changed the password but
+left `auth.sessions`/`auth.refresh_tokens` alone. GoTrue only checks the password
+at *sign-in*, never on refresh, so a session opened with the OLD password kept
+refreshing forever after a "recovery" — exactly the session you run recovery to
+kill. It now deletes the user's sessions in the same transaction. (2) The
+`attempts` counter never decayed, so after 5 lifetime wrong guesses every later
+miss re-armed a 15-min lock — and since `get_security_question` is anon-callable
+(by design: the reset screen must show the question), anyone could keep a
+stranger's recovery locked out forever. `last_attempt_at` makes it a rolling
+window. (3) `get_snap_score(target)` took any uuid from any signed-in caller;
+it's now self-or-accepted-friend, returning 0 otherwise.
+
+**`chatlist_perf.sql`** — `latest_messages()` returns the newest few rows per
+conversation (SECURITY INVOKER, so RLS still scopes it) in one round trip.
+ChatList used to call `listMessages` **per friend**, each a 200-row page, and it
+re-runs on every unfiltered `postgres_changes` event on messages / friendships /
+streaks / profiles — i.e. a full N×200 refetch per message received. It returns
+several rows per pair, not one, because visibility is decided client-side by
+`isVisibleTo`; the row needs depth to fall through already-cleared messages.
+`listLatestPerFriend` (db.js) degrades to a preview-less list if the RPC is
+missing, so an unapplied migration doesn't blank the screen.
+
+**`security_qa.sql`** is password recovery without email (synthetic emails can't
+receive mail). `security_questions` holds a bcrypt-hashed answer; the client can
+NEVER read the hash (`revoke select` + SECURITY DEFINER RPCs). `reset_password`
+(anon-callable) verifies the answer and updates `auth.users.encrypted_password`
+directly via pgcrypto `crypt(..., gen_salt('bf'))` — GoTrue and pgcrypto both use
+bcrypt, so the new password works at next login (verified end-to-end in a
+rolled-back txn). Set at signup, in Profile (existing users), or via reset.
+`security_qa_hardening.sql` closes a takeover hole (empty/whitespace answers
+matched a blank guess — rejected in BOTH RPCs since the anon key can call them
+directly), rate-limits guessing (5 wrong tries → 15-min lock, via
+`attempts`/`locked_until` on the un-SELECTable row), and raises the answer
+bcrypt cost to 10.
+
+**`core_fixes.sql`** — (1) `clear_viewed_chats`'s `sender_id = auth.uid()` clause
+is scoped to `kind='snap'` so a caller's own **call log** is never swept into the
+3-visit clear (it was vanishing for the caller once `call_fix.sql` let call logs
+get `opened_at`); `isVisibleTo` also short-circuits `kind==='call'` before the
+`cleared_by` check. (2) `bump_streak`'s once-per-window guard relaxed 24h→20h so a
+pair snapping at a steady daily time isn't blocked (~23.5h<24h) and the streak
+stops under-counting. (3) `get_snap_score(target)` RPC counts the target's snaps
+across THEIR conversations — a friend's score can't be computed client-side under
+RLS (it counted the caller's own activity).
+
+**`call_fix.sql`** — `logCall` stores call duration in `messages.view_seconds`,
+which the `view_seconds_sane` check (1..60) rejected for missed (0s) and >60s
+calls; the failure was swallowed by useCall's `.catch`, so those call logs
+silently never wrote. The constraint now exempts `kind='call'`, and
+`mark_chats_opened` includes `'call'` so a call as the last message doesn't leave
+a permanent unread badge.
+
+**`chat_backup.sql`** copies every message into `private.message_backup` (a
+schema PostgREST does not expose) via an AFTER INSERT trigger, kept 3 days,
+purged hourly by pg_cron. The trigger's insert is wrapped in
+`begin…exception when others then null` — a backup failure must NEVER roll back
+a real message send (it's on the hottest path).
+
+## PIN lockout and the decoy screen
+
+`components/PinLock.jsx` — **3 wrong passcodes locks the app for 15 minutes**, and
+during the lockout it renders `components/MarketDecoy.jsx` instead of the pad: a
+generic markets/portfolio screen. A "locked out" message would confirm to whoever
+is holding the phone that there is something here worth getting into; a dull
+stocks app tells them they opened the wrong thing.
+
+- Counters live in **localStorage, not sessionStorage** — a lockout a reload or a
+  fresh tab clears is not a lockout.
+- The decoy shows **no countdown and no hint that a passcode exists**; the pad
+  returns by itself when the timer expires, so the owner isn't stranded. There is
+  deliberately **no secret bypass gesture** — one would make the 15 minutes
+  fictional.
+- `MarketDecoy` sets `document.title` and restores it on unmount, or the tab and
+  app-switcher label would still read "Meera".
+- Its CSS shares nothing with the ABC language (no lavender/lime, no light
+  display headings, no vibrant rounded cards) and it re-implements the 420px
+  phone-column media query — full-bleed on desktop while everything else is a
+  phone column would itself be a tell. **Do not "bring the decoy on brand".**
+- Every ticker is **invented** and the numbers are pseudo-random noise. It must
+  not imitate a real broker's app, and it must never ask for a login, password
+  or any other detail — it is a blank wall, not a trap. Nothing leaves the device.
+
+**What it does NOT hide** (don't oversell this): the home-screen icon and its
+label, the manifest name, the URL, and browser history all still say Meera. The
+decoy covers the *screen* on a lockout, nothing more. Like the passcode itself it
+is deterrence against a casual snoop, **not security** — the PIN is in the bundle
+and anyone technical reads straight past it. Real protection is the account login
+plus RLS.
+
+## Web Push — the only way to reach a CLOSED app
+
+Realtime needs an open page, so before push a call rang only if the friend
+already had Meera open and a message produced nothing at all.
+
+- `supabase/push.sql` — `push_subscriptions` (one row per browser, unique by
+  endpoint). RLS is own-rows-only and that matters: endpoint + keys is enough to
+  push to a device, so this is a **capability store, not metadata**.
+- `supabase/functions/push/index.ts` — the sender. Implements VAPID (RFC 8292)
+  and aes128gcm payload encryption (RFC 8291) with **Web Crypto only**, no npm
+  deps to break under Deno. Verified by round-tripping a payload against a
+  simulated browser subscription and checking the ES256 signature is 64-byte raw
+  r||s (a DER signature is the classic silent failure — every push 401s).
+- `src/lib/push.js` — subscribe/unsubscribe + `notify(to, kind)`.
+- `public/sw.js` — `push` / `notificationclick` / `pushsubscriptionchange`.
+  **Bump `VERSION` on every sw.js change** or browsers keep the old worker and
+  new handlers never activate.
+
+**Notification wording is composed SERVER-SIDE from a fixed vocabulary** (`KINDS`
+in the function). The client sends only `{ to, kind }`. If the client could
+supply the text, any friend could put arbitrary words on your lock screen under
+Meera's name and icon. The sender's *name* is included (the payload is encrypted
+end-to-end, so the push service never sees it) but message **content never is** —
+a notification is a nudge, the app is where content lives. That keeps bodies off
+the lock screen of a phone someone else is holding, consistent with
+reverse-privacy and ephemerality elsewhere.
+
+The function authorises on the caller's JWT and requires an **accepted
+friendship** before pushing. Without that check it is an open notification relay
+to any user id an attacker can name. It also prunes subscriptions on 404/410 —
+the browser has discarded those, and dead endpoints otherwise accumulate and get
+retried forever.
+
+**Calls re-broadcast the invite every 3s while ringing** (`ringRepeat` in
+useCall). The Realtime invite is transient with no retention, so a phone woken by
+the push would otherwise open to silence — the single invite it missed is gone.
+The `invite` handler ignores re-arrivals for the room it is already showing, or
+they fall through to the glare branch and answer the caller with "busy".
+`startCall` no longer refuses when a friend is offline; it rings, and only gives
+up early if push reported zero deliveries AND they aren't in the app.
+
+**Platform reality.** Android/desktop Chrome work from a normal tab. **iOS 16.4+
+works only for a Home-Screen-installed PWA** — in a Safari tab `PushManager`
+doesn't exist, so `blockedReason()` tells the user to install rather than showing
+a toggle that cannot work. Permission must be requested **from a user gesture**
+or Safari rejects it, which is why `enablePush()` is called straight off the tap
+in Profile. Push is disabled in dev (no service worker), so test it against a
+production build.
+
+**Setup** (`VITE_VAPID_PUBLIC_KEY` in `.env`, private key in function secrets):
+```bash
+supabase functions deploy push
+supabase secrets set VAPID_PUBLIC_KEY=... VAPID_PRIVATE_KEY=... VAPID_SUBJECT=mailto:you@example.com
+```
+The public key ships in the bundle by design; the private key must never be in
+`.env` or the repo.
+
+## Egress is the scarcest resource — media is the whole bill
+
+Free tier gives 5 GB/month. With ~250 MB stored and 17 users, egress was 1.11 GB
+— i.e. the same media downloaded over and over. Three rules keep it down:
+
+**Signed URLs are cached per path (`db.js signedUrl`).** `createSignedUrl` mints
+a fresh token every call, so asking twice for the same object returns two
+different URLs — and the browser's HTTP cache, keyed on URL, re-downloads the
+bytes every time. Every re-opened snap, re-watched story and every Memories
+thumbnail was a full re-download. `signedUrl` now returns the SAME string from
+a module-level Map until it nears expiry (1h TTL, re-minted 5 min early). Call
+`forgetSignedUrl(path)` when deleting an object. Do NOT "fix" this by shortening
+the expiry for privacy: a short signed-URL life is not enforcement here (the
+viewer has a Save button), and it costs real money.
+
+**Downscale before upload, never after** (`lib/image.js`). Uploads run through
+`downscaleImage` (1600px/q0.85 for snaps and memories, 1440px/q0.8 for stories —
+a story is watched by every friend, so it's the most re-downloaded object in the
+app). It is best-effort: any decode/encode failure returns the ORIGINAL blob, so
+an optimisation can never turn into a failed send. Video can't be transcoded in
+the browser and goes up as-is; the 50 MB picker cap in `Chat.jsx` is the only
+guard there.
+
+**Never render an original into a thumbnail.** `saveToMemory` writes a ~400px
+JPEG to `thumb_path` next to the original, and the grid uses it (falling back to
+`media_path` for pre-`memories_thumbs.sql` rows). Grid `<video>` needs
+`preload="none"` or it fetches video data just to sit in a cell. Storage-side
+image transforms would do this server-side but are Pro-only.
+
+Uploads set `cacheControl: '86400'` (supabase-js defaults to 3600). Safe because
+every upload gets a fresh uuid path — objects are immutable once written.
+
+**Grants gate writes before RLS.** Table-wide privileges were revoked in
+hardening and re-granted per column/table, so any column the client writes needs
+an explicit grant or the write fails with 42501 *before* RLS is even evaluated.
+This silently emptied `stories` — its INSERT grant never took (see truncation
+below) — so posting a story failed for every real user while the policy looked
+correct. Verify writes with an **RLS-simulated insert** (`set local role
+authenticated` + a `request.jwt.claims` sub, in a rolled-back txn), not by
+reading the policy.
+
+Also beware `.upsert(...)` **without `ignoreDuplicates: true`**: supabase-js
+sends `ON CONFLICT DO UPDATE SET <all payload cols>`, which needs UPDATE on those
+columns *even on the first, non-conflicting insert*. On a table whose UPDATE
+grant is column-scoped (`story_views` grants UPDATE only on `screenshot_at`)
+every call 42501s. Use `ignoreDuplicates: true` (→ `DO NOTHING`) for pure
+presence rows — this is what `markStoryViewed`/`sendFriendRequest` do.
+
+**Watch for paste truncation.** Large migrations pasted into the Monaco SQL
+editor have been silently truncated mid-statement, leaving columns/functions/
+grants missing — the root cause behind several "bug" reports (including the
+missing stories INSERT grant). After a big migration, verify the specific
+objects it was meant to create.
 
 ## Overlays MUST be portaled
 
@@ -103,10 +363,34 @@ SnapViewer would be fine either way, but is portaled for consistency.
 
 ## Snapchat parity notes
 
-Delete-after-viewing (`chat_vanish.sql`): a chat clears for a viewer once they
-open it and leave, via a per-user `cleared_by[]` (not the shared `cleared_at`),
-so it never vanishes for the other party first. `clear_viewed_chats` RPC fires
-on Back and on Chat unmount. `isVisibleTo` hides cleared/saved accordingly.
+Ephemeral chats (`chat_vanish.sql` → `chat_views.sql` → `ephemeral_media.sql`):
+unlike Snapchat's single view, a chat — and now also received **voice notes and
+stickers** — is viewable across **3 visits**, then clears for that viewer only.
+`clear_viewed_chats` covers `kind in ('chat','voice','sticker')` plus your own
+sent **snaps** (scoped in `core_fixes.sql` — it must NOT catch `kind='call'`, or
+a caller's call log vanishes after 3 visits); `mark_chats_opened` covers those
+plus `'call'`. Call logs always persist — `isVisibleTo` short-circuits
+`kind==='call'` before the `cleared_by` check.
+`clear_viewed_chats` increments a per-user `view_leaves` counter and adds the
+viewer to `cleared_by[]` once it hits 3, so it never vanishes for the other
+party. The RPC must fire **exactly once per visit** — from Chat's unmount
+cleanup ONLY. (It used to also fire in the Back handler; harmless under the old
+idempotent RPC, but with the counter that double-counted and burned two of the
+three views per Back.) Image snaps reopen up to `SNAP_MAX_OPENS` (1 view + 5
+reopens); `isVisibleTo` hides consumed/cleared. Photo/video snaps render as a
+consistent `.msg-photo` tile (same box across unopened/opened/saved).
+
+Stories (`schema.sql` stories table): **48h / 2-day** expiry (was 24h). A
+purge in `features.sql`/`hardening.sql` deletes expired rows + their media.
+Posting requires the table INSERT grant (see Migrations) — missing it left the
+table empty. Own stories show under "My Story"; friends' via the friends RLS.
+**`StoryViewer` is keyed by author id.** It holds a within-author `idx`, and
+advancing past the last story swaps the `group` prop while leaving `idx` where
+it was — going from a 3-story author to a 1-story one indexed past the end and
+threw on `story.id` before anything rendered. The key remounts it, resetting
+`idx`. Auto-advance also lives in its own effect keyed on `elapsed`, never
+inside the `setElapsed` updater: updaters must be pure, and StrictMode
+double-invokes them in dev, which skipped every other story.
 
 Emoji avatars: `avatar_emoji` on profiles; `Avatar.jsx` renders it over the
 letter+hue fallback. Edited in the Profile screen (tap your avatar in the chat
@@ -122,15 +406,127 @@ Live presence (`hooks/useOnlinePresence.jsx`): a single global Realtime
 presence channel every client joins; the chat list and chat header show a green
 dot for online friends, muted grey otherwise. Transient, never persisted.
 
+**`useAlias()` and `useOnline()` must stay `useCallback`-stable.** Both return a
+*function*, and both are read inside `useCallback`/`useEffect` dependency
+arrays. When they returned a fresh closure per render, every dependent callback
+was invalidated every render: SnapMap's `load` re-ran on each render, refetching
+all locations plus a `getProfile` per friend and calling `fitBounds` again —
+which snapped the map back to fit-all and threw away wherever the user had
+panned. They're now memoised on the alias bucket / presence set. If you add
+another context hook that returns a function, memoise it the same way.
+SnapMap additionally frames the map exactly once (`didFitRef`) and caches
+author profiles, so a later reload can never move the viewport.
+
 Chat media (`db.js sendSnapMedia`, `Chat.jsx onPickMedia`): the composer's +
 button attaches a photo or video (file input, `capture` hint) and sends it as a
 snap to that friend. Videos play once in `SnapViewer` (`onEnded` closes, no
-countdown); images use the 3s timer. Messages show timestamps.
+countdown); images count down from `view_seconds` — media-picker snaps default to
+**45s** (`sendSnapMedia`), camera snaps use the user-selected timer
+(`CameraScreen` `TIMERS`, with an ∞/no-limit option). Own sent snaps have no
+countdown. Messages show timestamps.
 
-**Not yet built** (prioritized from the feature research): chat reactions +
-replies, voice notes, snap text/draw/sticker overlays, Snapcode QR, Memories
-gallery, opt-in Snap Map. Infeasible in a web PWA and deliberately skipped: AR
-lenses, native Bitmoji, reliable screenshot detection.
+**Fun features built** (Snapchat-parity):
+- **Friendship emojis** (`ChatList.jsx`): 🔥 streak count + ⌛ expiring (existing),
+  plus 💛 on your best friend (highest streak) and 💯 at 100 days.
+- **Snapcode** (`components/Snapcode.jsx`, `qrcode` dep): each user's code is a QR
+  of `…/?add=<username>`. Scanned with a phone's native camera, it opens the app;
+  `App.jsx` reads `?add=` once signed in and sends the friend request. No in-app
+  scanner. In ＋ Add friend → "My Snapcode" tab.
+- **Draw & text on snaps** (`components/SnapEditor.jsx`): doodle + movable text
+  stickers over the captured photo, flattened into the outgoing blob by
+  `compose()` (only when there are edits, else the original blob is sent). Works
+  in the preview box's coordinate space, replicating `object-fit:cover`.
+- **Colour filters** (`screens/CameraScreen.jsx` `FILTERS`): 6 CSS-filter looks
+  (None / B&W / Warm / Cool / Vivid / Fade) as a chip row over the snap preview.
+  The choice is applied to the preview (on the media only, not the tool chrome)
+  AND **baked into the outgoing blob** via canvas `ctx.filter`, so the sent snap
+  matches what you saw. **The bake is per LAYER, and the layers must match the
+  preview exactly**: the preview filters the `<img>` and `.snap-edit-canvas`
+  (doodle) but NOT `.snap-text` (plain DOM above them), so `SnapEditor.compose
+  (filterCss)` filters photo + doodle then resets `ctx.filter = 'none'` before
+  drawing text. Filtering the *flattened* result instead — which is what
+  `applyFilter` did over compose's output — tinted text stickers that were never
+  tinted on screen. `applyFilter` now only runs on the no-edits path, where
+  there are no layers to distinguish. Canvas `ctx.filter` only exists in
+  Safari 17+; `CTX_FILTER_SUPPORTED` feature-detects it and **hides the whole
+  filter row where the bake is a no-op**, so an old browser can never ship an
+  unfiltered photo that looked filtered.
+- **Memories** (`screens/Memories.jsx`, `memories` table): a private, owner-only
+  gallery of your saved snaps. 💾 Save in the camera; open from Profile to
+  re-share to Story, save to device, or delete.
+- **Voice / video calls** (`hooks/useCall.jsx`, `components/CallOverlay.jsx`,
+  `lib/rtc.js`): 1:1 WebRTC. Signaling rides Supabase Realtime — a personal
+  inbox channel `rtc:<id>` carries the ring (invite/accept/decline/cancel/busy);
+  once accepted, both join a private `rtc-room:<room>` for the SDP offer/answer
+  + ICE. Media is P2P (STUN) or relayed (free OpenRelay TURN — swap for a
+  dedicated TURN in production). Call buttons live in the Chat header;
+  `CallProvider` wraps `Shell`, `CallOverlay` renders the ring + in-call UI.
+  Caveats: needs real two-device testing (WebRTC can't be validated headlessly),
+  and ringing only reaches a friend whose app is OPEN (closed-app ring needs Web
+  Push — good on Android, unreliable on iOS PWAs). A missed/ended call writes ONE
+  call-log message (caller-side, `loggedRef`-guarded); a transient WebRTC
+  `disconnected` gets a `DISCONNECT_GRACE_MS` window before the call is ended, so
+  mobile ICE blips don't kill live calls. See `call_fix.sql` for the constraint.
+  There's a speaker/earpiece toggle (`setSinkId`), but **iOS Safari ignores it** —
+  no earpiece routing on iOS is a web-platform limit, not a bug. A **ring sound**
+  (`lib/ringtone.js`, Web Audio — no asset) plays on incoming (ringtone) and
+  outgoing (ringback) calls; `primeRing()` (App.jsx) unlocks audio on the first
+  tap since mobile autoplay blocks sound until a gesture. Incoming still also
+  vibrates on Android; iOS has neither vibration nor closed-app ring.
+- **Offline outbox** (`lib/outbox.js`): a chat that can't send (offline / network
+  error, via `looksOffline`) is queued in localStorage and shown as "⏳ Pending";
+  `Chat.jsx` flushes on mount and on the `online` event. `flushOutbox` is guarded
+  against concurrent runs so a flapping connection can't double-send. It takes
+  the signed-in `me` and returns `{ sent, dropped }`. **Only a `looksOffline`
+  failure stops the flush** (order is preserved for the retry); any other error
+  is permanent for that item — friendship removed, a *different account* now
+  signed in so RLS rejects the row, constraint violation — and the item is
+  dropped, with Chat toasting the count. It used to `break` on *every* error and
+  never drop, so one undeliverable message at the head blocked the whole queue
+  forever, across restarts, silently. Items for another account are dropped
+  outright (unsendable here, and not ours to keep); items age out after 7 days;
+  the queue is capped at 200.
+- **Quoted replies** (`messages.reply_to`, `reply.sql`): **swipe a message left**
+  or long-press → Reply; the composer shows a "Replying to…" bar, and the sent
+  reply renders a quoted preview of the original (`repliedTo` looked up in the
+  loaded window; falls back to "Message" if older). Carried through the outbox.
+- **Forward** (`Chat.jsx` `MessageMenu` → `ForwardSheet`): long-press a message →
+  Forward → tick one or more friends → Forward. Each recipient gets a fresh send
+  (its own ephemeral message), not a shared reference, so the copies live and
+  clear independently. **Text only** — the menu only offers Forward on
+  `kind === 'chat'`; forwarding media would mean copying the storage object under
+  the new sender's prefix, which isn't built.
+- **Days together** (`anniversaries` table, `Chat.jsx` `togetherStats`): a
+  per-pair "together since" date drives a "💛 N days together" chip above the
+  thread (a special gradient chip on the anniversary date) and a Snap-Score-style
+  card + date picker in the FriendSheet. This app is personal — built around the
+  owner's real relationship — so this is a first-class feature, not a gimmick.
+- **Friend options** (`Chat.jsx` FriendSheet): tap the chat header to view a
+  friend's profile (avatar, alias, snap score via the `get_snap_score` RPC) and
+  **remove friend** (`removeFriend` deletes the pair-keyed `friendships` row —
+  old messages remain readable by both parties; unfriend is not an erase).
+- **Reverse-privacy** (`Chat.jsx` `privacyBody`): your OWN sent chat text renders
+  reversed after 60s ("how are you" → "uoy era woh") as an over-the-shoulder
+  deterrent — display-only, sender-side only; the recipient always sees plaintext.
+  NOT encryption (body is stored plaintext); never describe it as secure.
+- **Open your own snaps** (`SnapViewer` / `isVisibleTo`): you can re-view snaps
+  you sent (no countdown, no reopen limit); viewing your own never burns the
+  recipient's open count (`record_snap_open` is guarded `sender_id <> auth.uid()`).
+- **Snap Map** (`screens/SnapMap.jsx`, `locations` table, Leaflet +
+  OpenStreetMap, no API key): opt-in location sharing. **Ghost Mode is the
+  default** (`sharing=false`); a user has NO `locations` row until they tap Share.
+  RLS `locations_read` returns your own row plus accepted friends who are
+  `sharing=true` — both predicates required. Go Ghost DELETES the row (not just
+  flips the flag) so no coordinates linger server-side (data-minimisation). This
+  is the "ethical Snapchat" stance — honest defaults, no dark patterns.
+
+**Recovery**: security-question password reset (see `security_qa.sql` above) —
+signup collects a Q+A, existing users set it in Profile, "Forgot password?" on
+the login screen runs username → question → answer + new password → auto login.
+
+**Not yet built**: video draw/text. Infeasible in a web PWA and deliberately
+skipped: AR lenses, native Bitmoji, reliable screenshot detection, My AI (the
+user explicitly does NOT want an in-app AI assistant).
 
 ## Design language — ABC (Behance) is the identity; follow it for ALL new UI
 
