@@ -142,7 +142,8 @@ rolling guess-lockout window, snap score scoped to self+friends — supersedes
 `(user_a, user_b, created_at desc)` index, so the chat list is one query rather
 than one 200-row page per friend), `memories_thumbs.sql` (`memories.thumb_path`
 — the grid loaded full-size originals into ~120px tiles), `push.sql`
-(`push_subscriptions` for Web Push). **Superseded
+(`push_subscriptions` for Web Push), `together.sql` (birthdays, status notes,
+question of the day). **Superseded
 (historical, do not trust as
 current):** `snap_reopen.sql` (said 3 reopens/4 views; live `SNAP_MAX_OPENS`=6 =
 1+5) and `chat_recall.sql` (two-stage delete, replaced by the `view_leaves`
@@ -206,6 +207,44 @@ schema PostgREST does not expose) via an AFTER INSERT trigger, kept 3 days,
 purged hourly by pg_cron. The trigger's insert is wrapped in
 `begin…exception when others then null` — a backup failure must NEVER roll back
 a real message send (it's on the hottest path).
+
+## Question of the day, status notes, birthdays (`together.sql`)
+
+**Day boundaries are IST** (`public.ist_date()`), like `friendship_charms`.
+"Today's question" has to turn over at the users' midnight, not UTC's. The
+client mirrors it with `istToday()` in db.js (`Intl` with `Asia/Kolkata`,
+`en-CA` so the format is the `YYYY-MM-DD` a Postgres `date` wants) — filtering
+on the browser's own date would put someone past their local midnight on a
+different "today" than the row they just wrote.
+
+**The reveal rule is RLS, not UI.** You see their answer only once you've
+written yours. `prompt_read` allows your own row always, theirs only when
+`has_answered(...)` is true. That helper is **SECURITY DEFINER on purpose**: a
+policy on `prompt_answers` that queries `prompt_answers` directly recurses
+infinitely, and going through a definer function breaks the cycle. Don't
+"simplify" it back into an inline EXISTS.
+
+**There is deliberately no UPDATE grant on `prompt_answers`.** An answer is
+final once written; being able to edit yours after seeing theirs would hollow
+out the simultaneous reveal. The `unique (user_a, user_b, responder, on_date)`
+constraint is what stops a double submit racing itself.
+
+`prompts` is locked exactly like `bot_quotes` (RLS on, no policy, grants
+revoked) — otherwise any signed-in user could inject a "question of the day"
+shown to every pair. Clients read it only via `todays_prompt()`, which picks
+deterministically from the day number so both people get the same one with no
+schedule stored. **The prompt ids must stay contiguous from 1**; the modulo
+indexes them directly, so deleting one leaves a day with no question.
+
+`status_notes` puts `expires_at > now()` in the **read policy**, so a stale note
+is invisible immediately rather than waiting on the purge.
+
+`profiles.birthday` needed its own `grant update (birthday)` — hardening.sql
+revoked table-wide UPDATE, so any new writable column fails with 42501 before
+RLS is consulted. Only month/day is ever shown; the year is never rendered.
+
+Snap Map's distance readout needs no schema — both coordinates are already on
+the map, so `distanceKm` is pure client maths.
 
 ## PIN lockout and the decoy screen
 

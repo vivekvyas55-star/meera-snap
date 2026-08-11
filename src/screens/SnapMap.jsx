@@ -7,6 +7,22 @@ import { useAlias } from '../hooks/useAliasClock'
 import { useToast } from '../components/Toast'
 import { BackIcon } from '../components/Icons'
 
+// Great-circle distance in km. Both coordinates are already on the map, so the
+// nicest thing to say about them costs nothing extra.
+function distanceKm(a, b) {
+  const R = 6371
+  const rad = (d) => (d * Math.PI) / 180
+  const dLat = rad(b.lat - a.lat)
+  const dLng = rad(b.lng - a.lng)
+  const h =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(dLng / 2) ** 2
+  return 2 * R * Math.asin(Math.sqrt(h))
+}
+
+const prettyDistance = (km) =>
+  km < 1 ? `${Math.round(km * 1000)} m` : km < 10 ? `${km.toFixed(1)} km` : `${Math.round(km)} km`
+
 function avatarHtml(p) {
   const emoji = p?.avatar_emoji
   const bg = emoji ? '#ffffff' : `hsl(${p?.avatar_hue ?? 45} 70% 55%)`
@@ -28,6 +44,7 @@ export default function SnapMap({ onBack }) {
   const [sharing, setSharingState] = useState(false)
   const [busy, setBusy] = useState(false)
   const [count, setCount] = useState(0)
+  const [nearest, setNearest] = useState(null) // { name, km } — closest sharing friend
 
   useEffect(() => {
     const map = L.map(mapEl.current, { zoomControl: false, attributionControl: false }).setView([20, 0], 2)
@@ -62,6 +79,19 @@ export default function SnapMap({ onBack }) {
       pts.push([loc.lat, loc.lng])
     }
     setCount(locs.length)
+
+    // Distance is only meaningful when we're on the map too.
+    const mine = locs.find((l) => l.user_id === me)
+    const others = locs.filter((l) => l.user_id !== me)
+    if (mine && others.length) {
+      const closest = others
+        .map((l) => ({ loc: l, km: distanceKm(mine, l) }))
+        .sort((x, y) => x.km - y.km)[0]
+      const prof = profileCache.current[closest.loc.user_id]
+      setNearest({ name: prof ? alias(prof) : 'them', km: closest.km })
+    } else {
+      setNearest(null)
+    }
     // Frame the map ONCE. Re-framing on every load would fight the user: any
     // reload (sharing toggled, the alias clock ticking over) would snap the view
     // back to fit-all and throw away wherever they had panned/zoomed to.
@@ -138,7 +168,13 @@ export default function SnapMap({ onBack }) {
         <div className="map-panel">
           <div className="map-panel-txt">
             {sharing ? (
-              <>You’re sharing your location · {Math.max(0, count - 1)} friend{count - 1 === 1 ? '' : 's'} on the map</>
+              <>
+                {nearest ? (
+                  <>💛 You’re {prettyDistance(nearest.km)} from {nearest.name}</>
+                ) : (
+                  <>You’re sharing your location · {Math.max(0, count - 1)} friend{count - 1 === 1 ? '' : 's'} on the map</>
+                )}
+              </>
             ) : (
               <>👻 Ghost Mode — nobody can see you. Share to appear on your friends’ maps.</>
             )}

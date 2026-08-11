@@ -548,6 +548,103 @@ export async function logCall(me, otherId, { video, status, seconds = 0 }) {
 }
 
 // --------------------------------------------------------------------------
+// birthdays, status notes, question of the day  (together.sql)
+// --------------------------------------------------------------------------
+// `birthday` needs its own column grant — see together.sql. Passing null clears it.
+export async function setBirthday(me, birthday) {
+  const { error } = await supabase
+    .from('profiles')
+    .update({ birthday: birthday || null })
+    .eq('id', me)
+  if (error) throw error
+}
+
+// Friend ids whose birthday is today (IST). Returns a Set for cheap lookup.
+export async function birthdaysToday() {
+  const { data, error } = await supabase.rpc('birthdays_today')
+  if (error) throw error
+  return new Set((data ?? []).map((r) => (typeof r === 'string' ? r : r.id ?? r.birthdays_today)))
+}
+
+// A short note shown under your name for 24h. One row per user, so setting a
+// new one replaces the old rather than stacking.
+export async function setStatusNote(me, body) {
+  const text = (body ?? '').trim()
+  if (!text) return clearStatusNote(me)
+  const { error } = await supabase.from('status_notes').upsert(
+    {
+      user_id: me,
+      body: text.slice(0, 80),
+      created_at: new Date().toISOString(),
+      expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+    },
+    { onConflict: 'user_id' }
+  )
+  if (error) throw error
+}
+
+export async function clearStatusNote(me) {
+  const { error } = await supabase.from('status_notes').delete().eq('user_id', me)
+  if (error) throw error
+}
+
+// RLS already hides expired notes and anyone who isn't an accepted friend, so
+// this is an unfiltered select by design.
+export async function listStatusNotes() {
+  const { data, error } = await supabase.from('status_notes').select('user_id, body')
+  if (error) throw error
+  return Object.fromEntries((data ?? []).map((r) => [r.user_id, r.body]))
+}
+
+export async function getTodaysPrompt() {
+  const { data, error } = await supabase.rpc('todays_prompt')
+  if (error) throw error
+  return data?.[0] ?? null
+}
+
+// { mine_done, theirs_done } — lets the UI say "waiting on you" without
+// revealing what they wrote.
+export async function getPromptStatus(otherId) {
+  const { data, error } = await supabase.rpc('prompt_status', { other: otherId })
+  if (error) throw error
+  return data ?? { mine_done: false, theirs_done: false }
+}
+
+// The users' local day, matching public.ist_date() server-side. Filtering on
+// the browser's own date would put someone in a different timezone (or just
+// past their midnight) on a different "today" than the row they wrote.
+// en-CA formats as YYYY-MM-DD, which is what a Postgres `date` wants.
+export const istToday = () =>
+  new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date())
+
+// Answers visible to you for today. RLS returns only your own until you've
+// answered, then both — the reveal is enforced server-side, not here.
+export async function listPromptAnswers(me, otherId) {
+  const { user_a, user_b } = pairKey(me, otherId)
+  const { data, error } = await supabase
+    .from('prompt_answers')
+    .select('responder, body, prompt_id')
+    .match({ user_a, user_b, on_date: istToday() })
+    .order('created_at', { ascending: true })
+  if (error) throw error
+  const today = data ?? []
+  return {
+    mine: today.find((a) => a.responder === me) ?? null,
+    theirs: today.find((a) => a.responder === otherId) ?? null,
+  }
+}
+
+export async function answerPrompt(me, otherId, promptId, body) {
+  const text = (body ?? '').trim()
+  if (!text) return
+  const { user_a, user_b } = pairKey(me, otherId)
+  const { error } = await supabase
+    .from('prompt_answers')
+    .insert({ user_a, user_b, responder: me, prompt_id: promptId, body: text.slice(0, 500) })
+  if (error) throw error
+}
+
+// --------------------------------------------------------------------------
 // media
 // --------------------------------------------------------------------------
 // Signed URLs are CACHED PER PATH, and this is the app's single biggest egress

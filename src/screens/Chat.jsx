@@ -36,6 +36,7 @@ import Portal from '../components/Portal'
 import { ArrowIcon, BackIcon, CheckIcon, CloseIcon, ImageIcon, MicIcon, PhoneIcon, PlayIcon, PlusIcon, SmileyIcon, VideoIcon } from '../components/Icons'
 import { useAudioRecorder } from '../hooks/useAudioRecorder'
 import { useCall } from '../hooks/useCall'
+import DailyQuestion from '../components/DailyQuestion'
 
 const STICKERS = [
   '😂', '❤️', '🔥', '👍', '👎', '🥳', '😎', '😭',
@@ -423,6 +424,8 @@ export default function Chat({ friend, onBack }) {
           </div>
         )
       })()}
+
+      <DailyQuestion me={me} friend={friend} friendName={friendName} />
 
       <div className="thread" ref={threadRef} onScroll={onThreadScroll}>
         {visible.length === 0 && (

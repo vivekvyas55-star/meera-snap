@@ -2,8 +2,10 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import {
   acceptFriendRequest,
+  birthdaysToday,
   findByUsername,
   getStreaks,
+  listStatusNotes,
   listFriendsWithProfiles,
   listLatestPerFriend,
   pairKey,
@@ -32,6 +34,8 @@ export default function ChatList({ onOpenChat, onOpenProfile, onOpenMap }) {
   const [lastByFriend, setLastByFriend] = useState({})
   const [streaks, setStreaks] = useState([])
   const [adding, setAdding] = useState(false)
+  const [notes, setNotes] = useState({}) // user_id -> status note
+  const [birthdays, setBirthdays] = useState(new Set())
 
   // One round trip for the previews, not one per friend. This runs on every
   // realtime event below, so it has to stay cheap — it used to pull a 200-row
@@ -50,6 +54,9 @@ export default function ChatList({ onOpenChat, onOpenProfile, onOpenMap }) {
     setFriends(list)
     setStreaks(streakRows)
     setLastByFriend(latest)
+    // Cosmetic extras — never let them fail the list.
+    listStatusNotes().then(setNotes).catch(() => {})
+    birthdaysToday().then(setBirthdays).catch(() => {})
   }, [me])
 
   useEffect(() => {
@@ -176,6 +183,7 @@ export default function ChatList({ onOpenChat, onOpenProfile, onOpenMap }) {
                     title={isOnline(f.profile.id) ? 'Active now' : 'Offline'}
                   />
                   {alias(f.profile)}
+                  {birthdays.has(f.profile.id) && <span title="Birthday today!">🎂</span>}
                   {f.profile.id === bestFriendId && <span title="Best friend">💛</span>}
                   {streak.count >= 100 && <span title="100-day Snapstreak!">💯</span>}
                   {streak.expiring && <span title="Snapstreak about to end">⌛</span>}
@@ -190,6 +198,11 @@ export default function ChatList({ onOpenChat, onOpenProfile, onOpenMap }) {
                     <span>Tap to chat</span>
                   )}
                 </div>
+                {/* Their note sits below the message status — it's colour, not
+                    the row's primary information. */}
+                {notes[f.profile.id] && (
+                  <div className="row-note">💬 {notes[f.profile.id]}</div>
+                )}
               </div>
               <div className="row-right">
                 {last && <span className="row-time">{shortTime(last.created_at)}</span>}

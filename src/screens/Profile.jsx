@@ -1,5 +1,14 @@
 import { useEffect, useState } from 'react'
-import { getSnapScore, listFriendsWithProfiles, setSecurityQuestion, updateProfile } from '../lib/db'
+import {
+  clearStatusNote,
+  getSnapScore,
+  listFriendsWithProfiles,
+  listStatusNotes,
+  setBirthday,
+  setSecurityQuestion,
+  setStatusNote,
+  updateProfile,
+} from '../lib/db'
 import { useAuth } from '../hooks/useAuth'
 import { useToast } from '../components/Toast'
 import Avatar from '../components/Avatar'
@@ -33,6 +42,10 @@ export default function Profile({ onBack }) {
   const [secQ, setSecQ] = useState(SECURITY_QUESTIONS[0])
   const [secA, setSecA] = useState('')
   const [savingSec, setSavingSec] = useState(false)
+  const [birthday, setBday] = useState(profile.birthday || '')
+  const [note, setNote] = useState('')
+  const [noteSaved, setNoteSaved] = useState('')
+  const [noteBusy, setNoteBusy] = useState(false)
   const [pushOn, setPushOn] = useState(false)
   const [pushBusy, setPushBusy] = useState(false)
   // null once checked and available; a string explains why it can't be enabled.
@@ -40,7 +53,43 @@ export default function Profile({ onBack }) {
 
   useEffect(() => {
     isEnabled().then(setPushOn).catch(() => {})
-  }, [])
+    listStatusNotes()
+      .then((byUser) => {
+        setNoteSaved(byUser[me] ?? '')
+        setNote(byUser[me] ?? '')
+      })
+      .catch(() => {})
+  }, [me])
+
+  const saveBirthday = async (d) => {
+    setBday(d)
+    try {
+      await setBirthday(me, d)
+      setProfile({ ...profile, birthday: d || null })
+      toast(d ? 'Birthday saved 🎂' : 'Birthday cleared')
+    } catch (err) {
+      toast(err.message)
+    }
+  }
+
+  const saveNote = async () => {
+    setNoteBusy(true)
+    try {
+      const text = note.trim()
+      if (text) {
+        await setStatusNote(me, text)
+        toast('Note set — visible to friends for 24h')
+      } else {
+        await clearStatusNote(me)
+        toast('Note cleared')
+      }
+      setNoteSaved(text)
+    } catch (err) {
+      toast(err.message)
+    } finally {
+      setNoteBusy(false)
+    }
+  }
 
   // Must run straight off the tap: Safari rejects a permission prompt that
   // isn't tied to a user gesture, and an await before it can break the chain.
@@ -215,6 +264,44 @@ export default function Profile({ onBack }) {
         >
           <CheckIcon width={17} height={17} /> {saving ? 'Saving…' : 'Save profile'}
         </button>
+
+        <div className="section">What’s up?</div>
+        <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 8 }}>
+          A line your friends see under your name. Disappears after 24 hours.
+        </div>
+        <input
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          maxLength={80}
+          placeholder="Studying · At home · Out for chai"
+          style={{
+            width: '100%', padding: '14px 16px', fontSize: 16,
+            border: 'none', borderRadius: 'var(--r-row)', background: 'var(--card)', outline: 'none',
+          }}
+        />
+        <button
+          className="btn-dark"
+          style={{ marginTop: 10 }}
+          onClick={saveNote}
+          disabled={noteBusy || note.trim() === noteSaved.trim()}
+        >
+          {noteBusy ? 'Saving…' : note.trim() ? 'Set note' : 'Clear note'}
+        </button>
+
+        <div className="section">Birthday</div>
+        <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 8 }}>
+          Friends see a 🎂 next to your name on the day. Year is never shown.
+        </div>
+        <input
+          type="date"
+          value={birthday}
+          max={new Date().toISOString().slice(0, 10)}
+          onChange={(e) => saveBirthday(e.target.value)}
+          style={{
+            width: '100%', padding: '14px 16px', fontSize: 16,
+            border: 'none', borderRadius: 'var(--r-row)', background: 'var(--card)', outline: 'none',
+          }}
+        />
 
         <div className="section">Notifications</div>
         <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 8 }}>
