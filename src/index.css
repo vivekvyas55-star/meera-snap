@@ -1447,3 +1447,48 @@ button:disabled { cursor: not-allowed; }
 /* An unanswered question addressed to you is the one thing here that needs
    doing, so it carries the accent rather than sitting in the neutral card. */
 .qcard:not(.mine):has(.qcard-reply) { background: var(--lime); }
+
+/* Friend profile — opened by tapping the chat header. Line icons instead of
+   emoji chrome, one vibrant colour per stat card, list rows for actions. */
+.fp { display: flex; flex-direction: column; gap: 14px; padding: 2px 0 8px; }
+
+.fp-hero { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.fp-name {
+  font-size: 30px; font-weight: 300; letter-spacing: -0.03em;
+  line-height: 1.1; margin-top: 4px;
+}
+.fp-handle { color: var(--muted); font-size: 14px; }
+.fp-since {
+  display: inline-flex; align-items: center; gap: 6px;
+  margin-top: 4px; padding: 5px 12px;
+  border-radius: var(--r-pill); background: var(--card);
+  font-size: 12px; color: var(--muted);
+}
+
+.fp-stats { display: flex; gap: 10px; }
+.fp-stat { flex: 1; display: flex; flex-direction: column; gap: 2px; }
+.fp-stat svg { opacity: 0.7; margin-bottom: 4px; }
+.fp-stat .stat-num { font-size: 32px; }
+.fp-stat .stat-label { text-transform: none; }
+
+.fp-charms { margin: -2px 0 0; }
+
+.fp-row {
+  display: flex; align-items: center; gap: 12px;
+  width: 100%; min-height: 60px; padding: 12px 14px;
+  border-radius: var(--r-card); background: var(--card);
+  text-align: left; color: var(--ink);
+}
+.fp-row:active { background: var(--card-press); }
+.fp-row-input { align-items: flex-start; cursor: default; }
+.fp-row-input:active { background: var(--card); }
+.fp-row-icon {
+  width: 38px; height: 38px; flex: 0 0 auto;
+  border-radius: 12px; background: #fff;
+  display: grid; place-items: center; color: var(--ink);
+}
+.fp-row-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.fp-row-title { font-size: 15px; font-weight: 500; }
+.fp-row-sub { font-size: 12.5px; color: var(--muted); }
+.fp-row-go { color: var(--muted); font-size: 20px; line-height: 1; }
+.fp-row-input .field { margin-top: 6px; background: #fff; }

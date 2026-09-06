@@ -210,3 +210,31 @@ export const ReplayIcon = (p) => (
     <path d="M20 4v4h-4" />
   </svg>
 )
+
+export const FlameIcon = (p) => (
+  <svg {...base} {...p}>
+    <path d="M12 3.5s5.5 4 5.5 8.5a5.5 5.5 0 0 1-11 0c0-1.6.8-3 1.7-4.1.3 1 1 1.8 1.8 1.8 1.2 0 1.6-1.2 1.4-2.6-.2-1.5.6-2.9.6-3.6z" />
+  </svg>
+)
+
+export const HeartIcon = (p) => (
+  <svg {...base} {...p}>
+    <path d="M12 19.5S4.5 14.8 4.5 9.8A3.8 3.8 0 0 1 12 8a3.8 3.8 0 0 1 7.5 1.8c0 5-7.5 9.7-7.5 9.7z" />
+  </svg>
+)
+
+export const CalendarIcon = (p) => (
+  <svg {...base} {...p}>
+    <rect x="3.5" y="5.5" width="17" height="15" rx="3" />
+    <path d="M3.5 10h17M8.5 3.5v4M15.5 3.5v4" />
+  </svg>
+)
+
+export const GridIcon = (p) => (
+  <svg {...base} {...p}>
+    <rect x="3.5" y="3.5" width="7" height="7" rx="2" />
+    <rect x="13.5" y="3.5" width="7" height="7" rx="2" />
+    <rect x="3.5" y="13.5" width="7" height="7" rx="2" />
+    <rect x="13.5" y="13.5" width="7" height="7" rx="2" />
+  </svg>
+)

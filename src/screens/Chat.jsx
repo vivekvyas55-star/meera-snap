@@ -36,7 +36,7 @@ import SnapViewer from '../components/SnapViewer'
 import Portal from '../components/Portal'
 import Sheet from '../components/Sheet'
 import KeptTogether from '../components/KeptTogether'
-import { ArrowIcon, BackIcon, CheckIcon, CloseIcon, ForwardIcon, ImageIcon, LockIcon, MicIcon, PhoneIcon, PlayIcon, PlusIcon, ReplyIcon, SaveIcon, SmileyIcon, VideoIcon } from '../components/Icons'
+import { ArrowIcon, BackIcon, CalendarIcon, CheckIcon, CloseIcon, FlameIcon, ForwardIcon, GridIcon, HeartIcon, ImageIcon, LockIcon, MicIcon, PhoneIcon, PlayIcon, PlusIcon, ReplyIcon, SaveIcon, SmileyIcon, VideoIcon } from '../components/Icons'
 import { useAudioRecorder } from '../hooks/useAudioRecorder'
 import { useCall } from '../hooks/useCall'
 import QuestionCards from '../components/QuestionCards'
@@ -734,61 +734,34 @@ function FriendSheet({ friend, friendName, me, onClose, onRemoved }) {
   return (
     <Portal>
       <Sheet onClose={onClose} label="Friend options">
-          <div
-            style={{
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              gap: 8,
-              padding: '4px 0 16px',
-            }}
-          >
-            <Avatar profile={friend} size="lg" />
-            <div style={{ fontSize: 22, fontWeight: 300, letterSpacing: '-0.02em' }}>{friendName}</div>
-            <div style={{ color: 'var(--muted)', fontSize: 14 }}>@{friend.username}</div>
-            <div style={{ display: 'flex', gap: 8, alignSelf: 'stretch', marginTop: 8 }}>
-              <div className="stat-card" style={{ background: 'var(--lavender)', flex: 1 }}>
+          <div className="fp">
+            <div className="fp-hero">
+              <Avatar profile={friend} size="lg" />
+              <div className="fp-name">{friendName}</div>
+              <div className="fp-handle">@{friend.username}</div>
+              {st && (
+                <div className="fp-since">
+                  <CalendarIcon width={13} height={13} />
+                  Since {st.start.toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' })}
+                </div>
+              )}
+            </div>
+
+            <div className="fp-stats">
+              <div className="stat-card fp-stat" style={{ background: 'var(--lavender)' }}>
+                <FlameIcon width={17} height={17} />
                 <div className="stat-num">{score ?? '—'}</div>
-                <div className="stat-label">🔥 Snap Score</div>
+                <div className="stat-label">Snap score</div>
               </div>
-              <div className="stat-card" style={{ background: 'var(--lime)', flex: 1 }}>
+              <div className="stat-card fp-stat" style={{ background: 'var(--lime)' }}>
+                <HeartIcon width={17} height={17} />
                 <div className="stat-num">{st ? st.days.toLocaleString() : '—'}</div>
-                <div className="stat-label">💛 Days together</div>
+                <div className="stat-label">Days together</div>
               </div>
             </div>
-            {st && (
-              <div style={{ fontSize: 13, color: 'var(--muted)', alignSelf: 'stretch' }}>
-                {st.years > 0 && `${st.years} yr${st.years === 1 ? '' : 's'} `}
-                {st.months > 0 && `${st.months} mo `}
-                together · since{' '}
-                {st.start.toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' })}
-              </div>
-            )}
-            <label style={{ alignSelf: 'stretch', fontSize: 13, color: 'var(--muted)' }}>
-              Together since
-              <input
-                type="date"
-                value={anniv || ''}
-                max={new Date().toISOString().slice(0, 10)}
-                onChange={(e) => saveAnniv(e.target.value)}
-                style={{
-                  width: '100%', marginTop: 4, padding: '11px 13px', fontSize: 16,
-                  border: 'none', borderRadius: 'var(--r-row)', background: 'var(--card)', outline: 'none',
-                }}
-              />
-            </label>
-            <button
-              className="pill-btn"
-              style={{ marginTop: 4 }}
-              onClick={() => setKept(true)}
-            >
-              🖼 Photos & videos kept together
-            </button>
-            {kept && (
-              <KeptTogether friendId={friend.id} friendName={friendName} onClose={() => setKept(false)} />
-            )}
+
             {charmList.length > 0 && (
-              <div className="charms">
+              <div className="charms fp-charms">
                 {charmList.map((c, i) => (
                   <span key={i} className="charm-chip">
                     <span className="charm-e">{c.e}</span> {c.t}
@@ -796,7 +769,34 @@ function FriendSheet({ friend, friendName, me, onClose, onRemoved }) {
                 ))}
               </div>
             )}
+
+            <button className="fp-row" onClick={() => setKept(true)}>
+              <span className="fp-row-icon"><GridIcon width={19} height={19} /></span>
+              <span className="fp-row-text">
+                <span className="fp-row-title">Kept together</span>
+                <span className="fp-row-sub">Photos and videos you both saved</span>
+              </span>
+              <span className="fp-row-go">›</span>
+            </button>
+            {kept && (
+              <KeptTogether friendId={friend.id} friendName={friendName} onClose={() => setKept(false)} />
+            )}
+
+            <label className="fp-row fp-row-input">
+              <span className="fp-row-icon"><CalendarIcon width={19} height={19} /></span>
+              <span className="fp-row-text">
+                <span className="fp-row-title">Together since</span>
+                <input
+                  className="field"
+                  type="date"
+                  value={anniv || ''}
+                  max={new Date().toISOString().slice(0, 10)}
+                  onChange={(e) => saveAnniv(e.target.value)}
+                />
+              </span>
+            </label>
           </div>
+
           <button className="menu-action danger" onClick={remove} disabled={busy}>
             {busy ? 'Removing…' : <><CloseIcon width={17} height={17} /> Remove friend</>}
           </button>
