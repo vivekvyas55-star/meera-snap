@@ -156,6 +156,14 @@ export async function listMessages(me, otherId, before = null) {
 async function insertMessage(row) {
   const { data, error } = await supabase.from('messages').insert(row).select().single()
   if (!error) return data
+  // thumb_path arrives with a migration. If the frontend ships before that
+  // migration is applied, a missing column must not stop people sending — drop
+  // the optional field and send the message anyway. A thumbnail is an
+  // optimisation; a failed send is not an acceptable price for it.
+  if ('thumb_path' in row && /thumb_path/.test(error.message ?? '')) {
+    const { thumb_path: _drop, ...rest } = row
+    return insertMessage(rest)
+  }
   if (row.client_id) {
     const existing = await supabase.from('messages').select('*').eq('sender_id', row.sender_id).eq('client_id', row.client_id).maybeSingle()
     if (existing.data) return existing.data
@@ -197,11 +205,27 @@ export async function sendChat(me, otherId, body, replyTo = null, clientId = cry
   return data
 }
 
+// ~400px JPEG written next to the original so the Kept Together grid never
+// pulls a 1600px file into a 96px tile. Best-effort: any failure returns null
+// and the grid falls back to media_path, exactly as it does for older snaps.
+async function uploadSnapThumb(me, clientId, blob) {
+  try {
+    const thumb = await makeThumbnail(blob, 400, 0.6)
+    if (!thumb) return null
+    const path = `${me}/snaps/${clientId}-thumb.jpg`
+    await uploadMedia(path, thumb)
+    return path
+  } catch {
+    return null
+  }
+}
+
 export async function sendSnap(me, otherId, { blob, viewSeconds, caption, clientId = crypto.randomUUID() }) {
   const body = await downscaleImage(blob, 1600, 0.85)
   const path = `${me}/snaps/${clientId}.${mediaExtension(body)}`
   await uploadMedia(path, body)
-  const data = await insertMessage({ ...pairFilter(me, otherId), sender_id: me, client_id: clientId, kind: 'snap', body: caption || null, media_path: path, media_type: 'image', view_seconds: viewSeconds, delivered_at: new Date().toISOString() })
+  const thumbPath = await uploadSnapThumb(me, clientId, body)
+  const data = await insertMessage({ ...pairFilter(me, otherId), sender_id: me, client_id: clientId, kind: 'snap', body: caption || null, media_path: path, thumb_path: thumbPath, media_type: 'image', view_seconds: viewSeconds, delivered_at: new Date().toISOString() })
   notify(otherId, 'snap')
   return data
 }
@@ -212,7 +236,8 @@ export async function sendSnapMedia(me, otherId, { file, viewSeconds, caption, r
   const body = isVideo ? file : await downscaleImage(file, 1600, 0.8)
   const path = `${me}/snaps/${clientId}.${mediaExtension(body)}`
   await uploadMedia(path, body)
-  const data = await insertMessage({ ...pairFilter(me, otherId), sender_id: me, client_id: clientId, kind: 'snap', body: caption || null, media_path: path, media_type: isVideo ? 'video' : 'image', has_audio: Boolean(isVideo), reply_to: replyTo, view_seconds: viewSeconds === undefined ? (isVideo ? null : 45) : viewSeconds, delivered_at: new Date().toISOString() })
+  const thumbPath = isVideo ? null : await uploadSnapThumb(me, clientId, body)
+  const data = await insertMessage({ ...pairFilter(me, otherId), sender_id: me, client_id: clientId, kind: 'snap', body: caption || null, media_path: path, thumb_path: thumbPath, media_type: isVideo ? 'video' : 'image', has_audio: Boolean(isVideo), reply_to: replyTo, view_seconds: viewSeconds === undefined ? (isVideo ? null : 45) : viewSeconds, delivered_at: new Date().toISOString() })
   notify(otherId, 'snap')
   return data
 }
