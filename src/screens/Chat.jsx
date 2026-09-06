@@ -40,6 +40,7 @@ import { ArrowIcon, BackIcon, CheckIcon, CloseIcon, ForwardIcon, ImageIcon, Lock
 import { useAudioRecorder } from '../hooks/useAudioRecorder'
 import { useCall } from '../hooks/useCall'
 import DailyQuestion from '../components/DailyQuestion'
+import QuestionCards from '../components/QuestionCards'
 
 const STICKERS = [
   '😂', '❤️', '🔥', '👍', '👎', '🥳', '😎', '😭',
@@ -458,6 +459,7 @@ export default function Chat({ friend, onBack }) {
       })()}
 
       <DailyQuestion me={me} friend={friend} friendName={friendName} />
+      <QuestionCards me={me} friend={friend} friendName={friendName} />
 
       <div className="thread" ref={threadRef} onScroll={onThreadScroll}>
         {loadingOlder && <div className="thread-loading" role="status">Loading earlier messages…</div>}

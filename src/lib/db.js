@@ -565,6 +565,29 @@ export async function getPromptStatus(otherId) {
   return data ?? { mine_done: false, theirs_done: false }
 }
 
+// Questions you write to each other, as opposed to the app's shared daily
+// prompt. Three asks each per day; the other person answers.
+export async function listPairQuestions(otherId) {
+  const { data, error } = await supabase.rpc('pair_questions_today', { other: otherId })
+  if (error) {
+    if (/function|schema cache|does not exist/i.test(error.message)) return null
+    throw error
+  }
+  return data ?? []
+}
+
+export async function askQuestion(otherId, body) {
+  const { data, error } = await supabase.rpc('ask_question', { other: otherId, body })
+  if (error) throw error
+  return data
+}
+
+export async function answerQuestion(questionId, body) {
+  const { data, error } = await supabase.rpc('answer_question', { question: questionId, body })
+  if (error) throw error
+  return data
+}
+
 // Photos and videos either of you kept in this conversation. No new table —
 // messages already carries a shared saved_by[] both parties can see.
 export async function listKeptTogether(otherId, limit = 200) {
