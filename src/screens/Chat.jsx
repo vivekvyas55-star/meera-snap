@@ -36,6 +36,7 @@ import SnapViewer from '../components/SnapViewer'
 import Portal from '../components/Portal'
 import Sheet from '../components/Sheet'
 import KeptTogether from '../components/KeptTogether'
+import Confirm from '../components/Confirm'
 import { ArrowIcon, BackIcon, CalendarIcon, CheckIcon, CloseIcon, FlameIcon, ForwardIcon, GridIcon, HeartIcon, ImageIcon, LockIcon, MicIcon, PhoneIcon, PlayIcon, PlusIcon, ReplyIcon, SaveIcon, SmileyIcon, VideoIcon } from '../components/Icons'
 import { useAudioRecorder } from '../hooks/useAudioRecorder'
 import { useCall } from '../hooks/useCall'
@@ -114,6 +115,7 @@ export default function Chat({ friend, onBack }) {
   const [behind, setBehind] = useState(0) // new messages that landed while scrolled up
   const seenAtBottom = useRef(new Set()) // ids already on screen at the bottom
   const [forwardMsg, setForwardMsg] = useState(null) // chat being forwarded
+  const [unsendMsg, setUnsendMsg] = useState(null) // pending unsend confirmation
   const [anniv, setAnniv] = useState(null) // "together since" date for this pair
   const [stickers, setStickers] = useState(false)
   const [friendSheet, setFriendSheet] = useState(false)
@@ -626,6 +628,25 @@ export default function Chat({ friend, onBack }) {
       )}
       </div>
 
+      {unsendMsg && (
+        <Confirm
+          title="Unsend this message?"
+          body="It disappears for both of you. This can't be undone."
+          confirmLabel="Unsend"
+          onCancel={() => setUnsendMsg(null)}
+          onConfirm={async () => {
+            try {
+              await unsend(unsendMsg.id)
+              toast('Unsent')
+            } catch (err) {
+              toast(err.message)
+            }
+            setUnsendMsg(null)
+            load()
+          }}
+        />
+      )}
+
       {viewing && (
         <SnapViewer
           message={viewing}
@@ -690,16 +711,7 @@ export default function Chat({ friend, onBack }) {
             setMenuMsg(null)
             load()
           }}
-          onUnsend={async () => {
-            try {
-              await unsend(menuMsg.id)
-              toast('Unsent')
-            } catch (err) {
-              toast(err.message)
-            }
-            setMenuMsg(null)
-            load()
-          }}
+          onUnsend={() => { setUnsendMsg(menuMsg); setMenuMsg(null) }}
           onReply={() => {
             setReplyingTo(menuMsg)
             setMenuMsg(null)
@@ -725,6 +737,7 @@ function FriendSheet({ friend, friendName, me, onClose, onRemoved }) {
   const [anniv, setAnniv] = useState(null)
   const [charms, setCharms] = useState(null)
   const [kept, setKept] = useState(false)
+  const [confirmRemove, setConfirmRemove] = useState(false)
   const [busy, setBusy] = useState(false)
   useEffect(() => {
     getSnapScore(friend.id).then(setScore).catch(() => {})
@@ -804,6 +817,15 @@ function FriendSheet({ friend, friendName, me, onClose, onRemoved }) {
             {kept && (
               <KeptTogether friendId={friend.id} friendName={friendName} onClose={() => setKept(false)} />
             )}
+            {confirmRemove && (
+              <Confirm
+                title={`Remove ${friendName}?`}
+                body="You'll stop seeing each other's snaps, stories and location, and your streak ends. Messages you've already sent stay readable to both of you. You can add each other again later."
+                confirmLabel="Remove friend"
+                onCancel={() => setConfirmRemove(false)}
+                onConfirm={remove}
+              />
+            )}
 
             <label className="fp-row fp-row-input">
               <span className="fp-row-icon"><CalendarIcon width={19} height={19} /></span>
@@ -820,7 +842,7 @@ function FriendSheet({ friend, friendName, me, onClose, onRemoved }) {
             </label>
           </div>
 
-          <button className="menu-action danger" onClick={remove} disabled={busy}>
+          <button className="menu-action danger" onClick={() => setConfirmRemove(true)} disabled={busy}>
             {busy ? 'Removing…' : <><CloseIcon width={17} height={17} /> Remove friend</>}
           </button>
       </Sheet>

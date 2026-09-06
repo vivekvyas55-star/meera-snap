@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { deleteMemory, listMemories, postStory, signedUrl } from '../lib/db'
+import Confirm from '../components/Confirm'
 import { useToast } from '../hooks/useToast'
 import Portal from '../components/Portal'
 import { BackIcon } from '../components/Icons'
@@ -10,7 +11,11 @@ export default function Memories({ me, onBack }) {
   const [items, setItems] = useState(null)
   const [viewing, setViewing] = useState(null)
 
-  const load = () => listMemories(me).then(setItems).catch(() => setItems([]))
+  const [error, setError] = useState(null)
+  const load = () =>
+    listMemories(me)
+      .then((rows) => { setError(null); setItems(rows) })
+      .catch((err) => setError(err.message))
   useEffect(() => {
     load()
   }, [me]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -18,19 +23,25 @@ export default function Memories({ me, onBack }) {
   return (
     <div className="app" style={{ display: 'flex', flexDirection: 'column', background: '#fff' }}>
       <div className="header">
-        <button className="circle dark" onClick={onBack} aria-label="Back">
+        <button className="circle filled" onClick={onBack} aria-label="Back">
           <BackIcon />
         </button>
         <h1>Memories</h1>
       </div>
 
       <div className="list">
-        {items === null && <div className="empty">Loading…</div>}
-        {items?.length === 0 && (
+        {error && (
+          <div className="error" role="alert">
+            <span>Couldn’t load your memories.</span>
+            <button onClick={load}>Retry</button>
+          </div>
+        )}
+        {items === null && !error && <div className="empty" role="status">Loading…</div>}
+        {items?.length === 0 && !error && (
           <div className="empty">
             No memories yet.
             <br />
-            Take a snap and tap 💾 Save to keep it here.
+            Take a snap and tap Save to keep it here.
           </div>
         )}
         {items && items.length > 0 && (
@@ -92,6 +103,7 @@ function MemViewer({ memory, me, onClose, onChanged }) {
   const toast = useToast()
   const [url, setUrl] = useState(null)
   const [busy, setBusy] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
   const isVideo = memory.media_type === 'video'
 
   useEffect(() => {
@@ -164,10 +176,19 @@ function MemViewer({ memory, me, onClose, onChanged }) {
           </button>
         </div>
         <div className="mem-actions">
-          <button className="pill" onClick={toStory} disabled={busy}>📖 Add to Story</button>
-          <button className="pill" onClick={saveToDevice} disabled={busy}>⤓ Save</button>
-          <button className="pill danger" onClick={remove} disabled={busy}>🗑 Delete</button>
+          <button className="pill" onClick={toStory} disabled={busy}>Add to Story</button>
+          <button className="pill" onClick={saveToDevice} disabled={busy}>Save</button>
+          <button className="pill danger" onClick={() => setConfirmDelete(true)} disabled={busy}>Delete</button>
         </div>
+        {confirmDelete && (
+          <Confirm
+            title="Delete this memory?"
+            body="It's removed from your gallery and the file is deleted. This can't be undone."
+            confirmLabel="Delete"
+            onCancel={() => setConfirmDelete(false)}
+            onConfirm={remove}
+          />
+        )}
       </div>
     </Portal>
   )

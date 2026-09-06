@@ -2,6 +2,7 @@ import { lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import {
   acceptFriendRequest,
+  declineFriendRequest,
   birthdaysToday,
   findByUsername,
   getStreaks,
@@ -23,7 +24,7 @@ import StatusIcon from '../components/StatusIcon'
 import Portal from '../components/Portal'
 import Sheet from '../components/Sheet'
 const Snapcode = lazy(() => import('../components/Snapcode'))
-import { CheckIcon, MapIcon, PlusIcon } from '../components/Icons'
+import { CheckIcon, MapIcon, PlusIcon, CloseIcon } from '../components/Icons'
 
 export default function ChatList({ active = true, onOpenChat, onOpenProfile, onOpenMap }) {
   const { profile } = useAuth()
@@ -165,6 +166,22 @@ export default function ChatList({ active = true, onOpenChat, onOpenProfile, onO
                   <div className="row-name">{alias(f.profile)}</div>
                   <div className="row-sub">@{f.profile.username} · wants to be friends</div>
                 </div>
+                {/* There was no way to say no: an unwanted request sat at the
+                    top of the list forever. Declining deletes the pending row,
+                    so they can ask again — it is "no thanks", not a block. */}
+                <button
+                  className="circle filled"
+                  onClick={async () => {
+                    try {
+                      await declineFriendRequest(me, f.profile.id)
+                      toast('Request declined')
+                      load()
+                    } catch (err) { toast(err.message) }
+                  }}
+                  aria-label={`Decline ${f.profile.username}`}
+                >
+                  <CloseIcon />
+                </button>
                 <button
                   className="circle dark"
                   onClick={async () => {
@@ -184,7 +201,12 @@ export default function ChatList({ active = true, onOpenChat, onOpenProfile, onO
           </>
         )}
 
-        {error && <div className="error">{error}<button onClick={load}>Retry</button></div>}
+        {error && (
+          <div className="error" role="alert">
+            <span>Couldn’t load your chats.</span>
+            <button onClick={load}>Retry</button>
+          </div>
+        )}
         {loading && <div className="empty" role="status">Loading your people…</div>}
         {!loading && !error && accepted.length === 0 && requests.length === 0 && (
           <div className="empty">

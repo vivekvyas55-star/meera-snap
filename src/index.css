@@ -1556,3 +1556,22 @@ button:disabled { cursor: not-allowed; }
    soon as the draft wrapped to a second line. Anchor it above the composer. */
 .jump-latest { bottom: auto; top: -46px; left: 50%; position: absolute; }
 .composer-wrap { position: relative; flex: 0 0 auto; }
+
+.confirm-actions { display: flex; gap: 10px; margin-top: 16px; }
+.confirm-actions .pill-btn { margin-top: 0; flex: 1; }
+.confirm-actions .btn-dark { flex: 1; min-height: 48px; }
+.confirm-danger { background: #9c3024; }
+
+/* Offline: every action other than a text chat fails with a raw toast, so the
+   app should at least say why. */
+.offline-bar {
+  position: fixed; left: 0; right: 0; top: 0; z-index: 60;
+  padding: calc(var(--safe-top) + 7px) 16px 7px;
+  background: var(--ink); color: #fff;
+  font-size: 12.5px; font-weight: 500; text-align: center;
+}
+
+/* Own-story actions sit together at the bottom of the viewer. */
+.viewer-mine-actions { position: absolute; left: 16px; bottom: calc(var(--safe-bottom) + 18px); display: flex; gap: 8px; }
+.viewer-mine-actions .viewer-seen { position: static; }
+.viewer-seen.danger { color: #ffb3a6; }

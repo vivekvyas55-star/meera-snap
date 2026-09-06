@@ -88,6 +88,17 @@ export async function acceptFriendRequest(me, otherId) {
   if (error) throw error
 }
 
+// Decline a pending request. Deletes the same pair-keyed row unfriending uses,
+// so the sender can ask again later — this is "no thanks", not a block.
+export async function declineFriendRequest(me, otherId) {
+  const { user_a, user_b } = pairKey(me, otherId)
+  const { error } = await supabase
+    .from('friendships')
+    .delete()
+    .match({ user_a, user_b, status: 'pending' })
+  if (error) throw error
+}
+
 export async function listFriendships(me) {
   const { data, error } = await supabase
     .from('friendships')
@@ -747,6 +758,18 @@ export async function postStory(me, blob, caption) {
     .single()
   if (error) throw error
   return data
+}
+
+// Take down your own story before its 48h expiry. RLS scopes the delete to the
+// owner; the object goes through the same durable cleanup queue as everything
+// else, so a crashed client cannot orphan the file.
+export async function deleteStory(story) {
+  const { error } = await supabase.from('stories').delete().eq('id', story.id)
+  if (error) throw error
+  if (story.media_path) {
+    await supabase.rpc('queue_media_cleanup', { object_path: story.media_path }).catch(() => {})
+    forgetSignedUrl(story.media_path)
+  }
 }
 
 export async function listStories() {

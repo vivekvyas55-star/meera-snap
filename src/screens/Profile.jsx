@@ -10,6 +10,7 @@ import {
   updateProfile,
 } from '../lib/db'
 import { useAuth } from '../hooks/useAuth'
+import Confirm from '../components/Confirm'
 import { useToast } from '../hooks/useToast'
 import Avatar from '../components/Avatar'
 import { BackIcon, CheckIcon, PowerIcon } from '../components/Icons'
@@ -39,6 +40,7 @@ export default function Profile({ onBack }) {
   const [score, setScore] = useState(null)
   const [saving, setSaving] = useState(false)
   const [showMemories, setShowMemories] = useState(false)
+  const [confirmLock, setConfirmLock] = useState(false)
   const [secQ, setSecQ] = useState(SECURITY_QUESTIONS[0])
   const [secA, setSecA] = useState('')
   const [savingSec, setSavingSec] = useState(false)
@@ -325,15 +327,32 @@ export default function Profile({ onBack }) {
           onClick={() => setShowMemories(true)}
           className="pill-btn"
         >
-          📸 Memories
+          Memories
         </button>
 
-        <button
-          onClick={lockApp}
-          className="pill-btn"
-        >
-          🔒 Lock app
+        <div className="section">Lock</div>
+        {/* This used to be a bare pill with no explanation. It swaps the whole
+            app for a passcode pad, and three wrong entries hide it for fifteen
+            minutes with deliberately no hint that a passcode exists — a curious
+            tap bricked the app for a quarter of an hour. */}
+        <div className="field-hint">
+          Hides Meera behind your 4-digit passcode until you enter it again.
+          Make sure you know it — there is no way to reset it, and three wrong
+          tries lock the app for 15 minutes.
+        </div>
+        <button onClick={() => setConfirmLock(true)} className="pill-btn">
+          Lock app
         </button>
+        {confirmLock && (
+          <Confirm
+            title="Lock Meera?"
+            body="You'll need your 4-digit passcode to get back in. Three wrong tries lock the app for 15 minutes, and there's no reset."
+            confirmLabel="Lock"
+            danger={false}
+            onCancel={() => setConfirmLock(false)}
+            onConfirm={lockApp}
+          />
+        )}
       </div>
     </div>
   )

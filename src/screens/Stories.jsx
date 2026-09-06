@@ -5,12 +5,13 @@ import {
   listStories,
   listStoryViewers,
   markStoryViewed,
-  signedUrl,
-} from '../lib/db'
+  signedUrl, deleteStory } from '../lib/db'
 import { useAuth } from '../hooks/useAuth'
 import { useAlias } from '../hooks/useAliasClock'
 import Avatar from '../components/Avatar'
 import Portal from '../components/Portal'
+import Confirm from '../components/Confirm'
+import { useToast } from '../hooks/useToast'
 import { supabase } from '../lib/supabase'
 
 export default function Stories({ active, onCapture }) {
@@ -150,6 +151,7 @@ export default function Stories({ active, onCapture }) {
 }
 
 function StoryViewer({ group, author, me, onClose, onNextAuthor }) {
+  const toast = useToast()
   const alias = useAlias()
   const [storyId, setStoryId] = useState(null)
   const [ready, setReady] = useState(false)
@@ -157,7 +159,8 @@ function StoryViewer({ group, author, me, onClose, onNextAuthor }) {
   const [url, setUrl] = useState(null)
   const [paused, setPaused] = useState(false)
   const [elapsed, setElapsed] = useState(0)
-  const [viewers, setViewers] = useState(null) // null = closed, [] = open/empty
+  const [viewers, setViewers] = useState(null)
+  const [confirmDelete, setConfirmDelete] = useState(false) // null = closed, [] = open/empty
 
   // Refs so a parent re-render (e.g. a stories realtime event) doesn't re-run
   // the load effect and blank/restart the story you're watching.
@@ -262,16 +265,45 @@ function StoryViewer({ group, author, me, onClose, onNextAuthor }) {
       {/* Own story: an eye + viewer count at bottom-left; tap to see who saw it
           (like Snapchat / WhatsApp status). */}
       {group.mine && (
-        <button
-          className="viewer-seen"
-          onClick={async (e) => {
-            e.stopPropagation()
-            setPaused(true)
-            setViewers(await listStoryViewers(story.id, me).catch(() => []))
+        <div className="viewer-mine-actions">
+          <button
+            className="viewer-seen"
+            onClick={async (e) => {
+              e.stopPropagation()
+              setPaused(true)
+              setViewers(await listStoryViewers(story.id, me).catch(() => []))
+            }}
+          >
+            Seen by
+          </button>
+          {/* Once posted, a story used to be visible to every friend for 48h
+              with no way to take it down. */}
+          <button
+            className="viewer-seen danger"
+            onClick={(e) => { e.stopPropagation(); setPaused(true); setConfirmDelete(true) }}
+          >
+            Delete
+          </button>
+        </div>
+      )}
+
+      {confirmDelete && (
+        <Confirm
+          title="Delete this story?"
+          body="It disappears for everyone straight away, along with who has seen it. This can't be undone."
+          confirmLabel="Delete story"
+          onCancel={() => { setConfirmDelete(false); setPaused(false) }}
+          onConfirm={async () => {
+            try {
+              await deleteStory(story)
+              toast('Story deleted')
+              onClose()
+            } catch (err) {
+              toast(err.message)
+            }
+            setConfirmDelete(false)
           }}
-        >
-          👁 Seen by
-        </button>
+        />
       )}
 
       {viewers !== null && (

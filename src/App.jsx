@@ -1,4 +1,5 @@
 import ErrorBoundary from './components/ErrorBoundary'
+import OfflineBar from './components/OfflineBar'
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { AuthProvider } from './hooks/AuthProvider'
 import { useAuth } from './hooks/useAuth'
@@ -291,6 +292,7 @@ export default function App() {
           <AliasClockProvider>
             <CallProvider>
               <OutboxDelivery />
+              <OfflineBar />
               <SessionShell />
               <CallOverlay />
             </CallProvider>
