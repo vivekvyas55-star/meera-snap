@@ -103,6 +103,7 @@ export default function PinLock({ onUnlock }) {
 
   return (
     <div className="pinlock">
+      <div className="pin-mark" aria-hidden="true">M</div>
       <div className="pin-title">Meera</div>
       <div className="pin-sub">Enter passcode</div>
       <div className={`pin-dots${shake ? ' shake' : ''}`}>

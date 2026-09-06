@@ -23,6 +23,7 @@ export default function DailyQuestion({ me, friend, friendName }) {
   const [status, setStatus] = useState({ mine_done: false, theirs_done: false })
   const [draft, setDraft] = useState('')
   const [open, setOpen] = useState(false)
+  const [touched, setTouched] = useState(false) // did the user open/close it themselves
   const [busy, setBusy] = useState(false)
 
   const requestRef = useRef(0)
@@ -53,6 +54,13 @@ export default function DailyQuestion({ me, friend, friendName }) {
     return () => { requests.current++; clearInterval(interval); window.removeEventListener('focus', refresh); document.removeEventListener('visibilitychange', refresh) }
   }, [load])
 
+  // When they have answered and you have not, open on arrival instead of
+  // hiding the whole thing behind a chip nobody realised was tappable.
+  useEffect(() => {
+    if (touched) return
+    if (status.theirs_done && !status.mine_done) setOpen(true)
+  }, [touched, status.theirs_done, status.mine_done])
+
   const submit = async (e) => {
     e.preventDefault()
     const text = draft.trim()
@@ -81,7 +89,11 @@ export default function DailyQuestion({ me, friend, friendName }) {
   // screen. It nags gently only when they're waiting on you.
   if (!open) {
     return (
-      <button className={`dq-chip${status.theirs_done && !answered ? ' waiting' : ''}`} onClick={() => setOpen(true)}>
+      <button
+        className={`dq-chip${status.theirs_done && !answered ? ' waiting' : ''}`}
+        onClick={() => { setTouched(true); setOpen(true) }}
+        aria-expanded="false"
+      >
         <span className="dq-chip-icon">💭</span>
         <span className="dq-chip-text">
           {revealed
@@ -92,6 +104,9 @@ export default function DailyQuestion({ me, friend, friendName }) {
                 ? `${friendName} answered — your turn`
                 : 'Question of the day'}
         </span>
+        {/* The chip read as a status line, so people did not realise the
+            question and both answers live one tap inside it. */}
+        <span className="dq-chip-more">{revealed ? 'See answers' : answered ? 'View' : 'Answer'} ›</span>
       </button>
     )
   }
@@ -100,7 +115,7 @@ export default function DailyQuestion({ me, friend, friendName }) {
     <div className="dq">
       <div className="dq-head">
         <span className="dq-label">Question of the day</span>
-        <button className="dq-close" onClick={() => setOpen(false)} aria-label="Close">
+        <button className="dq-close" onClick={() => { setTouched(true); setOpen(false) }} aria-label="Close">
           ✕
         </button>
       </div>

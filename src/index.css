@@ -733,26 +733,46 @@ input, textarea { font: inherit; }
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: 14px; padding: 32px 24px calc(var(--safe-bottom) + 32px);
 }
-.pin-title { font-size: 34px; font-weight: 300; letter-spacing: -0.03em; }
-.pin-sub { color: var(--muted); font-size: 15px; margin-bottom: 6px; }
-.pin-dots { display: flex; gap: 18px; margin-bottom: 24px; }
+/* On the ABC language like the rest of the app: a vibrant lavender mark, an
+   oversized light display heading, and pill/circular controls. It must stay
+   plausible as an ordinary lock screen — nothing here hints at what is behind
+   it (see the decoy notes in CLAUDE.md). */
+.pin-mark {
+  width: 62px; height: 62px; border-radius: 20px;
+  background: var(--lavender); color: var(--ink);
+  display: grid; place-items: center;
+  font-size: 30px; font-weight: 500; letter-spacing: -0.05em;
+  margin-bottom: 4px;
+}
+.pin-title { font-size: 38px; font-weight: 300; letter-spacing: -0.03em; line-height: 1; }
+.pin-sub { color: var(--muted); font-size: 14.5px; margin-bottom: 6px; }
+.pin-dots { display: flex; gap: 16px; margin-bottom: 26px; }
 .pin-dots.shake { animation: shake 0.4s; }
 .pin-dot {
-  width: 14px; height: 14px; border-radius: 50%;
+  width: 13px; height: 13px; border-radius: 50%;
   border: 1.5px solid var(--ink); background: transparent;
+  transition: background 140ms ease, transform 140ms ease;
 }
-.pin-dot.filled { background: var(--ink); }
+.pin-dot.filled { background: var(--ink); transform: scale(1.15); }
 .pin-pad {
-  display: grid; grid-template-columns: repeat(3, 74px); gap: 18px;
+  display: grid; grid-template-columns: repeat(3, 72px); gap: 16px;
   justify-content: center;
 }
 .pin-key {
-  width: 74px; height: 74px; border-radius: 50%;
-  font-size: 28px; font-weight: 400; background: var(--card);
+  width: 72px; height: 72px; border-radius: 50%;
+  font-size: 26px; font-weight: 300; letter-spacing: -0.02em;
+  background: var(--card); color: var(--ink);
   display: grid; place-items: center;
+  transition: background 120ms ease;
 }
-.pin-key:active { background: var(--card-press); }
-.pin-back { background: transparent; font-size: 22px; }
+.pin-key:active { background: var(--card-press); transform: scale(0.96); }
+.pin-back { background: transparent; font-size: 20px; color: var(--muted); }
+.pin-back:active { background: var(--card); }
+@media (prefers-reduced-motion: reduce) {
+  .pin-dot, .pin-key { transition: none; }
+  .pin-dot.filled { transform: none; }
+  .pin-key:active { transform: none; }
+}
 @keyframes shake {
   0%, 100% { transform: translateX(0); }
   20%, 60% { transform: translateX(-8px); }
@@ -1278,3 +1298,14 @@ button:disabled { cursor: not-allowed; }
 /* Nothing in a scrolling column should be able to shift it sideways. */
 .list { overflow-x: hidden; }
 .list > * { max-width: 100%; }
+
+/* The chip looked like a status line, not a control. */
+.dq-chip-more {
+  margin-left: auto;
+  flex: 0 0 auto;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--indigo);
+  white-space: nowrap;
+}
+.dq-chip.waiting .dq-chip-more { color: var(--ink); }
