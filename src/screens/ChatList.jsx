@@ -73,11 +73,8 @@ export default function ChatList({ active = true, onOpenChat, onOpenProfile, onO
     finally { if (request === requestRef.current) setLoading(false) }
   }, [me])
 
-  useEffect(() => {
-    load()
-  }, [load])
-
-  // Coming back from a conversation must refresh the list. It no longer
+  // Runs on mount (active defaults true) and again whenever the pane becomes
+  // active. A separate mount effect duplicated the whole six-query load. It no longer
   // remounts on return (Chat/Profile/Map cover the shell rather than replacing
   // it), so without this a chat you just read kept its unread badge.
   useEffect(() => {

@@ -267,20 +267,18 @@ export async function sendVoiceNote(me, otherId, blob, replyTo = null, clientId 
 }
 
 // Send a single emoji as a large sticker.
-export async function sendSticker(me, otherId, emoji, replyTo = null) {
-  const { data, error } = await supabase
-    .from('messages')
-    .insert({
-      ...pairFilter(me, otherId),
-      sender_id: me,
-      kind: 'sticker',
-      body: emoji,
-      reply_to: replyTo,
-      delivered_at: new Date().toISOString(),
-    })
-    .select()
-    .single()
-  if (error) throw error
+export async function sendSticker(me, otherId, emoji, replyTo = null, clientId = crypto.randomUUID()) {
+  // Every other send path carries a client_id so insertMessage can recover a
+  // duplicate; without one a double-tap in the sticker grid sent two.
+  const data = await insertMessage({
+    ...pairFilter(me, otherId),
+    sender_id: me,
+    client_id: clientId,
+    kind: 'sticker',
+    body: emoji,
+    reply_to: replyTo,
+    delivered_at: new Date().toISOString(),
+  })
   notify(otherId, 'sticker')
   return data
 }

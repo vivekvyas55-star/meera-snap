@@ -112,7 +112,7 @@ export default function Chat({ friend, onBack }) {
   const [replyingTo, setReplyingTo] = useState(null) // message being replied to
   const draftRef = useRef(null)
   const [behind, setBehind] = useState(0) // new messages that landed while scrolled up
-  const lastCountRef = useRef(0)
+  const seenAtBottom = useRef(new Set()) // ids already on screen at the bottom
   const [forwardMsg, setForwardMsg] = useState(null) // chat being forwarded
   const [anniv, setAnniv] = useState(null) // "together since" date for this pair
   const [stickers, setStickers] = useState(false)
@@ -243,19 +243,19 @@ export default function Chat({ friend, onBack }) {
     const el = threadRef.current
     if (!el) return
     if (el.scrollTop < 80 && hasMore && !loadingOlderRef.current) loadOlder()
-    if (el.scrollHeight - el.scrollTop - el.clientHeight < 120) setBehind(0)
+    if (el.scrollHeight - el.scrollTop - el.clientHeight < 120) {
+      seenAtBottom.current = new Set(messages.map((m) => m.id))
+      setBehind(0)
+    }
   }
 
   const jumpToLatest = () => {
     const el = threadRef.current
     if (!el) return
     el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
+    seenAtBottom.current = new Set(messages.map((m) => m.id))
     setBehind(0)
   }
-
-  useEffect(() => {
-    load()
-  }, [load])
 
   useEffect(() => {
     getAnniversary(me, friend.id).then(setAnniv).catch(() => {})
@@ -303,17 +303,21 @@ export default function Chat({ friend, onBack }) {
       return
     }
     const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 120
+    // Count by message id, not by length. A length delta counted the whole
+    // first page (lastCount started at 0), every page of history paged in by
+    // scrolling UP, and messages you sent yourself — all of which reported as
+    // "N new messages".
     if (nearBottom) {
       el.scrollTo({ top: el.scrollHeight })
+      seenAtBottom.current = new Set(messages.map((m) => m.id))
       setBehind(0)
     } else {
-      // Scrolled back through history: a new message lands off-screen and used
-      // to arrive completely silently. Count it so the pill can say so.
-      const arrived = messages.length - lastCountRef.current
-      if (arrived > 0) setBehind((n) => n + arrived)
+      const unseenIncoming = messages.filter(
+        (m) => m.sender_id !== me && !seenAtBottom.current.has(m.id)
+      ).length
+      setBehind(unseenIncoming)
     }
-    lastCountRef.current = messages.length
-  }, [messages, theirTyping])
+  }, [messages, theirTyping, me])
 
   const recordSeen = useCallback((id) => {
     if (seenRef.current.has(id)) return
@@ -412,15 +416,20 @@ export default function Chat({ friend, onBack }) {
         <button className="circle filled" onClick={leave} aria-label="Back">
           <BackIcon />
         </button>
-        <button className="chat-peer" onClick={() => setFriendSheet(true)} aria-label="Friend info">
+        {/* aria-label used to override every descendant, so a screen reader
+            announced "Friend info, button" and never said who you were talking
+            to. Name the button by the name itself. */}
+        <button className="chat-peer" onClick={() => setFriendSheet(true)} aria-labelledby="chat-peer-name">
           <Avatar profile={friend} size="sm" />
-          <h1 style={{ fontSize: 22, display: 'flex', alignItems: 'center', gap: 8, margin: 0 }}>
+          <h1 className="chat-peer-h1">
             <span
               className={`presence-dot ${isOnline(friend.id) ? 'live' : 'off'}`}
-              title={isOnline(friend.id) ? 'Active now' : 'Offline'}
+              role="img"
+              aria-label={isOnline(friend.id) ? 'Active now' : 'Offline'}
             />
-            {friendName}
+            <span id="chat-peer-name" className="chat-peer-name">{friendName}</span>
           </h1>
+          <span className="sr-only">— friend info</span>
         </button>
         {/* Snapchat signals "they're in this chat" with the friend's Bitmoji
             holding a phone — not a text badge. This is the nearest equivalent
@@ -488,8 +497,8 @@ export default function Chat({ friend, onBack }) {
             // A run of messages from one person in one moment is one moment, not
             // four events: name the sender once at the top of the run, stamp the
             // time once at the bottom.
-            startsRun={i === 0 || visible[i - 1].sender_id !== m.sender_id}
-            endsRun={i === visible.length - 1 || visible[i + 1].sender_id !== m.sender_id}
+            startsRun={i === 0 || visible[i - 1].sender_id !== m.sender_id || dayKey(visible[i - 1].created_at) !== dayKey(m.created_at)}
+            endsRun={i === visible.length - 1 || visible[i + 1].sender_id !== m.sender_id || dayKey(visible[i + 1].created_at) !== dayKey(m.created_at)}
             friend={friend}
             friendName={friendName}
             myProfile={profile}
@@ -500,7 +509,7 @@ export default function Chat({ friend, onBack }) {
             repliedTo={m.reply_to ? byId[m.reply_to] : null}
             onQuickReact={async () => {
               const mine = (m.reactions ?? {})[me]
-              await reactToMessage(m.id, mine === '❤️' ? '' : '❤️').catch(() => {})
+              await reactToMessage(m.id, mine === '❤️' ? '' : '❤️').catch((err) => toast(err.message))
               load()
             }}
           />
@@ -528,6 +537,8 @@ export default function Chat({ friend, onBack }) {
         )}
       </div>
 
+
+      <div className="composer-wrap">
       {behind > 0 && (
         <button className="jump-latest" onClick={jumpToLatest}>
           {behind} new message{behind === 1 ? '' : 's'} ↓
@@ -613,6 +624,7 @@ export default function Chat({ friend, onBack }) {
           )}
         </form>
       )}
+      </div>
 
       {viewing && (
         <SnapViewer
@@ -661,19 +673,30 @@ export default function Chat({ friend, onBack }) {
           onClose={() => setMenuMsg(null)}
           onReact={async (emoji) => {
             const mine = (menuMsg.reactions ?? {})[me]
-            await reactToMessage(menuMsg.id, mine === emoji ? '' : emoji).catch(() => {})
+            // A silently failed tapback just never appeared; say so.
+            await reactToMessage(menuMsg.id, mine === emoji ? '' : emoji).catch((err) => toast(err.message))
             setMenuMsg(null)
             load()
           }}
           onSave={async () => {
-            const next = await toggleSaved(menuMsg, me)
-            toast(next.includes(me) ? 'Saved in chat' : 'Unsaved')
+            // These two threw into nowhere: no toast, no state change, and the
+            // menu stayed open, so the tap looked like it did nothing at all.
+            try {
+              const next = await toggleSaved(menuMsg, me)
+              toast(next.includes(me) ? 'Saved in chat' : 'Unsaved')
+            } catch (err) {
+              toast(err.message)
+            }
             setMenuMsg(null)
             load()
           }}
           onUnsend={async () => {
-            await unsend(menuMsg.id)
-            toast('Unsent')
+            try {
+              await unsend(menuMsg.id)
+              toast('Unsent')
+            } catch (err) {
+              toast(err.message)
+            }
             setMenuMsg(null)
             load()
           }}
@@ -1085,7 +1108,9 @@ function MessageRow({
           tabIndex={0}
           onKeyDown={onKeyDown}
           onClick={handleClick}
-          onPointerDown={scrambled ? () => setRevealed(true) : undefined}
+          // Holding to unscramble must not also arm the action menu — the
+          // menu fired at 420ms and covered the text you were trying to read.
+          onPointerDown={scrambled ? () => { endPress(); setRevealed(true) } : undefined}
           onPointerUp={scrambled ? () => setRevealed(false) : undefined}
           onPointerLeave={scrambled ? () => setRevealed(false) : undefined}
           onPointerCancel={scrambled ? () => setRevealed(false) : undefined}

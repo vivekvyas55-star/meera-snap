@@ -25,10 +25,14 @@ test('changing accounts never exposes the old profile while new profile loads',a
  act(()=>mocks.callback('SIGNED_IN',{user:{id:'B'}}));expect(result.current.profile).toBe(null)
  await act(async()=>finish({id:'B'}));expect(result.current.profile.id).toBe('B')
 })
-test('logout detaches notifications before ending the session and surfaces failures',async()=>{
+test('logout detaches notifications first, and a failed detach is reported without trapping the session',async()=>{
  mocks.disable.mockRejectedValueOnce(new Error('detach failed'));mocks.signOut.mockResolvedValue({})
  const {result}=renderHook(useAuth,{wrapper});await waitFor(()=>expect(result.current.loading).toBe(false))
- await expect(result.current.signOut()).rejects.toThrow('detach failed');expect(mocks.signOut).not.toHaveBeenCalled()
+ // The session MUST end even when detaching fails — otherwise you cannot log
+ // out offline — but the user still has to be told the device may keep its
+ // subscription.
+ await expect(result.current.signOut()).rejects.toThrow(/still receive notifications/)
+ expect(mocks.signOut).toHaveBeenCalled()
  mocks.disable.mockResolvedValue();await act(()=>result.current.signOut())
- expect(mocks.disable.mock.invocationCallOrder.at(-1)).toBeLessThan(mocks.signOut.mock.invocationCallOrder[0])
+ expect(mocks.disable.mock.invocationCallOrder.at(-1)).toBeLessThan(mocks.signOut.mock.invocationCallOrder.at(-1))
 })

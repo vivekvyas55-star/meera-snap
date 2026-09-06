@@ -1492,3 +1492,67 @@ button:disabled { cursor: not-allowed; }
 .fp-row-sub { font-size: 12.5px; color: var(--muted); }
 .fp-row-go { color: var(--muted); font-size: 20px; line-height: 1; }
 .fp-row-input .field { margin-top: 6px; background: #fff; }
+
+/* The install banner's dismiss must be a real target, and it now sits beside
+   the Install action rather than replacing it. */
+.install-close {
+  min-width: 44px; min-height: 44px;
+  display: grid; place-items: center;
+  color: inherit; opacity: 0.75; flex: 0 0 auto;
+}
+
+/* .error outside the auth screen had no rule at all: the chat list and stories
+   printed raw Postgres text with a borderless "Retry" and no alert role. Reuse
+   the treatment the thread already got. */
+.error {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 12px;
+  margin: 12px 4px; padding: 18px;
+  border-radius: var(--r-card);
+  background: #fff0ed; border: 1px solid #f3c9c0; color: #9c3024;
+  font-size: 15px; line-height: 1.45;
+}
+.error button {
+  min-height: 44px; padding: 0 18px;
+  border-radius: var(--r-pill);
+  background: var(--ink); color: #fff;
+  font-size: 14.5px; font-weight: 500;
+}
+
+/* The chat-list "asked you a question" marker had no rule. */
+.qotd-dot { font-size: 13px; line-height: 1; }
+
+/* The collapse control is the only way out of the questions panel, so it must
+   not scroll away behind a day's cards. */
+.qcards-head {
+  position: sticky; top: 0; z-index: 1;
+  background: var(--bg);
+}
+.qcards-close { min-width: 44px; min-height: 44px; }
+.qcards-ask { min-height: 40px; }
+
+/* vh ignores the Android keyboard (interactive-widget=resizes-content shrinks
+   the layout viewport but not vh), which pushed the composer below the fold. */
+.qcards, .dq-panel { max-height: min(40dvh, 320px); }
+@media (max-height: 640px) {
+  .qcards, .dq-panel { max-height: 32dvh; }
+}
+
+/* The header name is the first thing to lose when the two call buttons and the
+   back circle take their 44px each — at 320px that left about five characters,
+   clipped mid-glyph because text-overflow does not apply to a flex container. */
+.chat-peer-h1 {
+  display: flex; align-items: center; gap: 8px; margin: 0; min-width: 0;
+  font-size: clamp(17px, 5.2vw, 22px);
+}
+.chat-peer-name {
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+
+/* The jump pill sat at a fixed offset and landed on top of the composer as
+   soon as the draft wrapped to a second line. Anchor it above the composer. */
+.jump-latest { bottom: auto; top: -46px; left: 50%; position: absolute; }
+.composer-wrap { position: relative; flex: 0 0 auto; }

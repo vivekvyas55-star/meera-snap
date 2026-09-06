@@ -13,6 +13,12 @@ const FOCUSABLE =
 export default function Sheet({ onClose, label, className = 'sheet-body', children }) {
   const bodyRef = useRef(null)
   const restoreRef = useRef(null)
+  // Every caller passes an inline arrow, so onClose is a new function on each
+  // parent render. Depending on it re-ran the whole effect — pulling focus out
+  // of the field you were typing in (and closing the phone keyboard) on every
+  // incoming message. Hold it in a ref and run the effect exactly once.
+  const closeRef = useRef(onClose)
+  closeRef.current = onClose
 
   useEffect(() => {
     // Remember where focus came from so closing puts it back on the trigger
@@ -23,13 +29,16 @@ export default function Sheet({ onClose, label, className = 'sheet-body', childr
 
     const onKeyDown = (e) => {
       if (e.key === 'Escape') {
-        e.stopPropagation()
-        onClose?.()
+        // stopPropagation does NOT stop other listeners on the same node, so a
+        // stacked sheet (Kept Together inside the friend sheet) closed both.
+        e.stopImmediatePropagation()
+        closeRef.current?.()
         return
       }
       if (e.key !== 'Tab') return
       const items = [...(bodyRef.current?.querySelectorAll(FOCUSABLE) ?? [])]
-      if (items.length === 0) return
+      // With nothing focusable inside, Tab would escape the dialog entirely.
+      if (items.length === 0) { e.preventDefault(); return }
       const edge = e.shiftKey ? items[0] : items[items.length - 1]
       if (document.activeElement === edge) {
         e.preventDefault()
@@ -41,7 +50,7 @@ export default function Sheet({ onClose, label, className = 'sheet-body', childr
       document.removeEventListener('keydown', onKeyDown, true)
       restoreRef.current?.focus?.()
     }
-  }, [onClose])
+  }, [])
 
   return (
     <div className="sheet" onClick={onClose} role="presentation">

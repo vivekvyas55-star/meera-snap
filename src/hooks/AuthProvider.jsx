@@ -80,11 +80,27 @@ export function AuthProvider({ children }) {
   }
 
   const signOut = async () => {
-    await disablePush()
+    // Detach the device first, but never let that failure trap someone in a
+    // signed-in session — offline, disablePush throws and logout was impossible.
+    // The failure still has to be SURFACED, because a device that keeps its
+    // subscription keeps receiving this account's notifications: sign out, then
+    // report it, so the user knows to re-open the app on this device once it is
+    // back online.
+    let detachError = null
+    try {
+      await disablePush()
+    } catch (err) {
+      detachError = err
+    }
     clearOutbox(session?.user?.id)
     clearMediaCache()
     const { error } = await supabase.auth.signOut()
     if (error) throw error
+    if (detachError) {
+      throw new Error(
+        'Signed out, but this device may still receive notifications — open Meera here once you’re back online.'
+      )
+    }
   }
 
   return (

@@ -45,6 +45,7 @@ export default function CameraScreen({ active, onSent, onEditing }) {
   const { videoRef, start, stop, pause, flip, capture, facing, error, ready } = useCamera()
 
   const [shot, setShot] = useState(null) // { blob, url }
+  const [released, setReleased] = useState(false) // a call took the camera
   const [caption, setCaption] = useState('')
   const [timerIdx, setTimerIdx] = useState(DEFAULT_TIMER_IDX) // default 45s
   const [sending, setSending] = useState(false)
@@ -99,9 +100,18 @@ export default function CameraScreen({ active, onSent, onEditing }) {
   // A call needs the camera to itself — hand it over rather than holding a
   // paused stream the call can't get past.
   useEffect(() => {
-    window.addEventListener('meera:camera-release', stop)
-    return () => window.removeEventListener('meera:camera-release', stop)
+    const release = () => { stop(); setReleased(true) }
+    window.addEventListener('meera:camera-release', release)
+    return () => window.removeEventListener('meera:camera-release', release)
   }, [stop])
+
+  // Neither `active` nor `shot` changes when a call ends, so the acquisition
+  // effect never re-ran and the preview stayed black with the shutter disabled.
+  useEffect(() => {
+    if (!released || !active || shot) return
+    setReleased(false)
+    start()
+  }, [released, active, shot, start])
 
   // iOS ends or mutes camera tracks when the page goes to the background, and
   // nothing in `active`/`shot` changes when you come back — so the preview

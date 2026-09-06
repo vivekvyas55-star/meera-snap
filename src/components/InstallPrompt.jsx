@@ -1,3 +1,4 @@
+import { CloseIcon } from './Icons'
 import { useEffect, useState } from 'react'
 import { isIOS, isIOSSafari, isStandalone } from '../lib/pwa'
 
@@ -54,7 +55,7 @@ export default function InstallPrompt() {
           {deferred && <span>Installs like an app. No app store needed.</span>}
           {iosSafari && (
             <span>
-              Tap Share <span aria-hidden>􀈂</span> at the bottom, then{' '}
+              Tap Share at the bottom, then{' '}
               <strong>Add to Home Screen</strong>.
             </span>
           )}
@@ -65,15 +66,18 @@ export default function InstallPrompt() {
             </span>
           )}
         </div>
-        {deferred ? (
+        {/* Dismiss is ALWAYS available. When beforeinstallprompt had fired
+            (every Android Chrome) the banner rendered Install and nothing else,
+            so a ~68px bar covered the bottom of every pane forever unless the
+            user installed. */}
+        {deferred && (
           <button className="install-cta" onClick={install}>
             Install
           </button>
-        ) : (
-          <button className="install-close" onClick={dismiss} aria-label="Dismiss">
-            ✕
-          </button>
         )}
+        <button className="install-close" onClick={dismiss} aria-label="Dismiss">
+          <CloseIcon width={16} height={16} />
+        </button>
       </div>
     </div>
   )

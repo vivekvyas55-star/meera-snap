@@ -1,3 +1,4 @@
+import ErrorBoundary from './components/ErrorBoundary'
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { AuthProvider } from './hooks/AuthProvider'
 import { useAuth } from './hooks/useAuth'
@@ -121,6 +122,17 @@ function Shell() {
     }
   }, [overlayOpen])
 
+  // Sign-out, a PIN relock or an account switch unmounts Shell from underneath
+  // an open overlay. Without this the entry pushed above outlives the ref that
+  // tracks it, and every cycle leaves one dead step on the stack — Back then
+  // appears to do nothing.
+  useEffect(() => () => {
+    if (overlayDepth.current === 1 && window.history.state?.meeraOverlay) {
+      overlayDepth.current = 0
+      window.history.back()
+    }
+  }, [])
+
   useEffect(() => {
     const onPop = () => {
       overlayDepth.current = 0
@@ -227,7 +239,11 @@ function Shell() {
 
       <InstallPrompt />
     </div>
-    {overlay}
+    {overlay && (
+      <Suspense fallback={<div className="app"><div className="empty" role="status">Loading…</div></div>}>
+        {overlay}
+      </Suspense>
+    )}
     </>
   )
 }
@@ -268,6 +284,7 @@ export default function App() {
   if (!unlocked) return <PinLock onUnlock={() => setUnlocked(true)} />
 
   return (
+    <ErrorBoundary>
     <AuthProvider>
       <ToastProvider>
         <OnlinePresenceProvider>
@@ -281,5 +298,6 @@ export default function App() {
         </OnlinePresenceProvider>
       </ToastProvider>
     </AuthProvider>
+    </ErrorBoundary>
   )
 }
