@@ -34,7 +34,7 @@ import Avatar from '../components/Avatar'
 import StatusIcon from '../components/StatusIcon'
 import SnapViewer from '../components/SnapViewer'
 import Portal from '../components/Portal'
-import { ArrowIcon, BackIcon, CheckIcon, CloseIcon, ImageIcon, MicIcon, PhoneIcon, PlayIcon, PlusIcon, SmileyIcon, VideoIcon } from '../components/Icons'
+import { ArrowIcon, BackIcon, CheckIcon, CloseIcon, ImageIcon, LockIcon, MicIcon, PhoneIcon, PlayIcon, PlusIcon, SmileyIcon, VideoIcon } from '../components/Icons'
 import { useAudioRecorder } from '../hooks/useAudioRecorder'
 import { useCall } from '../hooks/useCall'
 import DailyQuestion from '../components/DailyQuestion'
@@ -369,7 +369,7 @@ export default function Chat({ friend, onBack }) {
   return (
     <div className="app" style={{ display: 'flex', flexDirection: 'column' }}>
       <div className="header">
-        <button className="circle dark" onClick={leave} aria-label="Back">
+        <button className="circle filled" onClick={leave} aria-label="Back">
           <BackIcon />
         </button>
         <button className="chat-peer" onClick={() => setFriendSheet(true)} aria-label="Friend info">
@@ -434,11 +434,16 @@ export default function Chat({ friend, onBack }) {
           </div>
         )}
 
-        {visible.map((m) => (
+        {visible.map((m, i) => (
           <MessageRow
             key={m.id}
             message={m}
             me={me}
+            // A run of messages from one person in one moment is one moment, not
+            // four events: name the sender once at the top of the run, stamp the
+            // time once at the bottom.
+            startsRun={i === 0 || visible[i - 1].sender_id !== m.sender_id}
+            endsRun={i === visible.length - 1 || visible[i + 1].sender_id !== m.sender_id}
             friend={friend}
             friendName={friendName}
             myProfile={profile}
@@ -848,10 +853,15 @@ function replyPreview(m) {
 }
 
 function MessageRow({
-  message, me, friend, friendName, myProfile,
+  message, me, friend, friendName, myProfile, startsRun = true, endsRun = true,
   onSeen, onOpenSnap, onLongPress, onQuickReact, onReply, repliedTo,
 }) {
   const mine = message.sender_id === me
+  // Your own older chats render reversed as an over-the-shoulder deterrent.
+  // Without a way back it just looked like a rendering bug, so the bubble now
+  // says it's deliberate (a lock in the meta row) and reveals while held.
+  const scrambled = isScrambled(message, me)
+  const [revealed, setRevealed] = useState(false)
   const status = statusFor(message, me)
   const saved = (message.saved_by ?? []).length > 0 // saved by either party
   const who = mine ? 'me' : friendName || friend.username
@@ -972,7 +982,7 @@ function MessageRow({
           ↩
         </div>
       )}
-      <div className="msg-who">{who}</div>
+      {startsRun && <div className="msg-who">{who}</div>}
 
       {message.reply_to && (
         <div className="msg-reply-quote">
@@ -984,8 +994,17 @@ function MessageRow({
       )}
 
       {message.kind === 'chat' ? (
-        <div className="msg-body" style={{ borderLeftColor: bar }} onClick={handleClick}>
-          {privacyBody(message, me)}
+        <div
+          className={`msg-body${scrambled && !revealed ? ' scrambled' : ''}`}
+          style={{ borderLeftColor: bar }}
+          onClick={handleClick}
+          onPointerDown={scrambled ? () => setRevealed(true) : undefined}
+          onPointerUp={scrambled ? () => setRevealed(false) : undefined}
+          onPointerLeave={scrambled ? () => setRevealed(false) : undefined}
+          onPointerCancel={scrambled ? () => setRevealed(false) : undefined}
+          title={scrambled ? 'Hold to read' : undefined}
+        >
+          {privacyBody(message, me, revealed)}
         </div>
       ) : message.kind === 'sticker' ? (
         <div className="msg-sticker" onClick={handleClick}>
@@ -1021,9 +1040,11 @@ function MessageRow({
           </span>
           <span className="pt-text">
             <span className="pt-title">{message.media_type === 'video' ? 'Video' : 'Photo'}</span>
-            <span className="pt-sub">{snapLabel}</span>
+            <span className="pt-sub">
+              <StatusIcon {...status} size={12} />
+              {snapLabel}
+            </span>
           </span>
-          <StatusIcon {...status} size={15} />
         </button>
       )}
 
@@ -1031,17 +1052,20 @@ function MessageRow({
         <div className="msg-reactions">{reactionEmojis.join(' ')}</div>
       )}
 
-      <div className="msg-meta">
-        {messageTime(message.created_at)}
-        {message.kind !== 'call' && (
-          <>
-            {' · '}
-            {status.label}
-          </>
-        )}
-        {saved && ' · Saved'}
-        {message.screenshot_at && ' · 📸 Screenshot'}
-      </div>
+      {(endsRun || saved || message.screenshot_at) && (
+        <div className="msg-meta">
+          {messageTime(message.created_at)}
+          {message.kind !== 'call' && (
+            <>
+              {' · '}
+              {status.label}
+            </>
+          )}
+          {saved && ' · Saved'}
+          {message.screenshot_at && ' · 📸 Screenshot'}
+          {scrambled && <LockIcon width={12} height={12} aria-hidden="true" />}
+        </div>
+      )}
     </div>
   )
 }
@@ -1049,11 +1073,15 @@ function MessageRow({
 // Privacy: your OWN sent chats scramble (reverse) on your screen a minute after
 // sending — an over-the-shoulder glance later can't read them. The recipient
 // always sees them the right way round.
-function privacyBody(message, me) {
+function isScrambled(message, me) {
+  if (message.sender_id !== me || message.kind !== 'chat') return false
+  return Date.now() - new Date(message.created_at).getTime() > 60000
+}
+
+function privacyBody(message, me, revealed) {
   const body = message.body || ''
-  if (message.sender_id !== me) return body
-  const age = Date.now() - new Date(message.created_at).getTime()
-  return age > 60000 ? [...body].reverse().join('') : body
+  if (revealed || !isScrambled(message, me)) return body
+  return [...body].reverse().join('')
 }
 
 // Label for a call-log row. body is "<type>|<status>" and view_seconds is the
