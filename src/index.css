@@ -1601,3 +1601,36 @@ button:disabled { cursor: not-allowed; }
 .plan-list { list-style: none; padding: 0; margin: 14px 0 16px; display: flex; flex-direction: column; gap: 8px; }
 .plan-list li { display: flex; align-items: center; gap: 8px; font-size: 14px; }
 .plan-card .btn-dark { min-height: 48px; }
+
+/* Runner. Drawn from rectangles on a canvas — no sprite sheet to download. */
+.dino { border-radius: var(--r-card); background: var(--card); padding: 12px; }
+.dino-hud {
+  display: flex; justify-content: space-between; align-items: center;
+  font-size: 12px; font-weight: 600; letter-spacing: 0.06em;
+  text-transform: uppercase; color: var(--muted); padding: 0 4px 8px;
+}
+.dino-best { opacity: 0.75; }
+.dino-stage {
+  position: relative; display: block; width: 100%; height: 124px;
+  border-radius: var(--r-row); background: #fff; overflow: hidden; padding: 0;
+}
+.dino-canvas { width: 100%; height: 100%; display: block; }
+.dino-overlay {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 3px; pointer-events: none; background: #ffffffb0;
+}
+.dino-overlay strong { font-size: 16px; font-weight: 500; }
+.dino-overlay em { font-style: normal; font-size: 12.5px; color: var(--muted); }
+
+/* Play together */
+.play-grid { display: flex; flex-direction: column; gap: 12px; margin-top: 4px; }
+.play-card {
+  display: flex; align-items: center; gap: 12px; width: 100%;
+  padding: 16px; border-radius: var(--r-card); text-align: left; color: var(--ink);
+}
+.play-card:active { filter: brightness(0.97); }
+.play-card .fp-row-icon { background: #ffffffa8; }
+.play-title { font-size: 16px; font-weight: 500; }
+.play-sub { font-size: 12.5px; opacity: 0.72; margin-top: 2px; }
+.play-soon { margin-left: auto; font-size: 11px; }
