@@ -7,7 +7,8 @@
 > (`mqxfggwncoazgmcswedi`), the `cleanup` worker is deployed and scheduled every
 > 15 min, the frontend is deployed, and **Realtime public channel access is
 > disabled** — every channel is now private. Migrations through
-> `202609070010_billing.sql` are applied. Smoke tested on a real device on
+> `202609070010_billing.sql` are applied; `202609070011_credits.sql` (the
+> credit meter) is written but deliberately **not applied yet**. Smoke tested on a real device on
 > 7 Sep 2026 — everything passed except a two-device call, password recovery,
 > and Android hardware Back, which still need the hardware. See the checklist
 > at the end of AUDIT-FIXES.md.
@@ -261,6 +262,71 @@ schema PostgREST does not expose) via an AFTER INSERT trigger, kept 3 days,
 purged hourly by pg_cron. The trigger's insert is wrapped in
 `begin…exception when others then null` — a backup failure must NEVER roll back
 a real message send (it's on the hottest path).
+
+## Billing and the credit meter
+
+Two migrations, both **inert until `billing_settings.enforced` is flipped to
+true**. Turning that flag on is a deliberate act and nothing else in the repo
+does it.
+
+`202609070010_billing.sql` — `billing_settings` (one row), `billing_plans`
+(monthly ₹99, annual ₹999), `subscriptions` (select-own RLS, no write policy —
+the Razorpay webhook writes as service_role), `entitlement()` and
+`start_trial()`. Every existing user is `status='grandfathered'`.
+
+`202609070011_credits.sql` — the credit meter. **Written but NOT applied**;
+money semantics get a human read before they touch production. Apply it in the
+SQL editor, then `supabase/operations/schedule_credits.sql` separately (cron
+statements have aborted batched transactions on some projects).
+
+- **`credit_ledger` is append-only and the balance is `sum(delta)`.** There is
+  deliberately no `credits` column anywhere. A mutable balance drifts the first
+  time two writers race, and once it has drifted nothing can answer "why is
+  this number what it is". If you need the number fast, use
+  `credit_balance(uuid)` — do not cache it into a column.
+- **`(user_id, period)` is unique** (partial index, `where period is not null`),
+  where period is 'YYYY-MM'. That single index is what makes a double-fired
+  cron, a retried transaction and a hand re-run of `post_monthly_credits()` all
+  cost exactly one charge. Grants and adjustments carry period NULL and are
+  exempt. A second partial index, `credit_ledger_one_grant`, makes a duplicate
+  opening balance physically impossible — the migration's `not exists` guard is
+  a convention, that index is the constraint.
+- **Nobody signed in can write credits.** `credit_ledger` grants SELECT only,
+  RLS scopes it to own rows, and the absence of UPDATE/DELETE grants is what
+  makes the ledger append-only. `credit_balance(uuid)` is SECURITY DEFINER and
+  therefore **not granted to authenticated** — granted, it would read anyone's
+  balance from any caller. Clients get their number through `entitlement()`,
+  which pins it to `auth.uid()`.
+- `entitlement()` was **extended, not replaced**: same five columns plus
+  `credits` and `credits_until`. Widening a `returns table` needs a `drop
+  function` first, so the migration drops `start_trial()` and `entitlement()`
+  and recreates both. Nothing in the database gates on `entitlement()` yet; if
+  something ever does, that drop will fail loudly rather than leave a stale
+  definition behind.
+- `allowed` is true whenever billing is off, for grandfathered accounts
+  regardless of balance, and for anyone whose balance still covers a month **or
+  whose current month is already charged**. That last clause matters: taking
+  the 99 credits and then cutting access the same day the balance dips below
+  the next month's price is charging someone for a month they don't get. It
+  also keeps `allowed` and `credits_until` telling the same story.
+- **Periods are IST**, like `ist_date()` and the question of the day. A UTC
+  month rolls over at 05:30 IST, which would charge a user for a new month in
+  the small hours of the last night of the old one.
+- Balances are allowed to go **negative**: `post_monthly_credits()` charges
+  every non-grandfathered user whether or not they can afford it, so the ledger
+  stays a complete record of the months an account was open. Access is decided
+  separately. `creditsToMonths` treats negative as zero runway.
+- New signups get 10,000 from a trigger on `profiles` insert — **its own
+  trigger, not an edit to `handle_new_user()`**, which is redefined across
+  migrations under last-applied-wins. Its insert is wrapped in
+  `begin…exception when others then null` for the same reason
+  `chat_backup.sql`'s is: a credits problem must never fail a signup.
+- Client: `src/lib/billing.js` (`creditsToMonths`, `formatRunway`,
+  `getBillingSettings`, `listCreditHistory`) still **fails open** — a missing
+  RPC leaves `credits: null`, and the UI renders nothing rather than a
+  confident zero. Plans shows the balance as the hero card and the rupee prices
+  as context; Profile carries a lime credit tile that is also the only route
+  into Plans. Credit maths is tested in `tests/credits.test.js`.
 
 ## Question of the day, status notes, birthdays (`together.sql`)
 

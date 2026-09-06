@@ -130,6 +130,10 @@ export function formatRunway(months) {
 
 // Indian digit grouping, because the price beside it is in rupees.
 export function formatCredits(credits) {
+  // null/undefined checked before Number(), which turns null into 0 — and "0
+  // credits" is the one wrong answer here. An unknown balance must never
+  // render as an empty one.
+  if (credits === null || credits === undefined) return '—'
   const n = Number(credits)
   if (!Number.isFinite(n)) return '—'
   return n.toLocaleString('en-IN')
