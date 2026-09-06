@@ -76,6 +76,15 @@ upgrade/function/frontend rollout in README. The cleanup worker needs its own
 secret and authenticated schedule. Private-channel policies must be deployed
 and public Realtime access disabled.
 
+**Smoke test status (7 Sep 2026): passed on a real device except calls,
+recovery and Android.** Camera and location permission behaviour, chat
+gestures, quoted replies across every send kind, run-collapsing and read
+receipts, the question cards, destructive-action confirmations, the kept-media
+gallery and Profile on a phone were all exercised and behaved. Still
+outstanding, because each needs hardware this session could not reach: a real
+two-device call with a dropped connection, the password-recovery round trip,
+and Android hardware Back.
+
 Production smoke checklist:
 
 1. Create two disposable accounts; verify recovery setup and password reset.

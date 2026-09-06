@@ -7,8 +7,10 @@
 > (`mqxfggwncoazgmcswedi`), the `cleanup` worker is deployed and scheduled every
 > 15 min, the frontend is deployed, and **Realtime public channel access is
 > disabled** — every channel is now private. Migrations through
-> `202609060007_pair_questions.sql` are applied. Two-user smoke tests on real
-> devices are still outstanding; see the checklist at the end of AUDIT-FIXES.md.
+> `202609070010_billing.sql` are applied. Smoke tested on a real device on
+> 7 Sep 2026 — everything passed except a two-device call, password recovery,
+> and Android hardware Back, which still need the hardware. See the checklist
+> at the end of AUDIT-FIXES.md.
 
 # CLAUDE.md
 
