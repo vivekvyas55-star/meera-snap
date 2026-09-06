@@ -2,7 +2,7 @@ import React from 'react'
 import { afterEach, expect, test, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 const mocks=vi.hoisted(()=>({prompt:vi.fn(),skip:vi.fn(),answers:vi.fn(),status:vi.fn(),answer:vi.fn(),toast:vi.fn()}))
-vi.mock('../src/lib/db',()=>({getPairPrompt:mocks.prompt,skipPrompt:mocks.skip,listPromptAnswers:mocks.answers,getPromptStatus:mocks.status,answerPrompt:mocks.answer,istToday:()=> '2026-09-06'}))
+vi.mock('../src/lib/db',()=>({getPairPrompt:mocks.prompt,skipPrompt:mocks.skip,listPromptAnswers:mocks.answers,getPromptStatus:mocks.status,answerPrompt:mocks.answer,listPairQuestions:async()=>[],askQuestion:vi.fn(),answerQuestion:vi.fn(),istToday:()=> '2026-09-06'}))
 vi.mock('../src/hooks/useToast',()=>({useToast:()=>mocks.toast}))
 import DailyQuestion from '../src/components/DailyQuestion'
 afterEach(()=>{cleanup();vi.clearAllMocks()})
@@ -17,7 +17,7 @@ test('focus refresh reveals a friend answer arriving after mine',async()=>{
 test('yesterday’s prompt cannot be submitted as today',async()=>{
  mocks.prompt.mockResolvedValue({id:1,body:'Yesterday',on_date:'2026-09-05'});mocks.status.mockResolvedValue({});mocks.answers.mockResolvedValue({mine:null,theirs:null})
  render(<DailyQuestion me="me" friend={{id:'friend'}} friendName="Friend"/> )
- fireEvent.click(await screen.findByText('Question of the day'))
+ fireEvent.click(await screen.findByText('Questions'))
  fireEvent.change(screen.getByRole('textbox'),{target:{value:'draft'}})
  mocks.prompt.mockResolvedValue({id:2,body:'Today',on_date:'2026-09-06'})
  fireEvent.submit(screen.getByRole('textbox').closest('form'))

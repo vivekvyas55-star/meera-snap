@@ -8,6 +8,7 @@ import {
   listPromptAnswers,
 } from '../lib/db'
 import { useToast } from '../hooks/useToast'
+import QuestionCards from './QuestionCards'
 
 // One shared question a day. You write your answer, and their answer only
 // appears once yours is in — that simultaneity is the whole point, and it's
@@ -18,6 +19,7 @@ import { useToast } from '../hooks/useToast'
 // Answers are final once written — there is no UPDATE grant on the table. A
 // re-editable answer after seeing theirs would make the reveal meaningless.
 export default function DailyQuestion({ me, friend, friendName }) {
+  const [asksWaiting, setAsksWaiting] = useState(0) // personal questions awaiting your answer
   const toast = useToast()
   const [prompt, setPrompt] = useState(null)
   const [answers, setAnswers] = useState({ mine: null, theirs: null })
@@ -59,8 +61,8 @@ export default function DailyQuestion({ me, friend, friendName }) {
   // hiding the whole thing behind a chip nobody realised was tappable.
   useEffect(() => {
     if (touched) return
-    if (status.theirs_done && !status.mine_done) setOpen(true)
-  }, [touched, status.theirs_done, status.mine_done])
+    if ((status.theirs_done && !status.mine_done) || asksWaiting > 0) setOpen(true)
+  }, [touched, status.theirs_done, status.mine_done, asksWaiting])
 
   // Swipe the card up (or tap Another) for a different question. The skip is
   // shared: it moves BOTH of you, so you never end up answering different
@@ -100,7 +102,6 @@ export default function DailyQuestion({ me, friend, friendName }) {
     }
   }
 
-  if (!prompt) return null
 
   const answered = Boolean(answers.mine) || status.mine_done
   const revealed = Boolean(answers.mine && answers.theirs)
@@ -110,30 +111,36 @@ export default function DailyQuestion({ me, friend, friendName }) {
   if (!open) {
     return (
       <button
-        className={`dq-chip${status.theirs_done && !answered ? ' waiting' : ''}`}
+        className={`dq-chip${(status.theirs_done && !answered) || asksWaiting > 0 ? ' waiting' : ''}`}
         onClick={() => { setTouched(true); setOpen(true) }}
         aria-expanded="false"
       >
         <span className="dq-chip-icon">💭</span>
         <span className="dq-chip-text">
-          {revealed
-            ? 'Today’s question — you both answered'
-            : answered
-              ? `Answered · waiting for ${friendName}`
-              : status.theirs_done
-                ? `${friendName} answered — your turn`
-                : 'Question of the day'}
+          {asksWaiting > 0
+            ? `${friendName} asked you ${asksWaiting} question${asksWaiting === 1 ? '' : 's'}`
+            : revealed
+              ? 'Today’s question — you both answered'
+              : answered
+                ? `Answered · waiting for ${friendName}`
+                : status.theirs_done
+                  ? `${friendName} answered — your turn`
+                  : 'Questions'}
         </span>
         {/* The chip read as a status line, so people did not realise the
             question and both answers live one tap inside it. */}
-        <span className="dq-chip-more">{revealed ? 'See answers' : answered ? 'View' : 'Answer'} ›</span>
+        <span className="dq-chip-more">
+          {asksWaiting > 0 ? 'Answer' : revealed ? 'See answers' : answered ? 'View' : 'Answer'} ›
+        </span>
       </button>
     )
   }
 
-  const canSkip = !answered && !status.theirs_done
+  const canSkip = Boolean(prompt) && !answered && !status.theirs_done
 
   return (
+    <div className="dq-panel">
+    {prompt && (
     <div
       className="dq"
       onTouchStart={(e) => { touchY.current = e.touches[0].clientY }}
@@ -194,6 +201,11 @@ export default function DailyQuestion({ me, friend, friendName }) {
           )}
         </div>
       )}
+    </div>
+    )}
+      {/* The questions you write to each other live in the same surface, under
+          the shared prompt — one place for "questions", not two chips. */}
+      <QuestionCards me={me} friend={friend} friendName={friendName} onWaiting={setAsksWaiting} />
     </div>
   )
 }

@@ -1356,7 +1356,14 @@ button:disabled { cursor: not-allowed; }
 
 /* Questions you write to each other — separate from the app's daily prompt.
    Cards from both people interleave in the order they were asked. */
-.qcards { padding: 0 12px; flex: 0 0 auto; max-height: 42vh; overflow-y: auto; }
+.qcards {
+  padding: 0 12px 4px;
+  flex: 0 0 auto;
+  /* Even expanded, the questions sit alongside the conversation rather than
+     replacing it. */
+  max-height: 34vh;
+  overflow-y: auto;
+}
 .qcards-head {
   display: flex; align-items: center; gap: 8px;
   padding: 6px 2px 8px;
@@ -1366,6 +1373,12 @@ button:disabled { cursor: not-allowed; }
   text-transform: uppercase; color: var(--muted);
 }
 .qcards-badge { background: var(--lime); color: var(--ink); font-size: 11px; }
+.qcards-close {
+  min-width: 32px; min-height: 32px;
+  display: grid; place-items: center;
+  border-radius: 50%; color: var(--muted);
+}
+.qcards-close:active { background: var(--card); }
 .qcards-ask {
   margin-left: auto; min-height: 34px; padding: 0 12px;
   display: flex; align-items: center; gap: 6px;
@@ -1376,7 +1389,7 @@ button:disabled { cursor: not-allowed; }
 
 .qcard {
   background: var(--card); border-radius: var(--r-card);
-  padding: 14px 15px; margin-bottom: 8px;
+  padding: 12px 14px; margin-bottom: 7px;
 }
 /* One vibrant colour per card: yours lavender, theirs neutral, so a run of
    each is readable at a glance. */
@@ -1385,7 +1398,7 @@ button:disabled { cursor: not-allowed; }
   font-size: 10.5px; font-weight: 600; letter-spacing: 0.06em;
   text-transform: uppercase; opacity: 0.65; margin-bottom: 5px;
 }
-.qcard-q { font-size: 16px; line-height: 1.35; }
+.qcard-q { font-size: 15.5px; line-height: 1.35; }
 .qcard-a {
   margin-top: 10px; padding: 10px 12px;
   background: #ffffffb8; border-radius: var(--r-row);
@@ -1405,3 +1418,14 @@ button:disabled { cursor: not-allowed; }
   background: #fff; color: var(--ink);
 }
 .qcard .btn-dark { min-height: 44px; padding: 12px; font-size: 14.5px; }
+
+/* One questions surface: the shared daily prompt and the questions you write
+   to each other scroll together, capped so the conversation is never pushed
+   off screen (two open cards used to take half the phone). */
+.dq-panel {
+  flex: 0 0 auto;
+  max-height: 46vh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.dq-panel .qcards { max-height: none; overflow: visible; padding-top: 8px; }

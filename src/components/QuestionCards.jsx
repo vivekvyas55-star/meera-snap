@@ -10,7 +10,7 @@ import { CloseIcon, PlusIcon } from './Icons'
 //
 // Both the cap and the "only the person asked may answer" rule are enforced in
 // the database; this component would happily render whatever comes back.
-export default function QuestionCards({ me, friend, friendName }) {
+export default function QuestionCards({ me, friend, friendName, onWaiting }) {
   const toast = useToast()
   const [rows, setRows] = useState([])
   const [asksLeft, setAsksLeft] = useState(3)
@@ -46,6 +46,12 @@ export default function QuestionCards({ me, friend, friendName }) {
     }
   }, [load])
 
+  // The parent chip summarises both surfaces, so it needs to know when one of
+  // these is waiting on you.
+  useEffect(() => {
+    onWaiting?.(rows.filter((q) => q.asker !== me && !q.answer).length)
+  }, [rows, me, onWaiting])
+
   const ask = async (e) => {
     e.preventDefault()
     const text = draft.trim()
@@ -79,17 +85,11 @@ export default function QuestionCards({ me, friend, friendName }) {
   }
 
   if (unavailable) return null
-  const waitingOnYou = rows.filter((q) => q.asker !== me && !q.answer).length
 
   return (
     <div className="qcards">
       <div className="qcards-head">
         <span className="qcards-title">Your questions</span>
-        {waitingOnYou > 0 && (
-          <span className="chip qcards-badge">
-            {waitingOnYou} to answer
-          </span>
-        )}
         <button
           className="qcards-ask"
           onClick={() => setOpen((v) => !v)}
@@ -97,7 +97,7 @@ export default function QuestionCards({ me, friend, friendName }) {
           aria-expanded={open}
         >
           {open ? <CloseIcon width={15} height={15} /> : <PlusIcon width={15} height={15} />}
-          {open ? 'Cancel' : asksLeft === 0 ? 'No asks left today' : `Ask (${asksLeft} left)`}
+          {open ? 'Cancel' : asksLeft === 0 ? 'None left today' : `Ask (${asksLeft})`}
         </button>
       </div>
 
