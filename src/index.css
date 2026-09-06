@@ -1090,9 +1090,13 @@ button:disabled { cursor: not-allowed; }
   margin: 12px 4px;
   padding: 18px;
   border-radius: var(--r-card);
-  background: var(--coral);
-  color: var(--ink);
+  /* Matches the soft error treatment used on the auth screen — a full-strength
+     coral card shouted next to everything else on this surface. */
+  background: #fff0ed;
+  border: 1px solid #f3c9c0;
+  color: #9c3024;
   font-size: 15px;
+  line-height: 1.45;
 }
 
 /* A queued message is a state, not an error: a pill chip plus quiet actions,
