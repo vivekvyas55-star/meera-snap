@@ -3,7 +3,8 @@ import {
   answerPrompt,
   istToday,
   getPromptStatus,
-  getTodaysPrompt,
+  getPairPrompt,
+  skipPrompt,
   listPromptAnswers,
 } from '../lib/db'
 import { useToast } from '../hooks/useToast'
@@ -32,7 +33,7 @@ export default function DailyQuestion({ me, friend, friendName }) {
   const load = useCallback(async () => {
     const request = ++requestRef.current
     const [p, s, a] = await Promise.all([
-      getTodaysPrompt(),
+      getPairPrompt(friend.id),
       getPromptStatus(friend.id),
       listPromptAnswers(me, friend.id),
     ])
@@ -60,6 +61,25 @@ export default function DailyQuestion({ me, friend, friendName }) {
     if (touched) return
     if (status.theirs_done && !status.mine_done) setOpen(true)
   }, [touched, status.theirs_done, status.mine_done])
+
+  // Swipe the card up (or tap Another) for a different question. The skip is
+  // shared: it moves BOTH of you, so you never end up answering different
+  // questions. The server refuses once either side has answered.
+  const [skipping, setSkipping] = useState(false)
+  const touchY = useRef(0)
+  const skip = async () => {
+    if (skipping || answered || status.theirs_done) return
+    setSkipping(true)
+    try {
+      await skipPrompt(friend.id)
+      setDraft('')
+      await load()
+    } catch (err) {
+      toast(err.message)
+    } finally {
+      setSkipping(false)
+    }
+  }
 
   const submit = async (e) => {
     e.preventDefault()
@@ -111,8 +131,17 @@ export default function DailyQuestion({ me, friend, friendName }) {
     )
   }
 
+  const canSkip = !answered && !status.theirs_done
+
   return (
-    <div className="dq">
+    <div
+      className="dq"
+      onTouchStart={(e) => { touchY.current = e.touches[0].clientY }}
+      onTouchEnd={(e) => {
+        const dy = touchY.current - (e.changedTouches[0]?.clientY ?? touchY.current)
+        if (canSkip && dy > 60) skip()
+      }}
+    >
       <div className="dq-head">
         <span className="dq-label">Question of the day</span>
         <button className="dq-close" onClick={() => { setTouched(true); setOpen(false) }} aria-label="Close">
@@ -120,6 +149,11 @@ export default function DailyQuestion({ me, friend, friendName }) {
         </button>
       </div>
       <div className="dq-question">{prompt.body}</div>
+      {canSkip && (
+        <button className="dq-skip" onClick={skip} disabled={skipping}>
+          {skipping ? 'Finding another…' : 'Swipe up for another question ↑'}
+        </button>
+      )}
       {needsReview && <button onClick={() => setNeedsReview(false)}>A new day has started. I have reviewed today’s question.</button>}
 
       {!answered ? (

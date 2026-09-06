@@ -1,8 +1,8 @@
 import React from 'react'
 import { afterEach, expect, test, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
-const mocks=vi.hoisted(()=>({prompt:vi.fn(),answers:vi.fn(),status:vi.fn(),answer:vi.fn(),toast:vi.fn()}))
-vi.mock('../src/lib/db',()=>({getTodaysPrompt:mocks.prompt,listPromptAnswers:mocks.answers,getPromptStatus:mocks.status,answerPrompt:mocks.answer,istToday:()=> '2026-09-06'}))
+const mocks=vi.hoisted(()=>({prompt:vi.fn(),skip:vi.fn(),answers:vi.fn(),status:vi.fn(),answer:vi.fn(),toast:vi.fn()}))
+vi.mock('../src/lib/db',()=>({getPairPrompt:mocks.prompt,skipPrompt:mocks.skip,listPromptAnswers:mocks.answers,getPromptStatus:mocks.status,answerPrompt:mocks.answer,istToday:()=> '2026-09-06'}))
 vi.mock('../src/hooks/useToast',()=>({useToast:()=>mocks.toast}))
 import DailyQuestion from '../src/components/DailyQuestion'
 afterEach(()=>{cleanup();vi.clearAllMocks()})

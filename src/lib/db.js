@@ -540,6 +540,36 @@ export async function getPromptStatus(otherId) {
   return data ?? { mine_done: false, theirs_done: false }
 }
 
+// Photos and videos either of you kept in this conversation. No new table —
+// messages already carries a shared saved_by[] both parties can see.
+export async function listKeptTogether(otherId, limit = 200) {
+  const { data, error } = await supabase.rpc('kept_together', { other: otherId, lim: limit })
+  // A missing function means the migration isn't applied yet; say so plainly
+  // rather than surfacing a raw PostgREST error.
+  if (error) {
+    if (/function|schema cache|does not exist/i.test(error.message)) return null
+    throw error
+  }
+  return data ?? []
+}
+
+// Skip to the next question of the day. Stored PER PAIR, not per person — a
+// personal skip would put the two of you on different questions, which defeats
+// the simultaneous reveal. Refused once either side has answered.
+export async function skipPrompt(otherId) {
+  const { data, error } = await supabase.rpc('skip_prompt', { other: otherId })
+  if (error) throw error
+  return data
+}
+
+// Today's question for this pair, already offset by any shared skips. Falls
+// back to the global prompt if the migration isn't applied yet.
+export async function getPairPrompt(otherId) {
+  const { data, error } = await supabase.rpc('pair_prompt', { other: otherId })
+  if (error) return getTodaysPrompt()
+  return data?.[0] ?? null
+}
+
 // Every friend's question-of-the-day state in one round trip, so the chat list
 // can flag "they answered, you haven't" without a query per row. Degrades to an
 // empty map if the migration isn't applied, rather than blanking the list.

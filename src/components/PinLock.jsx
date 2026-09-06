@@ -1,3 +1,4 @@
+import { BackspaceIcon } from './Icons'
 import { useEffect, useState } from 'react'
 import MarketDecoy from './MarketDecoy'
 
@@ -122,7 +123,7 @@ export default function PinLock({ onUnlock }) {
           0
         </button>
         <button className="pin-key pin-back" onClick={back} aria-label="Delete">
-          ⌫
+          <BackspaceIcon width={24} height={24} />
         </button>
       </div>
     </div>

@@ -35,6 +35,7 @@ import StatusIcon from '../components/StatusIcon'
 import SnapViewer from '../components/SnapViewer'
 import Portal from '../components/Portal'
 import Sheet from '../components/Sheet'
+import KeptTogether from '../components/KeptTogether'
 import { ArrowIcon, BackIcon, CheckIcon, CloseIcon, ImageIcon, LockIcon, MicIcon, PhoneIcon, PlayIcon, PlusIcon, SmileyIcon, VideoIcon } from '../components/Icons'
 import { useAudioRecorder } from '../hooks/useAudioRecorder'
 import { useCall } from '../hooks/useCall'
@@ -695,6 +696,7 @@ function FriendSheet({ friend, friendName, me, onClose, onRemoved }) {
   const [score, setScore] = useState(null)
   const [anniv, setAnniv] = useState(null)
   const [charms, setCharms] = useState(null)
+  const [kept, setKept] = useState(false)
   const [busy, setBusy] = useState(false)
   useEffect(() => {
     getSnapScore(friend.id).then(setScore).catch(() => {})
@@ -770,6 +772,16 @@ function FriendSheet({ friend, friendName, me, onClose, onRemoved }) {
                 }}
               />
             </label>
+            <button
+              className="pill-btn"
+              style={{ marginTop: 4 }}
+              onClick={() => setKept(true)}
+            >
+              🖼 Photos & videos kept together
+            </button>
+            {kept && (
+              <KeptTogether friendId={friend.id} friendName={friendName} onClose={() => setKept(false)} />
+            )}
             {charmList.length > 0 && (
               <div className="charms">
                 {charmList.map((c, i) => (

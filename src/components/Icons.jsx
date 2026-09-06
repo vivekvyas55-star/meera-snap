@@ -168,3 +168,10 @@ export const LockIcon = (p) => (
     <path d="M8 10.5V7.5a4 4 0 0 1 8 0v3" />
   </svg>
 )
+
+export const BackspaceIcon = (p) => (
+  <svg {...base} {...p}>
+    <path d="M9 5h10a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H9l-6-7 6-7z" />
+    <path d="M17 9.5l-5 5M12 9.5l5 5" />
+  </svg>
+)
