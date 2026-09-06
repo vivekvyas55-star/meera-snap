@@ -97,6 +97,41 @@ function Shell() {
     return () => navigator.serviceWorker.removeEventListener('message', onMessage)
   }, [profile])
 
+  // Android's hardware Back (and the browser's back gesture) used to leave the
+  // PWA entirely from inside a conversation, because Chat/Profile/Map are state,
+  // not routes. Push one history entry when an overlay opens and close it on
+  // popstate instead — Back now means "out of this screen", as it should.
+  const overlayOpen = Boolean(openChat || showProfile || showMap)
+  const overlayDepth = useRef(0)
+  useEffect(() => {
+    if (overlayOpen) {
+      if (overlayDepth.current === 0) {
+        overlayDepth.current = 1
+        window.history.pushState({ meeraOverlay: true }, '')
+      }
+      return
+    }
+    // Closed from inside the app (the Back button): drop the entry we pushed so
+    // the history stack doesn't grow one dead step per screen visited.
+    if (overlayDepth.current === 1 && window.history.state?.meeraOverlay) {
+      overlayDepth.current = 0
+      window.history.back()
+    } else {
+      overlayDepth.current = 0
+    }
+  }, [overlayOpen])
+
+  useEffect(() => {
+    const onPop = () => {
+      overlayDepth.current = 0
+      setOpenChat(null)
+      setShowProfile(false)
+      setShowMap(false)
+    }
+    window.addEventListener('popstate', onPop)
+    return () => window.removeEventListener('popstate', onPop)
+  }, [])
+
   // A scanned Snapcode opens the app at ?add=<username>; once signed in, send
   // that friend request, then strip the param so it can't fire twice.
   useEffect(() => {

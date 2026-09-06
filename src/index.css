@@ -586,7 +586,7 @@ input, textarea { font: inherit; }
   padding: 13px 17px; font-size: 16px;   /* 16px stops iOS zoom-on-focus */
   background: var(--card); outline: none; color: var(--ink);
 }
-.composer input::placeholder { color: var(--muted); }
+.composer input::placeholder, .composer textarea::placeholder { color: var(--muted); }
 
 /* ==========================================================================
    Camera — stays fullscreen and dark, as immersive surfaces do in the
@@ -1198,3 +1198,83 @@ button:disabled { cursor: not-allowed; }
 /* Sits at the end of the scrambled text so the marker survives run-collapsing
    (the meta row only renders at the end of a run). */
 .msg-lock { vertical-align: -1px; margin-left: 6px; opacity: 0.5; }
+
+/* The composer is a growing textarea now, not a one-line input. */
+.composer textarea {
+  flex: 1;
+  resize: none;
+  overflow-y: auto;
+  max-height: 118px;      /* ~5 lines, then it scrolls */
+  min-height: 44px;
+  padding: 11px 16px;
+  font-size: 16px;        /* under 16px iOS zooms the page on focus */
+  font-family: inherit;
+  line-height: 1.35;
+  border: none;
+  border-radius: var(--r-pill);
+  background: var(--card);
+  outline: none;
+  color: var(--ink);
+}
+.composer { align-items: flex-end; }
+
+/* Day dividers — older messages used to repeat their full date on every row. */
+.day-sep {
+  display: flex; align-items: center; justify-content: center;
+  margin: 14px 0 10px;
+}
+.day-sep span {
+  font-size: 11.5px; font-weight: 500; letter-spacing: 0.04em;
+  color: var(--muted); background: var(--card);
+  padding: 4px 12px; border-radius: var(--r-pill);
+}
+
+/* A message arriving while you're scrolled back used to land silently. */
+.jump-latest {
+  position: absolute; left: 50%; transform: translateX(-50%);
+  bottom: calc(var(--safe-bottom) + 78px);
+  z-index: 3;
+  min-height: 40px; padding: 0 16px;
+  border-radius: var(--r-pill);
+  background: var(--ink); color: #fff;
+  font-size: 13.5px; font-weight: 500;
+  box-shadow: 0 6px 20px #16161a33;
+}
+
+.thread-loading {
+  text-align: center; padding: 8px 0 4px;
+  font-size: 12.5px; color: var(--muted);
+}
+
+/* A three-dot bubble reads as part of the conversation; a sentence reads as a
+   status line bolted to the bottom of the scroller. */
+.typing-dots { display: inline-flex; gap: 3px; margin-left: 5px; }
+.typing-dots i {
+  width: 4px; height: 4px; border-radius: 50%;
+  background: var(--muted); display: inline-block;
+  animation: typing-bounce 1.2s infinite ease-in-out;
+}
+.typing-dots i:nth-child(2) { animation-delay: 0.15s; }
+.typing-dots i:nth-child(3) { animation-delay: 0.3s; }
+@keyframes typing-bounce {
+  0%, 60%, 100% { opacity: 0.3; transform: translateY(0); }
+  30% { opacity: 1; transform: translateY(-3px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .typing-dots i { animation: none; opacity: 0.6; }
+}
+
+/* iOS gives <input type="date"> an intrinsic min-width from its date format
+   that width:100% does not override, so it pushed the Profile column wider
+   than the viewport — every label then rendered clipped at the left edge.
+   Strip the native appearance and let it actually shrink. */
+.field[type='date'] {
+  -webkit-appearance: none;
+  appearance: none;
+  min-width: 0;
+  max-width: 100%;
+  text-align: left;
+}
+/* Nothing in a scrolling column should be able to shift it sideways. */
+.list { overflow-x: hidden; }
+.list > * { max-width: 100%; }

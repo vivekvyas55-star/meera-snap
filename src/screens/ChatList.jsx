@@ -8,6 +8,7 @@ import {
   listStatusNotes,
   listFriendsWithProfiles,
   listLatestPerFriend,
+  listPromptStatus,
   pairKey,
   sendFriendRequest,
   streakState,
@@ -20,6 +21,7 @@ import { useToast } from '../hooks/useToast'
 import Avatar from '../components/Avatar'
 import StatusIcon from '../components/StatusIcon'
 import Portal from '../components/Portal'
+import Sheet from '../components/Sheet'
 const Snapcode = lazy(() => import('../components/Snapcode'))
 import { CheckIcon, MapIcon, PlusIcon } from '../components/Icons'
 
@@ -40,6 +42,7 @@ export default function ChatList({ onOpenChat, onOpenProfile, onOpenMap }) {
   const [adding, setAdding] = useState(false)
   const [notes, setNotes] = useState({}) // user_id -> status note
   const [birthdays, setBirthdays] = useState(new Set())
+  const [prompts, setPrompts] = useState({}) // user_id -> { mine_done, theirs_done }
 
   // One round trip for the previews, not one per friend. This runs on every
   // realtime event below, so it has to stay cheap — it used to pull a 200-row
@@ -65,6 +68,7 @@ export default function ChatList({ onOpenChat, onOpenProfile, onOpenMap }) {
     // Cosmetic extras — never let them fail the list.
     listStatusNotes().then(setNotes).catch(() => {})
     birthdaysToday().then(setBirthdays).catch(() => {})
+    listPromptStatus().then(setPrompts).catch(() => {})
     } catch (err) { if (request === requestRef.current) setError(err.message) }
     finally { if (request === requestRef.current) setLoading(false) }
   }, [me])
@@ -209,6 +213,16 @@ export default function ChatList({ onOpenChat, onOpenProfile, onOpenMap }) {
                   {f.profile.id === bestFriendId && <span title="Best friend">💛</span>}
                   {streak.count >= 100 && <span title="100-day Snapstreak!">💯</span>}
                   {streak.expiring && <span title="Snapstreak about to end">⌛</span>}
+                  {prompts[f.profile.id]?.theirs_done && !prompts[f.profile.id]?.mine_done && (
+                    <span
+                      className="qotd-dot"
+                      role="img"
+                      aria-label={`${alias(f.profile)} answered today's question — your turn`}
+                      title="Answered today's question — your turn"
+                    >
+                      💭
+                    </span>
+                  )}
                 </div>
                 <div className={`row-sub${unread ? ' unread' : ''}`}>
                   {st ? (
@@ -276,8 +290,7 @@ function AddFriend({ me, profile, onClose, onAdded }) {
 
   return (
     <Portal>
-    <div className="sheet" onClick={onClose}>
-      <div className="sheet-body" onClick={(e) => e.stopPropagation()}>
+    <Sheet onClose={onClose} label="Add a friend">
         <div className="seg" role="tablist">
           <button
             className={mode === 'add' ? 'on' : ''}
@@ -324,8 +337,7 @@ function AddFriend({ me, profile, onClose, onAdded }) {
         ) : (
           <Snapcode profile={profile} />
         )}
-      </div>
-    </div>
+    </Sheet>
     </Portal>
   )
 }

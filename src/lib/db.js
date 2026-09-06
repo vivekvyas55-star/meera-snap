@@ -540,6 +540,17 @@ export async function getPromptStatus(otherId) {
   return data ?? { mine_done: false, theirs_done: false }
 }
 
+// Every friend's question-of-the-day state in one round trip, so the chat list
+// can flag "they answered, you haven't" without a query per row. Degrades to an
+// empty map if the migration isn't applied, rather than blanking the list.
+export async function listPromptStatus() {
+  const { data, error } = await supabase.rpc('prompt_status_all')
+  if (error) return {}
+  const map = {}
+  for (const row of data ?? []) map[row.other] = row
+  return map
+}
+
 // The users' local day, matching public.ist_date() server-side. Filtering on
 // the browser's own date would put someone in a different timezone (or just
 // past their midnight) on a different "today" than the row they wrote.

@@ -5,6 +5,7 @@ import { useAuth } from '../hooks/useAuth'
 import { useToast } from '../hooks/useToast'
 import Avatar from '../components/Avatar'
 import Portal from '../components/Portal'
+import Sheet from '../components/Sheet'
 import SnapEditor from '../components/SnapEditor'
 import { useAlias } from '../hooks/useAliasClock'
 import { CheckIcon, CloseIcon, FlipIcon } from '../components/Icons'
@@ -317,8 +318,7 @@ function SendSheet({ friends, sending, onCancel, onSend }) {
 
   return (
     <Portal>
-    <div className="sheet" onClick={onCancel}>
-      <div className="sheet-body" onClick={(e) => e.stopPropagation()}>
+    <Sheet onClose={onCancel} label="Send to">
         <h2>Send to</h2>
         {friends.length === 0 && <div className="empty">Add a friend first.</div>}
         {friends.map((f) => (
@@ -353,8 +353,7 @@ function SendSheet({ friends, sending, onCancel, onSend }) {
         >
           {sending ? 'Sending…' : `Send${selected.length ? ` (${selected.length})` : ''}`}
         </button>
-      </div>
-    </div>
+    </Sheet>
     </Portal>
   )
 }

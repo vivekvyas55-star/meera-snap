@@ -1,5 +1,5 @@
 import VoicePlayer from '../components/VoicePlayer'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import {
   clearViewedChats,
@@ -34,6 +34,7 @@ import Avatar from '../components/Avatar'
 import StatusIcon from '../components/StatusIcon'
 import SnapViewer from '../components/SnapViewer'
 import Portal from '../components/Portal'
+import Sheet from '../components/Sheet'
 import { ArrowIcon, BackIcon, CheckIcon, CloseIcon, ImageIcon, LockIcon, MicIcon, PhoneIcon, PlayIcon, PlusIcon, SmileyIcon, VideoIcon } from '../components/Icons'
 import { useAudioRecorder } from '../hooks/useAudioRecorder'
 import { useCall } from '../hooks/useCall'
@@ -108,6 +109,9 @@ export default function Chat({ friend, onBack }) {
   const [attaching, setAttaching] = useState(false)
   const [menuMsg, setMenuMsg] = useState(null) // message the action menu targets
   const [replyingTo, setReplyingTo] = useState(null) // message being replied to
+  const draftRef = useRef(null)
+  const [behind, setBehind] = useState(0) // new messages that landed while scrolled up
+  const lastCountRef = useRef(0)
   const [forwardMsg, setForwardMsg] = useState(null) // chat being forwarded
   const [anniv, setAnniv] = useState(null) // "together since" date for this pair
   const [stickers, setStickers] = useState(false)
@@ -124,6 +128,7 @@ export default function Chat({ friend, onBack }) {
   const [hasMore, setHasMore] = useState(false) // older history remains to load
   const oldestRef = useRef(null) // created_at cursor for scroll-back paging
   const loadingOlderRef = useRef(false)
+  const [loadingOlder, setLoadingOlder] = useState(false)
   const [pending, setPending] = useState(() => { try { return outboxFor(me, friend.id) } catch { return [] } }) // offline outbox
   const recTimer = useRef(null)
   const { recording, start: startRec, stop: stopRec } = useAudioRecorder()
@@ -213,6 +218,7 @@ export default function Chat({ friend, onBack }) {
   const loadOlder = useCallback(async () => {
     if (loadingOlderRef.current || !oldestRef.current) return
     loadingOlderRef.current = true
+    setLoadingOlder(true)
     try {
       const el = threadRef.current
       const prevH = el ? el.scrollHeight : 0
@@ -228,12 +234,22 @@ export default function Chat({ friend, onBack }) {
       }
     } catch (err) { setLoadError(err.message) } finally {
       loadingOlderRef.current = false
+      setLoadingOlder(false)
     }
   }, [me, friend.id])
 
   const onThreadScroll = () => {
     const el = threadRef.current
-    if (el && el.scrollTop < 80 && hasMore && !loadingOlderRef.current) loadOlder()
+    if (!el) return
+    if (el.scrollTop < 80 && hasMore && !loadingOlderRef.current) loadOlder()
+    if (el.scrollHeight - el.scrollTop - el.clientHeight < 120) setBehind(0)
+  }
+
+  const jumpToLatest = () => {
+    const el = threadRef.current
+    if (!el) return
+    el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
+    setBehind(0)
   }
 
   useEffect(() => {
@@ -286,7 +302,16 @@ export default function Chat({ friend, onBack }) {
       return
     }
     const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 120
-    if (nearBottom) el.scrollTo({ top: el.scrollHeight })
+    if (nearBottom) {
+      el.scrollTo({ top: el.scrollHeight })
+      setBehind(0)
+    } else {
+      // Scrolled back through history: a new message lands off-screen and used
+      // to arrive completely silently. Count it so the pill can say so.
+      const arrived = messages.length - lastCountRef.current
+      if (arrived > 0) setBehind((n) => n + arrived)
+    }
+    lastCountRef.current = messages.length
   }, [messages, theirTyping])
 
   const recordSeen = useCallback((id) => {
@@ -337,6 +362,15 @@ export default function Chat({ friend, onBack }) {
     setTyping(e.target.value.length > 0)
   }
 
+  // Grow to fit, capped at five lines. Reset to auto first or the box can only
+  // ever get taller.
+  useEffect(() => {
+    const el = draftRef.current
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = `${Math.min(el.scrollHeight, 118)}px`
+  }, [draft])
+
   const onPickMedia = async (e) => {
     const file = e.target.files?.[0]
     e.target.value = '' // allow re-picking the same file later
@@ -367,7 +401,7 @@ export default function Chat({ friend, onBack }) {
   }, [messages])
 
   return (
-    <div className="app" style={{ display: 'flex', flexDirection: 'column' }}>
+    <div className="app" style={{ display: 'flex', flexDirection: 'column', position: 'relative' }}>
       <div className="header">
         <button className="circle filled" onClick={leave} aria-label="Back">
           <BackIcon />
@@ -420,6 +454,8 @@ export default function Chat({ friend, onBack }) {
       <DailyQuestion me={me} friend={friend} friendName={friendName} />
 
       <div className="thread" ref={threadRef} onScroll={onThreadScroll}>
+        {loadingOlder && <div className="thread-loading" role="status">Loading earlier messages…</div>}
+
         {loadError && (
           <div className="thread-error" role="alert">
             <span>Couldn’t load this conversation.</span>
@@ -435,6 +471,10 @@ export default function Chat({ friend, onBack }) {
         )}
 
         {visible.map((m, i) => (
+          <Fragment key={m.id}>
+            {(i === 0 || dayKey(visible[i - 1].created_at) !== dayKey(m.created_at)) && (
+              <div className="day-sep"><span>{dayLabel(m.created_at)}</span></div>
+            )}
           <MessageRow
             key={m.id}
             message={m}
@@ -458,6 +498,7 @@ export default function Chat({ friend, onBack }) {
               load()
             }}
           />
+          </Fragment>
         ))}
 
         {pending.map((p) => (
@@ -474,8 +515,18 @@ export default function Chat({ friend, onBack }) {
           </div>
         ))}
 
-        {theirTyping && <div className="typing">{friendName} is typing…</div>}
+        {theirTyping && (
+          <div className="typing">
+            {friendName} is typing<span className="typing-dots"><i /><i /><i /></span>
+          </div>
+        )}
       </div>
+
+      {behind > 0 && (
+        <button className="jump-latest" onClick={jumpToLatest}>
+          {behind} new message{behind === 1 ? '' : 's'} ↓
+        </button>
+      )}
 
       {replyingTo && (
         <div className="reply-bar">
@@ -521,10 +572,21 @@ export default function Chat({ friend, onBack }) {
           >
             {attaching ? '…' : <PlusIcon />}
           </button>
-          <input
+          {/* A textarea, not an input: a long message used to scroll sideways in a
+              one-line pill with no way to see what you had written. It grows to
+              a five-line cap and then scrolls. Enter sends, Shift+Enter breaks. */}
+          <textarea
+            ref={draftRef}
             value={draft}
             onChange={onDraftChange}
             onBlur={() => setTyping(false)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault()
+                submit(e)
+              }
+            }}
+            rows={1}
             placeholder="Send a chat"
             enterKeyHint="send"
           />
@@ -573,8 +635,7 @@ export default function Chat({ friend, onBack }) {
 
       {stickers && (
         <Portal>
-          <div className="sheet" onClick={() => setStickers(false)}>
-            <div className="sheet-body" onClick={(e) => e.stopPropagation()}>
+          <Sheet onClose={() => setStickers(false)} label="Send a sticker">
               <h2>Stickers</h2>
               <div className="sticker-grid">
                 {STICKERS.map((e) => (
@@ -583,8 +644,7 @@ export default function Chat({ friend, onBack }) {
                   </button>
                 ))}
               </div>
-            </div>
-          </div>
+          </Sheet>
         </Portal>
       )}
 
@@ -666,8 +726,7 @@ function FriendSheet({ friend, friendName, me, onClose, onRemoved }) {
   }
   return (
     <Portal>
-      <div className="sheet" onClick={onClose}>
-        <div className="sheet-body" onClick={(e) => e.stopPropagation()}>
+      <Sheet onClose={onClose} label="Friend options">
           <div
             style={{
               display: 'flex',
@@ -724,8 +783,7 @@ function FriendSheet({ friend, friendName, me, onClose, onRemoved }) {
           <button className="menu-action danger" onClick={remove} disabled={busy}>
             {busy ? 'Removing…' : '✕ Remove friend'}
           </button>
-        </div>
-      </div>
+      </Sheet>
     </Portal>
   )
 }
@@ -766,8 +824,7 @@ function ForwardSheet({ me, message, onClose }) {
   }
   return (
     <Portal>
-      <div className="sheet" onClick={onClose}>
-        <div className="sheet-body" onClick={(e) => e.stopPropagation()}>
+      <Sheet onClose={onClose} label="Forward message">
           <h2 style={{ margin: '0 0 12px', fontWeight: 300, fontSize: 20 }}>Forward to</h2>
           {friends.length === 0 && <div className="empty">No one to forward to.</div>}
           {friends.map((f) => (
@@ -793,8 +850,7 @@ function ForwardSheet({ me, message, onClose }) {
               {sending ? 'Forwarding…' : `Forward${selected.length ? ` (${selected.length})` : ''}`}
             </button>
           )}
-        </div>
-      </div>
+      </Sheet>
     </Portal>
   )
 }
@@ -805,8 +861,7 @@ function MessageMenu({ message, me, onClose, onReact, onSave, onUnsend, onReply,
   const saved = (message.saved_by ?? []).includes(me)
   return (
     <Portal>
-      <div className="sheet" onClick={onClose}>
-        <div className="reaction-menu" onClick={(e) => e.stopPropagation()}>
+      <Sheet onClose={onClose} label="Message actions" className="reaction-menu">
           <div className="tapbacks">
             {TAPBACKS.map((e) => (
               <button
@@ -836,8 +891,7 @@ function MessageMenu({ message, me, onClose, onReact, onSave, onUnsend, onReply,
               ↩︎ Unsend
             </button>
           )}
-        </div>
-      </div>
+      </Sheet>
     </Portal>
   )
 }
@@ -872,6 +926,19 @@ function MessageRow({
   // Long-press opens the action menu (react / save / unsend); double-tap is a
   // quick heart, like Apple Messages. `longPressed` guards the trailing click so
   // opening the menu doesn't also open (consume) a snap.
+  const onKeyDown = (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault()
+      handleClick()
+    } else if (e.key === 'ContextMenu' || (e.shiftKey && e.key === 'F10') || e.key === 'm') {
+      e.preventDefault()
+      if (message.kind !== 'call') onLongPress()
+    } else if (e.key === 'r') {
+      e.preventDefault()
+      if (message.kind !== 'call') onReply?.()
+    }
+  }
+
   const pressTimer = useRef(null)
   const longPressed = useRef(false)
   const lastTap = useRef(0)
@@ -997,6 +1064,9 @@ function MessageRow({
         <div
           className={`msg-body${scrambled && !revealed ? ' scrambled' : ''}`}
           style={{ borderLeftColor: bar }}
+          role="button"
+          tabIndex={0}
+          onKeyDown={onKeyDown}
           onClick={handleClick}
           onPointerDown={scrambled ? () => setRevealed(true) : undefined}
           onPointerUp={scrambled ? () => setRevealed(false) : undefined}
@@ -1008,7 +1078,7 @@ function MessageRow({
           {scrambled && !revealed && <LockIcon width={12} height={12} className="msg-lock" />}
         </div>
       ) : message.kind === 'sticker' ? (
-        <div className="msg-sticker" onClick={handleClick}>
+        <div className="msg-sticker" role="button" tabIndex={0} onKeyDown={onKeyDown} onClick={handleClick}>
           {message.body}
         </div>
       ) : message.kind === 'voice' ? (
@@ -1096,6 +1166,24 @@ function callLabel(message, me) {
   const m = Math.floor(s / 60)
   const r = Math.floor(s % 60)
   return `${label} · ${m > 0 ? `${m}m ${r}s` : `${r}s`}`
+}
+
+// Day grouping. Older messages used to repeat their full date inline on every
+// row instead of sitting under one divider.
+function dayKey(iso) {
+  const d = new Date(iso)
+  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`
+}
+
+function dayLabel(iso) {
+  const d = new Date(iso)
+  const today = new Date()
+  const yesterday = new Date()
+  yesterday.setDate(today.getDate() - 1)
+  if (dayKey(iso) === dayKey(today.toISOString())) return 'Today'
+  if (dayKey(iso) === dayKey(yesterday.toISOString())) return 'Yesterday'
+  const sameYear = d.getFullYear() === today.getFullYear()
+  return d.toLocaleDateString([], { day: 'numeric', month: 'long', ...(sameYear ? {} : { year: 'numeric' }) })
 }
 
 // Clock time for recent messages, date + time for older ones.
