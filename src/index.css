@@ -1541,8 +1541,12 @@ button:disabled { cursor: not-allowed; }
    back circle take their 44px each — at 320px that left about five characters,
    clipped mid-glyph because text-overflow does not apply to a flex container. */
 .chat-peer-h1 {
-  display: flex; align-items: center; gap: 8px; margin: 0; min-width: 0;
-  font-size: clamp(17px, 5.2vw, 22px);
+  display: flex; align-items: center; gap: 7px; margin: 0; min-width: 0;
+  /* 22px dominated the header and pushed the name into the call buttons; the
+     friend's name is a label here, not a page title. */
+  font-size: clamp(15.5px, 4.2vw, 18px);
+  font-weight: 400;
+  letter-spacing: -0.01em;
 }
 .chat-peer-name {
   min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
