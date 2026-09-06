@@ -3,11 +3,12 @@
 > transactional recovery setup, and separate provider/hook modules. Historical
 > notes below describe earlier versions; do not replay their SQL instructions.
 >
-> **Live as of 6 Sep 2026.** The audit upgrade is applied to production
+> **Live as of 7 Sep 2026.** The audit upgrade is applied to production
 > (`mqxfggwncoazgmcswedi`), the `cleanup` worker is deployed and scheduled every
 > 15 min, the frontend is deployed, and **Realtime public channel access is
-> disabled** — every channel is now private. Two-user smoke tests on real devices
-> are still outstanding; see the checklist at the end of AUDIT-FIXES.md.
+> disabled** — every channel is now private. Migrations through
+> `202609060007_pair_questions.sql` are applied. Two-user smoke tests on real
+> devices are still outstanding; see the checklist at the end of AUDIT-FIXES.md.
 
 # CLAUDE.md
 
@@ -23,10 +24,21 @@ npm run dev      # dev server on :5173
 npm run build    # production build to dist/
 npm run preview  # serve the built output
 npx oxlint src   # lint
+npx vitest run   # component + unit tests (25)
+npm run test:db  # runs the real baseline + upgrade SQL against PGlite
 ```
 
 Requires `.env` with `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`; the app
 throws on import without them. Copy `.env.example`.
+
+Deploy with `vercel deploy --prod --yes --scope meeraapplication`, then confirm
+the deployment is aliased to `meera.bigadtruck.com` (`vercel inspect <url>`) —
+a deploy that is not aliased is not live. **Verify the served bundle, not the
+deploy output:** fetch the page and grep the built asset for a string only the
+new code contains. The service worker is network-first for navigations but
+cache-first for other GETs, so `fetch('/')` from the page can return the OLD
+shell while the rendered page is current — read `document.querySelector('script[src]')`
+instead of trusting a fetch.
 
 ## Architecture
 

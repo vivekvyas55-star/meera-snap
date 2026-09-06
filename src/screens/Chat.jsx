@@ -39,7 +39,7 @@ import KeptTogether from '../components/KeptTogether'
 import { ArrowIcon, BackIcon, CheckIcon, CloseIcon, ForwardIcon, ImageIcon, LockIcon, MicIcon, PhoneIcon, PlayIcon, PlusIcon, ReplyIcon, SaveIcon, SmileyIcon, VideoIcon } from '../components/Icons'
 import { useAudioRecorder } from '../hooks/useAudioRecorder'
 import { useCall } from '../hooks/useCall'
-import DailyQuestion from '../components/DailyQuestion'
+import QuestionCards from '../components/QuestionCards'
 
 const STICKERS = [
   '😂', '❤️', '🔥', '👍', '👎', '🥳', '😎', '😭',
@@ -457,7 +457,7 @@ export default function Chat({ friend, onBack }) {
         )
       })()}
 
-      <DailyQuestion me={me} friend={friend} friendName={friendName} />
+      <QuestionCards me={me} friend={friend} friendName={friendName} />
 
       <div className="thread" ref={threadRef} onScroll={onThreadScroll}>
         {loadingOlder && <div className="thread-loading" role="status">Loading earlier messages…</div>}

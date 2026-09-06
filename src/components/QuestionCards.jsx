@@ -10,7 +10,11 @@ import { CloseIcon, PlusIcon } from './Icons'
 //
 // Both the cap and the "only the person asked may answer" rule are enforced in
 // the database; this component would happily render whatever comes back.
-export default function QuestionCards({ me, friend, friendName, onWaiting }) {
+function questionTime(iso) {
+  return new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+}
+
+export default function QuestionCards({ me, friend, friendName }) {
   const toast = useToast()
   const [rows, setRows] = useState([])
   const [asksLeft, setAsksLeft] = useState(3)
@@ -20,6 +24,8 @@ export default function QuestionCards({ me, friend, friendName, onWaiting }) {
   const [draft, setDraft] = useState('')
   const [replies, setReplies] = useState({}) // question id -> draft answer
   const [busy, setBusy] = useState(null)
+  const [expanded, setExpanded] = useState(false)
+  const [touched, setTouched] = useState(false)
 
   const requestRef = useRef(0)
   const load = useCallback(async () => {
@@ -46,11 +52,11 @@ export default function QuestionCards({ me, friend, friendName, onWaiting }) {
     }
   }, [load])
 
-  // The parent chip summarises both surfaces, so it needs to know when one of
-  // these is waiting on you.
+  // Open on arrival only when she has actually asked you something.
   useEffect(() => {
-    onWaiting?.(rows.filter((q) => q.asker !== me && !q.answer).length)
-  }, [rows, me, onWaiting])
+    if (touched) return
+    if (rows.some((q) => q.asker !== me && !q.answer)) setExpanded(true)
+  }, [touched, rows, me])
 
   const ask = async (e) => {
     e.preventDefault()
@@ -85,11 +91,34 @@ export default function QuestionCards({ me, friend, friendName, onWaiting }) {
   }
 
   if (unavailable) return null
+  const waitingOnYou = rows.filter((q) => q.asker !== me && !q.answer).length
+
+  if (!expanded) {
+    return (
+      <button
+        className={`dq-chip${waitingOnYou > 0 ? ' waiting' : ''}`}
+        onClick={() => { setTouched(true); setExpanded(true) }}
+        aria-expanded="false"
+      >
+        <span className="dq-chip-icon">💭</span>
+        <span className="dq-chip-text">
+          {waitingOnYou > 0
+            ? `${friendName} asked you ${waitingOnYou} question${waitingOnYou === 1 ? '' : 's'}`
+            : rows.length > 0
+              ? `Question of the day · ${rows.length} today`
+              : 'Question of the day'}
+        </span>
+        <span className="dq-chip-more">
+          {waitingOnYou > 0 ? 'Answer' : asksLeft > 0 ? 'Ask' : 'Open'} ›
+        </span>
+      </button>
+    )
+  }
 
   return (
-    <div className="qcards">
+    <div className="qcards dq-panel">
       <div className="qcards-head">
-        <span className="qcards-title">Your questions</span>
+        <span className="qcards-title">Question of the day</span>
         <button
           className="qcards-ask"
           onClick={() => setOpen((v) => !v)}
@@ -99,7 +128,20 @@ export default function QuestionCards({ me, friend, friendName, onWaiting }) {
           {open ? <CloseIcon width={15} height={15} /> : <PlusIcon width={15} height={15} />}
           {open ? 'Cancel' : asksLeft === 0 ? 'None left today' : `Ask (${asksLeft})`}
         </button>
+        <button
+          className="qcards-close"
+          onClick={() => { setTouched(true); setExpanded(false) }}
+          aria-label="Collapse"
+        >
+          <CloseIcon width={16} height={16} />
+        </button>
       </div>
+
+      {rows.length === 0 && !open && (
+        <div className="qcards-empty">
+          Ask each other up to three questions a day.
+        </div>
+      )}
 
       {open && (
         <form className="qcard qcard-new" onSubmit={ask}>
@@ -111,17 +153,34 @@ export default function QuestionCards({ me, friend, friendName, onWaiting }) {
             maxLength={300}
             autoFocus
           />
-          <button className="btn-dark" type="submit" disabled={asking || !draft.trim()}>
-            {asking ? 'Asking…' : 'Ask'}
-          </button>
+          <div className="qcard-newfoot">
+            <span className="qcard-count">
+              {draft.length}/300 · {asksLeft} ask{asksLeft === 1 ? '' : 's'} left today
+            </span>
+            <button className="btn-dark" type="submit" disabled={asking || !draft.trim()}>
+              {asking ? 'Asking…' : 'Ask'}
+            </button>
+          </div>
         </form>
       )}
 
-      {rows.map((q) => {
+      {/* Anything waiting on you comes first — you should not have to scroll a
+          day's cards to find the one that needs an answer. Everything else
+          stays in the order it was asked. */}
+      {[...rows]
+        .sort((a, b) => {
+          const aWaiting = a.asker !== me && !a.answer ? 0 : 1
+          const bWaiting = b.asker !== me && !b.answer ? 0 : 1
+          return aWaiting - bWaiting
+        })
+        .map((q) => {
         const mine = q.asker === me
         return (
           <div key={q.id} className={`qcard${mine ? ' mine' : ''}`}>
-            <div className="qcard-who">{mine ? 'You asked' : `${friendName} asked`}</div>
+            <div className="qcard-who">
+              {mine ? 'You asked' : `${friendName} asked`}
+              <span className="qcard-time">{questionTime(q.created_at)}</span>
+            </div>
             <div className="qcard-q">{q.body}</div>
 
             {q.answer ? (
@@ -140,13 +199,16 @@ export default function QuestionCards({ me, friend, friendName, onWaiting }) {
                   rows={2}
                   maxLength={500}
                 />
-                <button
-                  className="btn-dark"
-                  onClick={() => reply(q.id)}
-                  disabled={busy === q.id || !(replies[q.id] ?? '').trim()}
-                >
-                  {busy === q.id ? 'Sending…' : 'Answer'}
-                </button>
+                <div className="qcard-newfoot">
+                  <span className="qcard-count">Answers can’t be edited</span>
+                  <button
+                    className="btn-dark"
+                    onClick={() => reply(q.id)}
+                    disabled={busy === q.id || !(replies[q.id] ?? '').trim()}
+                  >
+                    {busy === q.id ? 'Sending…' : 'Answer'}
+                  </button>
+                </div>
               </div>
             )}
           </div>

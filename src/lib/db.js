@@ -622,10 +622,10 @@ export async function getPairPrompt(otherId) {
 // can flag "they answered, you haven't" without a query per row. Degrades to an
 // empty map if the migration isn't applied, rather than blanking the list.
 export async function listPromptStatus() {
-  const { data, error } = await supabase.rpc('prompt_status_all')
+  const { data, error } = await supabase.rpc('pending_questions_all')
   if (error) return {}
   const map = {}
-  for (const row of data ?? []) map[row.other] = row
+  for (const row of data ?? []) map[row.other] = { pending: row.pending }
   return map
 }
 

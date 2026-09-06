@@ -220,12 +220,12 @@ export default function ChatList({ active = true, onOpenChat, onOpenProfile, onO
                   {f.profile.id === bestFriendId && <span title="Best friend">💛</span>}
                   {streak.count >= 100 && <span title="100-day Snapstreak!">💯</span>}
                   {streak.expiring && <span title="Snapstreak about to end">⌛</span>}
-                  {prompts[f.profile.id]?.theirs_done && !prompts[f.profile.id]?.mine_done && (
+                  {prompts[f.profile.id]?.pending > 0 && (
                     <span
                       className="qotd-dot"
                       role="img"
-                      aria-label={`${alias(f.profile)} answered today's question — your turn`}
-                      title="Answered today's question — your turn"
+                      aria-label={`${alias(f.profile)} asked you a question`}
+                      title="Asked you a question"
                     >
                       💭
                     </span>
