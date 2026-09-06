@@ -11,6 +11,7 @@ import {
 } from '../lib/db'
 import { useAuth } from '../hooks/useAuth'
 import Confirm from '../components/Confirm'
+import Plans from './Plans'
 import { useToast } from '../hooks/useToast'
 import Avatar from '../components/Avatar'
 import { BackIcon, CheckIcon, PowerIcon } from '../components/Icons'
@@ -41,6 +42,7 @@ export default function Profile({ onBack }) {
   const [saving, setSaving] = useState(false)
   const [showMemories, setShowMemories] = useState(false)
   const [confirmLock, setConfirmLock] = useState(false)
+  const [showPlans, setShowPlans] = useState(false)
   const [secQ, setSecQ] = useState(SECURITY_QUESTIONS[0])
   const [secA, setSecA] = useState('')
   const [savingSec, setSavingSec] = useState(false)
@@ -164,6 +166,7 @@ export default function Profile({ onBack }) {
   }
 
   if (showMemories) return <Memories me={me} onBack={() => setShowMemories(false)} />
+  if (showPlans) return <Plans onBack={() => setShowPlans(false)} />
 
   return (
     <div className="app" style={{ display: 'flex', flexDirection: 'column', background: '#fff' }}>

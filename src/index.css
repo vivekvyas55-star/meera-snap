@@ -1579,3 +1579,25 @@ button:disabled { cursor: not-allowed; }
 .viewer-mine-actions { position: absolute; left: 16px; bottom: calc(var(--safe-bottom) + 18px); display: flex; gap: 8px; }
 .viewer-mine-actions .viewer-seen { position: static; }
 .viewer-seen.danger { color: #ffb3a6; }
+
+/* Plans. Built but inert — nothing here gates the app until billing is
+   switched on server-side. */
+.plan-note {
+  margin: 6px 0 12px; padding: 12px 14px;
+  border-radius: var(--r-card); background: var(--lime); color: var(--ink);
+  font-size: 14px; line-height: 1.45;
+}
+.plan-card {
+  margin-top: 12px; padding: 18px;
+  border-radius: var(--r-card); background: var(--card);
+}
+.plan-card.best { background: var(--lavender); }
+.plan-top { display: flex; align-items: center; gap: 8px; }
+.plan-name { font-size: 13px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; opacity: 0.7; }
+.plan-badge { background: var(--ink); color: #fff; font-size: 11px; }
+.plan-price { font-size: 40px; font-weight: 300; letter-spacing: -0.03em; line-height: 1.1; margin-top: 6px; }
+.plan-cadence { font-size: 15px; font-weight: 400; opacity: 0.65; margin-left: 4px; }
+.plan-sub { font-size: 13px; opacity: 0.7; margin-top: 2px; }
+.plan-list { list-style: none; padding: 0; margin: 14px 0 16px; display: flex; flex-direction: column; gap: 8px; }
+.plan-list li { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+.plan-card .btn-dark { min-height: 48px; }
