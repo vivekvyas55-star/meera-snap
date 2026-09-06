@@ -207,7 +207,9 @@ input, textarea { font: inherit; }
 /* Message reactions (Apple-style tapback badge on the bubble). */
 .msg-reactions {
   display: inline-block;
-  margin: 3px 0 0 6px;
+  position: relative;
+  z-index: 1;
+  margin: -10px 0 0 10px;
   background: #fff;
   border: 1px solid var(--hairline);
   border-radius: 999px;
@@ -216,7 +218,13 @@ input, textarea { font: inherit; }
   line-height: 1.2;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
 }
-.msg.mine .msg-reactions { margin: 3px 6px 0 0; float: right; }
+/* Floating this pushed it out of flow: the meta line wrapped around it and it
+   rode up over the bubble's top-right corner, half-clipped. It now sits in
+   flow, tucked under the bubble's bottom edge on the correct side. */
+.msg.mine .msg-reactions { margin: -10px 10px 0 0; }
+.msg.mine { display: flex; flex-direction: column; align-items: flex-end; }
+.msg.mine > .msg-body, .msg.mine > .msg-photo, .msg.mine > .msg-sticker,
+.msg.mine > .msg-voice, .msg.mine > .msg-call { width: 100%; }
 
 /* Long-press action menu: reaction row + save/unsend. */
 .reaction-menu {
@@ -1125,3 +1133,68 @@ button:disabled { cursor: not-allowed; }
   -webkit-user-select: none;
 }
 .msg-meta svg { vertical-align: -2px; margin-left: 4px; opacity: 0.65; }
+
+/* ==========================================================================
+   Profile — was built from repeated inline styles, which no media query could
+   reach. These are the same values, promoted to classes that can adapt.
+   ========================================================================== */
+.field {
+  width: 100%;
+  padding: 14px 16px;
+  font-size: 16px;            /* below 16px iOS zooms the whole page on focus */
+  border: none;
+  border-radius: var(--r-row);
+  background: var(--card);
+  outline: none;
+  color: var(--ink);
+  font-family: inherit;
+}
+.field-hint { font-size: 13px; color: var(--muted); margin-bottom: 8px; line-height: 1.45; }
+
+.pill-btn {
+  width: 100%;
+  margin-top: 12px;
+  min-height: 48px;
+  padding: 14px;
+  border-radius: var(--r-pill);
+  background: var(--card);
+  font-weight: 500;
+  font-size: 15px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.pill-btn:active { background: var(--card-press); }
+
+/* A fixed 8-column grid left 31px cells on a 320px phone — below the 44px
+   touch minimum, with a 22px emoji crammed inside. Let the column count fall
+   out of the available width instead. */
+.emoji-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(44px, 1fr));
+  gap: 6px;
+  padding: 0 2px;
+}
+.emoji-grid button {
+  aspect-ratio: 1;
+  min-height: 44px;
+  border-radius: 12px;
+  font-size: 22px;
+  background: var(--card);
+  display: grid;
+  place-items: center;
+}
+.emoji-grid button.on { background: var(--ink); color: #fff; }
+
+/* Long numbers must shrink the card, not overflow it. */
+.stat-card { min-width: 0; }
+.stat-num { overflow-wrap: anywhere; }
+
+/* Profile is an overlay with no tab bar under it, so it doesn't need the
+   list's tab-bar clearance — that was 108px of dead space at the bottom. */
+.profile-list { padding-bottom: calc(var(--safe-bottom) + 24px); }
+
+/* Sits at the end of the scrambled text so the marker survives run-collapsing
+   (the meta row only renders at the end of a run). */
+.msg-lock { vertical-align: -1px; margin-left: 6px; opacity: 0.5; }

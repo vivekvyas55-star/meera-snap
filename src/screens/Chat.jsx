@@ -1005,6 +1005,7 @@ function MessageRow({
           title={scrambled ? 'Hold to read' : undefined}
         >
           {privacyBody(message, me, revealed)}
+          {scrambled && !revealed && <LockIcon width={12} height={12} className="msg-lock" />}
         </div>
       ) : message.kind === 'sticker' ? (
         <div className="msg-sticker" onClick={handleClick}>
@@ -1063,7 +1064,6 @@ function MessageRow({
           )}
           {saved && ' · Saved'}
           {message.screenshot_at && ' · 📸 Screenshot'}
-          {scrambled && <LockIcon width={12} height={12} aria-hidden="true" />}
         </div>
       )}
     </div>

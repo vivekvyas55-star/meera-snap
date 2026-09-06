@@ -166,7 +166,7 @@ export default function Profile({ onBack }) {
   return (
     <div className="app" style={{ display: 'flex', flexDirection: 'column', background: '#fff' }}>
       <div className="header">
-        <button className="circle dark" onClick={onBack} aria-label="Back">
+        <button className="circle filled" onClick={onBack} aria-label="Back">
           <BackIcon />
         </button>
         <h1>Profile</h1>
@@ -175,7 +175,7 @@ export default function Profile({ onBack }) {
         </button>
       </div>
 
-      <div className="list" style={{ paddingTop: 8 }}>
+      <div className="list profile-list" style={{ paddingTop: 8 }}>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, padding: '8px 0 18px' }}>
           <Avatar profile={preview} size="lg" />
           <div style={{ fontSize: 22, fontWeight: 300, letterSpacing: '-0.02em' }}>
@@ -202,28 +202,16 @@ export default function Profile({ onBack }) {
           onChange={(e) => setDisplayName(e.target.value)}
           maxLength={40}
           placeholder={profile.username}
-          style={{
-            width: '100%', padding: '14px 16px', fontSize: 16,
-            border: 'none', borderRadius: 'var(--r-row)',
-            background: 'var(--card)', outline: 'none',
-          }}
+          className="field"
         />
 
         <div className="section">Avatar</div>
-        <div
-          style={{
-            display: 'grid', gridTemplateColumns: 'repeat(8, 1fr)', gap: 6, padding: '0 2px',
-          }}
-        >
+        <div className="emoji-grid">
           <button
             onClick={() => setEmoji(null)}
             title="Letter avatar"
-            style={{
-              aspectRatio: '1', borderRadius: 12, fontSize: 20,
-              background: emoji === null ? 'var(--ink)' : 'var(--card)',
-              color: emoji === null ? '#fff' : 'var(--ink)',
-              display: 'grid', placeItems: 'center',
-            }}
+            className={emoji === null ? 'on' : undefined}
+            style={{ fontSize: 20 }}
           >
             {(profile.username || '?').charAt(0).toUpperCase()}
           </button>
@@ -231,11 +219,7 @@ export default function Profile({ onBack }) {
             <button
               key={e}
               onClick={() => setEmoji(e)}
-              style={{
-                aspectRatio: '1', borderRadius: 12, fontSize: 22,
-                background: emoji === e ? 'var(--ink)' : 'var(--card)',
-                display: 'grid', placeItems: 'center',
-              }}
+              className={emoji === e ? 'on' : undefined}
             >
               {e}
             </button>
@@ -266,7 +250,7 @@ export default function Profile({ onBack }) {
         </button>
 
         <div className="section">What’s up?</div>
-        <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 8 }}>
+        <div className="field-hint">
           A line your friends see under your name. Disappears after 24 hours.
         </div>
         <input
@@ -274,10 +258,7 @@ export default function Profile({ onBack }) {
           onChange={(e) => setNote(e.target.value)}
           maxLength={80}
           placeholder="Studying · At home · Out for chai"
-          style={{
-            width: '100%', padding: '14px 16px', fontSize: 16,
-            border: 'none', borderRadius: 'var(--r-row)', background: 'var(--card)', outline: 'none',
-          }}
+          className="field"
         />
         <button
           className="btn-dark"
@@ -289,7 +270,7 @@ export default function Profile({ onBack }) {
         </button>
 
         <div className="section">Birthday</div>
-        <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 8 }}>
+        <div className="field-hint">
           Friends see a 🎂 next to your name on the day. Year is never shown.
         </div>
         <input
@@ -297,14 +278,11 @@ export default function Profile({ onBack }) {
           value={birthday}
           max={new Date().toISOString().slice(0, 10)}
           onChange={(e) => saveBirthday(e.target.value)}
-          style={{
-            width: '100%', padding: '14px 16px', fontSize: 16,
-            border: 'none', borderRadius: 'var(--r-row)', background: 'var(--card)', outline: 'none',
-          }}
+          className="field"
         />
 
         <div className="section">Notifications</div>
-        <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 8 }}>
+        <div className="field-hint">
           {pushBlocked ?? 'Get alerted for messages and calls even when Meera is closed.'}
         </div>
         {!pushBlocked && (
@@ -319,7 +297,7 @@ export default function Profile({ onBack }) {
         )}
 
         <div className="section">Security question</div>
-        <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 8 }}>
+        <div className="field-hint">
           Set this so you can recover your account if you forget your password.
         </div>
         <select
@@ -337,10 +315,7 @@ export default function Profile({ onBack }) {
           onChange={(e) => setSecA(e.target.value)}
           placeholder="your answer"
           autoComplete="off"
-          style={{
-            width: '100%', padding: '14px 16px', fontSize: 16,
-            border: 'none', borderRadius: 'var(--r-row)', background: 'var(--card)', outline: 'none',
-          }}
+          className="field"
         />
         <button className="btn-dark" style={{ marginTop: 12 }} disabled={savingSec || !secA.trim()} onClick={saveSecurity}>
           {savingSec ? 'Saving…' : 'Save security question'}
@@ -348,22 +323,14 @@ export default function Profile({ onBack }) {
 
         <button
           onClick={() => setShowMemories(true)}
-          style={{
-            width: '100%', marginTop: 12, padding: 14, borderRadius: 'var(--r-pill)',
-            background: 'var(--card)', fontWeight: 500, fontSize: 15,
-            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-          }}
+          className="pill-btn"
         >
           📸 Memories
         </button>
 
         <button
           onClick={lockApp}
-          style={{
-            width: '100%', marginTop: 12, padding: 14, borderRadius: 'var(--r-pill)',
-            background: 'var(--card)', fontWeight: 500, fontSize: 15,
-            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-          }}
+          className="pill-btn"
         >
           🔒 Lock app
         </button>
