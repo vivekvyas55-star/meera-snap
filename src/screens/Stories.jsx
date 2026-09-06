@@ -12,6 +12,7 @@ import Avatar from '../components/Avatar'
 import Portal from '../components/Portal'
 import Confirm from '../components/Confirm'
 import { useToast } from '../hooks/useToast'
+import { PlusIcon, StoriesIcon } from '../components/Icons'
 import { supabase } from '../lib/supabase'
 
 export default function Stories({ active, onCapture }) {
@@ -79,10 +80,16 @@ export default function Stories({ active, onCapture }) {
   }, [stories, views, me])
 
   const currentGroup = groups.find(g => g.userId === openAuthor)
+  const mine = groups.find((g) => g.mine)
   return (
     <>
       <div className="header">
         <h1>Stories</h1>
+        {onCapture && (
+          <button className="circle dark" onClick={onCapture} aria-label="Add to your story">
+            <PlusIcon />
+          </button>
+        )}
       </div>
 
       <p className="screen-subtitle story-subtitle">A glimpse of each other’s day.</p>
@@ -91,18 +98,34 @@ export default function Stories({ active, onCapture }) {
         {error && <div className="error">{error}<button onClick={load}>Retry</button></div>}
         {!loading && groups.length === 0 && !error && (
           <div className="empty">
-            <div className="empty-symbol" aria-hidden="true">☀</div>
+            <div className="empty-symbol" aria-hidden="true"><StoriesIcon /></div>
             <h2>Everyday is worth sharing.</h2>
             <p>A morning sky. A favourite song. A little piece of your day.</p>
             {onCapture && <button className="btn-dark" onClick={onCapture}>Capture a moment</button>}
           </div>
         )}
 
+        {/* Posting was reachable only by swiping to the camera and guessing.
+            Your own story leads the list whether or not you have posted one. */}
+        {!loading && !mine && !error && onCapture && groups.length > 0 && (
+          <button className="row story-row-mine" onClick={onCapture}>
+            <span className="story-add" aria-hidden="true"><PlusIcon width={20} height={20} /></span>
+            <div className="row-main">
+              <div className="row-name">Your story</div>
+              <div className="row-sub">Add a moment from today</div>
+            </div>
+          </button>
+        )}
+
         {groups.map((g) => {
           const author = authors[g.userId]
           if (!author) return null
           return (
-            <button className="row" key={g.userId} onClick={() => setOpenAuthor(g.userId)}>
+            <button
+              className={`row${g.mine ? ' story-row-mine' : ''}`}
+              key={g.userId}
+              onClick={() => setOpenAuthor(g.userId)}
+            >
               {/* Snapchat's indicator is present-vs-absent, not the
                   filled-vs-grey ring Instagram uses: once you've watched a
                   friend's story the preview disappears entirely. */}
@@ -112,9 +135,14 @@ export default function Stories({ active, onCapture }) {
                   {g.mine ? 'My Story' : alias(author)}
                 </div>
                 <div className="row-sub">
-                  {g.items.length} {g.items.length === 1 ? 'snap' : 'snaps'} ·{' '}
-                  {hoursLeft(g.items[g.items.length - 1].expires_at)}
+                  {g.items.length} {g.items.length === 1 ? 'snap' : 'snaps'}
                 </div>
+              </div>
+              {/* How long it lasts is the one thing that changes minute to
+                  minute, so it earns the right-hand column rather than being
+                  the tail of a sentence. */}
+              <div className="row-right">
+                <span className="row-time">{hoursLeft(g.items[g.items.length - 1].expires_at)}</span>
               </div>
             </button>
           )

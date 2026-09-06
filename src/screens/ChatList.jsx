@@ -24,7 +24,7 @@ import StatusIcon from '../components/StatusIcon'
 import Portal from '../components/Portal'
 import Sheet from '../components/Sheet'
 const Snapcode = lazy(() => import('../components/Snapcode'))
-import { CheckIcon, MapIcon, PlusIcon, CloseIcon } from '../components/Icons'
+import { CheckIcon, MapIcon, NoteIcon, PlusIcon, CloseIcon } from '../components/Icons'
 
 export default function ChatList({ active = true, onOpenChat, onOpenProfile, onOpenMap }) {
   const { profile } = useAuth()
@@ -130,14 +130,17 @@ export default function ChatList({ active = true, onOpenChat, onOpenProfile, onO
     return bestId
   }, [accepted, streakFor])
 
+  // The greeting mentions a friend whose birthday is today. Birthdays are
+  // already loaded for the row markers, so this costs nothing extra.
+  const birthdayFriend = useMemo(
+    () => accepted.find((f) => birthdays.has(f.profile.id))?.profile ?? null,
+    [accepted, birthdays]
+  )
+
   return (
     <>
       <div className="header">
-        <button
-          onClick={onOpenProfile}
-          aria-label="Your profile"
-          style={{ background: 'none', padding: 0 }}
-        >
+        <button className="avatar-btn" onClick={onOpenProfile} aria-label="Your profile">
           <Avatar profile={profile} size="sm" />
         </button>
         <h1>Chat</h1>
@@ -150,7 +153,10 @@ export default function ChatList({ active = true, onOpenChat, onOpenProfile, onO
       </div>
 
       <div className="chat-tools">
-        <p className="screen-subtitle">Little moments start with a hello.</p>
+        <p className="greeting">
+          {greetingFor(profile)}
+          {birthdayFriend && <span>It’s {alias(birthdayFriend)}’s birthday today 🎂</span>}
+        </p>
         <div className="search-field">
           <input type="search" aria-label="Search chats" placeholder="Find your people" value={query} onChange={e => setQuery(e.target.value)} />
         </div>
@@ -210,7 +216,7 @@ export default function ChatList({ active = true, onOpenChat, onOpenProfile, onO
         {loading && <div className="empty" role="status">Loading your people…</div>}
         {!loading && !error && accepted.length === 0 && requests.length === 0 && (
           <div className="empty">
-            <div className="empty-symbol" aria-hidden="true">＋</div>
+            <div className="empty-symbol" aria-hidden="true"><PlusIcon /></div>
             <h2>Make room for your people.</h2>
             <p>Add someone by username to start sharing your everyday.</p>
             <button className="btn-dark" onClick={() => setAdding(true)}>Add your first friend</button>
@@ -263,7 +269,10 @@ export default function ChatList({ active = true, onOpenChat, onOpenProfile, onO
                 {/* Their note sits below the message status — it's colour, not
                     the row's primary information. */}
                 {notes[f.profile.id] && (
-                  <div className="row-note">💬 {notes[f.profile.id]}</div>
+                  <div className="row-note">
+                    <NoteIcon width={13} height={13} />
+                    <b>{notes[f.profile.id]}</b>
+                  </div>
                 )}
               </div>
               <div className="row-right">
@@ -366,6 +375,19 @@ function AddFriend({ me, profile, onClose, onAdded }) {
     </Sheet>
     </Portal>
   )
+}
+
+// Opening the app should feel like being greeted, not like loading an inbox.
+// Local clock on purpose: this is about the light outside the reader's window,
+// not about any shared date boundary (see istToday for the ones that are).
+function greetingFor(profile) {
+  const name = (profile.display_name || profile.username || '').split(' ')[0]
+  const h = new Date().getHours()
+  if (h < 5) return name ? `Still up, ${name}?` : 'Still up?'
+  if (h < 12) return name ? `Good morning, ${name}.` : 'Good morning.'
+  if (h < 17) return name ? `Afternoon, ${name}.` : 'Good afternoon.'
+  if (h < 22) return name ? `Evening, ${name}.` : 'Good evening.'
+  return name ? `Winding down, ${name}?` : 'Winding down?'
 }
 
 function shortTime(iso) {

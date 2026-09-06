@@ -8,7 +8,7 @@ import Portal from '../components/Portal'
 import Sheet from '../components/Sheet'
 import SnapEditor from '../components/SnapEditor'
 import { useAlias } from '../hooks/useAliasClock'
-import { CheckIcon, CloseIcon, FlipIcon } from '../components/Icons'
+import { ArrowIcon, CheckIcon, CloseIcon, FlipIcon, SaveIcon, StoriesIcon } from '../components/Icons'
 
 // View-time options (seconds), plus "no limit". Default is a comfortable 45s.
 const TIMERS = [10, 30, 45, 60, null]
@@ -294,15 +294,18 @@ export default function CameraScreen({ active, onSent, onEditing }) {
             </div>
           )}
 
+          {/* Line icons, not emoji: this row is chrome, and the emoji also
+              rendered at a different weight and baseline on every platform. */}
           <div className="tray">
             <button className="pill" onClick={saveMemory} disabled={sending || batchStarted || savedMemory}>
-              {savedMemory ? '✓ Saved' : '💾 Save'}
+              {savedMemory ? <CheckIcon width={17} height={17} /> : <SaveIcon width={17} height={17} />}
+              {savedMemory ? 'Saved' : 'Save'}
             </button>
             <button className="pill" onClick={addToStory} disabled={sending || batchStarted}>
-              📖 Story
+              <StoriesIcon width={17} height={17} /> Story
             </button>
             <button className="pill send" onClick={() => setPicking(true)} disabled={sending}>
-              Send To ➤
+              Send to <ArrowIcon width={17} height={17} />
             </button>
           </div>
         </>

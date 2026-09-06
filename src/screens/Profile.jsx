@@ -15,7 +15,8 @@ import Plans from './Plans'
 import PlayTogether from './PlayTogether'
 import { useToast } from '../hooks/useToast'
 import Avatar from '../components/Avatar'
-import { BackIcon, CheckIcon, PowerIcon } from '../components/Icons'
+import { BackIcon, BellIcon, CheckIcon, ChevronIcon, CoinIcon, FlameIcon, PowerIcon, UsersIcon } from '../components/Icons'
+import { creditsToMonths, formatCredits, formatRunway, getBillingSettings, getEntitlement } from '../lib/billing'
 import { lockApp } from '../lib/appLock'
 import Memories from './Memories'
 import { SECURITY_QUESTIONS } from '../lib/securityQuestions'
@@ -44,6 +45,8 @@ export default function Profile({ onBack }) {
   const [showMemories, setShowMemories] = useState(false)
   const [confirmLock, setConfirmLock] = useState(false)
   const [showPlans, setShowPlans] = useState(false)
+  const [ent, setEnt] = useState(null)
+  const [rate, setRate] = useState(null)
   const [showPlay, setShowPlay] = useState(false)
   const [secQ, setSecQ] = useState(SECURITY_QUESTIONS[0])
   const [secA, setSecA] = useState('')
@@ -59,6 +62,12 @@ export default function Profile({ onBack }) {
 
   useEffect(() => {
     isEnabled(me).then(setPushOn).catch(() => {})
+    // getEntitlement fails open, so a missing billing migration leaves
+    // credits null and the tile simply doesn't render.
+    getEntitlement().then(setEnt).catch(() => {})
+    // The monthly rate comes from the server rather than a constant here, so
+    // this tile and the Plans screen can never quote different arithmetic.
+    getBillingSettings().then((cfg) => setRate(cfg.credits_per_month)).catch(() => {})
     listStatusNotes()
       .then((byUser) => {
         setNoteSaved(byUser[me] ?? '')
@@ -191,17 +200,39 @@ export default function Profile({ onBack }) {
           </div>
           <div style={{ color: 'var(--muted)', fontSize: 14 }}>@{profile.username}</div>
 
-          {/* Vibrant stat cards, per the ABC design language. */}
-          <div style={{ display: 'flex', gap: 10, marginTop: 10, width: '100%' }}>
-            <div className="stat-card" style={{ background: 'var(--lavender)' }}>
+          {/* Vibrant stat cards, per the ABC design language — the same
+              icon-above-number card the friend sheet uses, so a stat looks the
+              same wherever you meet it. */}
+          <div className="fp-stats" style={{ marginTop: 10, width: '100%' }}>
+            <div className="stat-card fp-stat" style={{ background: 'var(--lavender)' }}>
+              <FlameIcon width={17} height={17} />
               <div className="stat-num">{score ?? '—'}</div>
-              <div className="stat-label">🔥 Snap Score</div>
+              <div className="stat-label">Snap score</div>
             </div>
-            <div className="stat-card" style={{ background: 'var(--lime)' }}>
+            <div className="stat-card fp-stat" style={{ background: 'var(--lime)' }}>
+              <UsersIcon width={17} height={17} />
               <div className="stat-num">{friendCount ?? '—'}</div>
-              <div className="stat-label">👥 Friends</div>
+              <div className="stat-label">Friends</div>
             </div>
           </div>
+
+          {/* Credits get a full-width tile rather than a third stat card: it
+              is the number that decides access, and it is also the only way
+              into Plans from here. Rendered only once the server has told us a
+              balance — a placeholder dash next to the word "credits" reads as
+              "you have none". */}
+          {ent?.credits != null && (
+            <button className="credit-tile" onClick={() => setShowPlans(true)}>
+              <CoinIcon width={17} height={17} />
+              <div className="credit-tile-main">
+                <div className="credit-tile-num">{formatCredits(ent.credits)}</div>
+                <div className="credit-tile-label">
+                  Credits · {formatRunway(creditsToMonths(ent.credits, rate ?? undefined))} left
+                </div>
+              </div>
+              <ChevronIcon width={18} height={18} className="chev" />
+            </button>
+          )}
         </div>
 
         <div className="section">Display name</div>
@@ -300,7 +331,8 @@ export default function Profile({ onBack }) {
             disabled={pushBusy}
             style={pushOn ? { background: 'var(--lime)', color: 'var(--ink)' } : undefined}
           >
-            {pushBusy ? 'One sec…' : pushOn ? '🔔 Notifications on — turn off' : '🔔 Turn on notifications'}
+            <BellIcon width={17} height={17} />
+            {pushBusy ? 'One sec…' : pushOn ? 'Notifications on — turn off' : 'Turn on notifications'}
           </button>
         )}
 

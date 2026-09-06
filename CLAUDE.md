@@ -649,6 +649,39 @@ match the reference set. Prefer these over emoji for chrome; emoji are OK for
 content (reactions, avatars). When adding a surface, reach for a vibrant card +
 light display heading + pill chips + a dark circular action, per the reference.
 
+**Emoji are never chrome.** This has been enforced through the camera tray
+(Save / Story / Send to), the Profile stat cards, the chat-list status note and
+the chat header's "they're in this chat" marker — all now line icons. Reactions,
+stickers, avatars, the 🔥 streak count and the 👻/💛 in body copy stay emoji,
+because they are content.
+
+**Spacing and type come from tokens** (`--sp-1..7`, `--fs-display` … `--fs-eyebrow`
+in `src/index.css`). The sheet had accumulated 10/11/12/14/16/18/22px used
+interchangeably and eight font sizes between 12 and 15.5px. The token values
+were chosen to match what already shipped, so adopting one is never a visual
+change — but new work must pick a step rather than invent a size. Radii are
+`--r-card` / `--r-row` / `--r-tile` (grid thumbnails) / `--r-sheet` / `--r-pill`.
+
+**Motion** lives in one block near the end of `index.css`. Sheets rise from the
+edge they are anchored to (`sheet-up` + `scrim-in`), toasts and the offline bar
+arrive from theirs, a message that lands while you are looking animates in
+(`msg-in`), and a double-tap tapback throws hearts (`burst`). Every one is a
+one-shot on mount, so the global `prefers-reduced-motion` rule — which collapses
+all durations to 0.01ms — degrades each to the finished state; `HeartBurst` also
+checks the media query itself and renders nothing rather than flashing.
+
+**`msg-in` must only fire on arrivals.** `Chat.jsx` snapshots the ids present on
+the first non-empty render into `knownRef`, and `loadOlder` adds every
+scrolled-back page to it. Anything that introduces messages without going
+through those two paths has to add its ids too, or opening a busy chat will run
+two hundred entrance animations at once.
+
+**The chat header has no spare width.** At 320px the back circle and the two
+call buttons leave the friend's name about five characters, which is why the
+"in the chat" marker rides the corner of their avatar (`.chat-peer-av` /
+`.in-chat`) instead of taking a slot of its own. Anything new in that header has
+to go on the avatar or into the friend sheet.
+
 Snapchat's *interaction* grammar is kept even though its palette is not: status
 icons still encode direction by shape (arrow = sent, square = received) and
 state by fill (solid = unopened, hollow = opened), with screenshot as double

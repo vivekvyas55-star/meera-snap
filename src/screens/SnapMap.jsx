@@ -217,17 +217,25 @@ export default function SnapMap({ onBack }) {
         <div ref={mapEl} className="map-canvas" />
 
         <div className="map-panel">
+          {/* How far apart you are is the reason this screen exists, so on the
+              days it can be answered it gets the vibrant card and the big light
+              number rather than being a clause in a sentence. */}
+          {sharing && nearest && (
+            <div className="map-near">
+              <div className="stat-num">{prettyDistance(nearest.km)}</div>
+              <div className="stat-label">between you and {nearest.name}</div>
+            </div>
+          )}
           <div className="map-panel-txt">
             {sharing === null ? (
               <>Checking your map settings…</>
             ) : sharing ? (
-              <>
-                {nearest ? (
-                  <>💛 You’re {prettyDistance(nearest.km)} from {nearest.name}</>
-                ) : (
-                  <>You’re sharing your location · {Math.max(0, count - 1)} friend{count - 1 === 1 ? '' : 's'} on the map</>
-                )}
-              </>
+              <div className="map-chips">
+                <span className="chip">Sharing</span>
+                <span className="chip">
+                  {Math.max(0, count - 1)} friend{count - 1 === 1 ? '' : 's'} on the map
+                </span>
+              </div>
             ) : (
               <>👻 Ghost Mode — nobody can see you. Share to appear on your friends’ maps.</>
             )}

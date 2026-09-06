@@ -30,7 +30,33 @@
 
   --r-card: 20px;           /* cards */
   --r-row: 16px;            /* list rows */
+  --r-tile: 14px;           /* media thumbnails in a grid */
+  --r-sheet: 26px;          /* bottom sheets */
   --r-pill: 999px;
+
+  /* Spacing scale. The sheet had accumulated 10/11/12/14/16/18/22px used
+     interchangeably; new work picks a step from here so gaps between screens
+     line up instead of being re-guessed per component. */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 22px;
+  --sp-6: 30px;
+  --sp-7: 40px;
+
+  /* Type scale. One 300-weight display size, then five steps below it. Values
+     match what the app already shipped, so adopting a token is never a visual
+     change — it just stops the next size being invented. */
+  --fs-display: clamp(30px, 9vw, 38px);
+  --fs-h1: 26px;
+  --fs-h2: 22px;
+  --fs-lead: 17px;
+  --fs-body: 15.5px;
+  --fs-sm: 14px;
+  --fs-meta: 12.5px;
+  --fs-micro: 11px;
+  --fs-eyebrow: 10.5px;
 
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
@@ -59,7 +85,7 @@ input, textarea { font: inherit; }
 
 /* Oversized, light-weight page title — the reference's most distinctive move. */
 .display {
-  font-size: clamp(30px, 9vw, 38px);
+  font-size: var(--fs-display);
   font-weight: 300;
   letter-spacing: -0.03em;
   line-height: 1;
@@ -187,7 +213,7 @@ input, textarea { font: inherit; }
 .row:active { background: var(--card-press); }
 .row-main { flex: 1; min-width: 0; }
 .row-name {
-  font-weight: 500; font-size: 15.5px; letter-spacing: -0.02em;
+  font-weight: 500; font-size: var(--fs-body); letter-spacing: -0.02em;
   display: flex; align-items: center; gap: 6px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
@@ -230,8 +256,8 @@ input, textarea { font: inherit; }
 .reaction-menu {
   background: var(--bg);
   width: 100%;
-  border-radius: 26px 26px 0 0;
-  padding: 16px 16px calc(var(--safe-bottom) + 16px);
+  border-radius: var(--r-sheet) var(--r-sheet) 0 0;
+  padding: var(--sp-4) var(--sp-4) calc(var(--safe-bottom) + var(--sp-4));
 }
 .tapbacks {
   display: flex; justify-content: space-around; gap: 6px;
@@ -253,7 +279,7 @@ input, textarea { font: inherit; }
 .menu-action.danger { color: var(--coral); }
 .row-sub {
   display: flex; align-items: center; gap: 5px;
-  font-size: 12.5px; color: var(--muted); margin-top: 2px;
+  font-size: var(--fs-meta); color: var(--muted); margin-top: 2px;
 }
 .row-sub.unread { color: var(--ink); font-weight: 600; }
 .row-right {
@@ -307,7 +333,7 @@ input, textarea { font: inherit; }
 .msg-body {
   background: var(--card); border-radius: var(--r-row);
   border-left: 3px solid var(--indigo);
-  padding: 10px 13px; font-size: 15.5px; line-height: 1.4;
+  padding: 10px 13px; font-size: var(--fs-body); line-height: 1.4;
   overflow-wrap: anywhere;
 }
 .msg.saved .msg-body { background: #e3e3e8; }
@@ -488,7 +514,7 @@ input, textarea { font: inherit; }
 /* Memories gallery */
 .mem-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
 .mem-thumb {
-  position: relative; aspect-ratio: 1; border-radius: 14px; overflow: hidden;
+  position: relative; aspect-ratio: 1; border-radius: var(--r-tile); overflow: hidden;
   background: var(--card); padding: 0;
 }
 .mem-thumb img, .mem-thumb video { width: 100%; height: 100%; object-fit: cover; display: block; }
@@ -693,8 +719,8 @@ input, textarea { font: inherit; }
 }
 .seen-body {
   background: var(--bg); width: 100%;
-  border-radius: 26px 26px 0 0;
-  padding: 20px 16px calc(var(--safe-bottom) + 18px);
+  border-radius: var(--r-sheet) var(--r-sheet) 0 0;
+  padding: var(--sp-5) var(--sp-4) calc(var(--safe-bottom) + 18px);
   max-height: 70dvh; overflow-y: auto;
 }
 .seen-body h3 { margin: 0 0 12px; font-size: 20px; font-weight: 300; letter-spacing: -0.02em; }
@@ -877,12 +903,12 @@ input, textarea { font: inherit; }
 }
 .sheet-body {
   background: var(--bg); width: 100%;
-  border-radius: 26px 26px 0 0;
-  padding: 22px 14px calc(var(--safe-bottom) + 20px);
+  border-radius: var(--r-sheet) var(--r-sheet) 0 0;
+  padding: var(--sp-5) 14px calc(var(--safe-bottom) + var(--sp-5));
   max-height: 78dvh; overflow-y: auto;
 }
 .sheet-body h2 {
-  margin: 0 0 16px 4px; font-size: 26px;
+  margin: 0 0 var(--sp-4) var(--sp-1); font-size: var(--fs-h1);
   font-weight: 300; letter-spacing: -0.03em;
 }
 
@@ -1220,9 +1246,10 @@ button:disabled { cursor: not-allowed; }
 .stat-card { min-width: 0; }
 .stat-num { overflow-wrap: anywhere; }
 
-/* Profile is an overlay with no tab bar under it, so it doesn't need the
-   list's tab-bar clearance — that was 108px of dead space at the bottom. */
-.profile-list { padding-bottom: calc(var(--safe-bottom) + 24px); }
+/* Profile and Memories are overlays with no tab bar under them, so they don't
+   need the list's tab-bar clearance — that was 108px of dead space at the
+   bottom. */
+.profile-list, .overlay-list { padding-bottom: calc(var(--safe-bottom) + 24px); }
 
 /* Sits at the end of the scrambled text so the marker survives run-collapsing
    (the meta row only renders at the end of a run). */
@@ -1329,7 +1356,7 @@ button:disabled { cursor: not-allowed; }
 .kept-tile {
   position: relative;
   aspect-ratio: 1;
-  border-radius: 14px;
+  border-radius: var(--r-tile);
   overflow: hidden;
   background: var(--card);
 }
@@ -1602,6 +1629,57 @@ button:disabled { cursor: not-allowed; }
 .plan-list li { display: flex; align-items: center; gap: 8px; font-size: 14px; }
 .plan-card .btn-dark { min-height: 48px; }
 
+/* Credit meter. The balance is the number that decides access, so it gets the
+   loudest card on the screen: full indigo, oversized 300-weight numeral, pill
+   chips for the rate and the runway — the ABC hero-card shape. White text on
+   indigo per the palette rules. */
+.credit-hero {
+  margin: 6px 0 4px; padding: 20px 18px 18px;
+  border-radius: var(--r-card); background: var(--indigo); color: #fff;
+}
+.credit-hero-top { display: flex; align-items: center; gap: 7px; opacity: 0.8; }
+.credit-hero-eyebrow {
+  font-size: 12.5px; font-weight: 600;
+  letter-spacing: 0.06em; text-transform: uppercase;
+}
+.credit-hero-num {
+  font-size: 52px; font-weight: 300; letter-spacing: -0.03em;
+  line-height: 1.05; margin: 8px 0 12px;
+  /* Six figures must not push the chips off the card on a narrow phone. */
+  overflow-wrap: anywhere;
+}
+.credit-hero-chips { display: flex; flex-wrap: wrap; gap: 7px; }
+.credit-chip { background: rgba(255, 255, 255, 0.16); color: #fff; }
+.credit-hero-sub { font-size: 13.5px; line-height: 1.45; opacity: 0.82; margin-top: 12px; }
+
+/* The ledger extract. Deliberately plain: it is a receipt, not a feature. */
+.credit-log { list-style: none; padding: 0; margin: 4px 0 10px; }
+.credit-log li {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 9px 2px; border-bottom: 1px solid var(--card);
+  font-size: 14px;
+}
+.credit-log li:last-child { border-bottom: 0; }
+.credit-log-what { color: var(--ink); min-width: 0; overflow-wrap: anywhere; }
+.credit-log-delta { font-variant-numeric: tabular-nums; font-weight: 600; white-space: nowrap; }
+.credit-log-delta.out { color: var(--muted); font-weight: 400; }
+
+/* Profile's entry to Plans, carrying the balance so it is visible without a
+   tap. Lime rather than indigo — the hero card owns indigo, and two identical
+   cards on two screens read as the same card. */
+.credit-tile {
+  width: 100%; margin-top: 12px; padding: 16px;
+  border: 0; text-align: left; font: inherit; color: var(--ink);
+  border-radius: var(--r-card); background: var(--lime);
+  display: flex; align-items: center; gap: 12px;
+}
+.credit-tile:active { filter: brightness(0.96); }
+.credit-tile-main { flex: 1; min-width: 0; }
+.credit-tile-num { font-size: 30px; font-weight: 300; letter-spacing: -0.03em; line-height: 1; }
+.credit-tile-label { font-size: 12.5px; margin-top: 6px; opacity: 0.75; }
+.credit-tile > svg:first-child { opacity: 0.7; align-self: flex-start; }
+.credit-tile .chev { opacity: 0.55; flex: 0 0 auto; }
+
 /* Runner. Drawn from rectangles on a canvas — no sprite sheet to download. */
 .dino { border-radius: var(--r-card); background: var(--card); padding: 12px; }
 .dino-hud {
@@ -1634,3 +1712,154 @@ button:disabled { cursor: not-allowed; }
 .play-title { font-size: 16px; font-weight: 500; }
 .play-sub { font-size: 12.5px; opacity: 0.72; margin-top: 2px; }
 .play-soon { margin-left: auto; font-size: 11px; }
+
+/* ==========================================================================
+   Motion. Sheets arrive, messages land, a tapback blooms.
+
+   Every animation below is a one-shot on mount, so the global
+   prefers-reduced-motion rule (which collapses all durations to 0.01ms)
+   degrades each of them to the finished state with no extra work here.
+   ========================================================================== */
+
+/* A sheet that simply appears reads as a rendering glitch on a phone; it has
+   to come from the edge it is anchored to. */
+.sheet, .seen-sheet { animation: scrim-in 200ms ease-out; }
+.sheet-body, .seen-body, .reaction-menu { animation: sheet-up 280ms cubic-bezier(0.22, 0.61, 0.36, 1); }
+@keyframes scrim-in { from { background: rgba(0, 0, 0, 0); } }
+@keyframes sheet-up { from { transform: translateY(100%); } }
+
+/* Only messages that arrive while you are looking get this — see knownRef in
+   Chat.jsx. Animating the first page would run two hundred at once. */
+.msg-in { animation: msg-in 260ms cubic-bezier(0.22, 0.61, 0.36, 1); transform-origin: left bottom; }
+.msg.mine.msg-in { transform-origin: right bottom; }
+@keyframes msg-in {
+  from { opacity: 0; transform: translateY(10px) scale(0.96); }
+}
+
+/* Double-tap tapback. The reaction itself needs a round trip before it shows
+   on the bubble, so without this the nicest gesture in the app answered a tap
+   with nothing at all for half a second. */
+.burst { position: fixed; z-index: 80; pointer-events: none; }
+.burst span {
+  position: absolute; left: 0; top: 0;
+  font-size: 22px; line-height: 1;
+  animation: heart-float 760ms cubic-bezier(0.2, 0.7, 0.3, 1) forwards;
+}
+@keyframes heart-float {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(0.4); }
+  22% { opacity: 1; }
+  100% {
+    opacity: 0;
+    transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) scale(var(--s));
+  }
+}
+
+/* ==========================================================================
+   Chat list — the first thing seen on opening the app
+   ========================================================================== */
+.greeting {
+  font-size: var(--fs-lead); font-weight: 300; letter-spacing: -0.02em;
+  color: var(--ink); line-height: 1.35; margin: 0 0 var(--sp-3);
+}
+.greeting span { display: block; font-size: var(--fs-meta); color: var(--muted); margin-top: 3px; }
+
+/* Their status note is colour, not information — a line icon keeps it quieter
+   than the speech-bubble emoji it used to lead with. */
+.row-note { display: flex; align-items: center; gap: 5px; }
+.row-note svg { flex: 0 0 auto; opacity: 0.55; }
+.row-note b { font-weight: 400; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ==========================================================================
+   Stories
+   ========================================================================== */
+/* Posting was only reachable by swiping to the camera and hoping. Your own
+   story now leads the list whether or not you have posted one. */
+.story-add {
+  width: 46px; height: 46px; border-radius: 50%; flex: 0 0 auto;
+  display: grid; place-items: center;
+  background: var(--lavender); color: var(--ink);
+}
+.story-row-mine .row-name { letter-spacing: -0.02em; }
+
+/* ==========================================================================
+   Memories
+   ========================================================================== */
+/* A grid that pops in fully-formed after a blank "Loading…" line reads as a
+   stall; tiles that are already the right shape read as loading. */
+.mem-skel { animation: skel-pulse 1.4s ease-in-out infinite; }
+@keyframes skel-pulse { 0%, 100% { opacity: 0.5; } 50% { opacity: 1; } }
+.mem-thumb .mem-play { display: grid; place-items: center; }
+
+/* ==========================================================================
+   Snap Map
+   ========================================================================== */
+/* The distance between two people is the whole reason this screen exists, so
+   it gets the vibrant card and the big light number rather than a sentence. */
+.map-near {
+  background: var(--lavender); border-radius: var(--r-card);
+  padding: 14px var(--sp-4) var(--sp-3);
+}
+.map-panel { gap: var(--sp-3); padding: var(--sp-4) var(--sp-4); }
+.map-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+
+/* ==========================================================================
+   Chat header, friend sheet, profile
+   ========================================================================== */
+/* "They are in this chat right now" — a lavender glyph on the corner of their
+   avatar, replacing a phone emoji that read as a third call button. It rides
+   the avatar rather than taking a slot of its own because the header has none
+   to give: at 320px the back circle and two call buttons leave the name about
+   five characters. */
+.chat-peer-av { position: relative; display: inline-grid; flex: 0 0 auto; }
+.in-chat {
+  position: absolute; right: -2px; bottom: -2px;
+  width: 17px; height: 17px; border-radius: 50%;
+  display: grid; place-items: center;
+  background: var(--lavender); color: var(--ink);
+  box-shadow: 0 0 0 2px var(--bg);
+}
+.fp-row-go { display: grid; place-items: center; }
+
+/* Profile's stat cards were built before the friend sheet's, and drifted:
+   emoji labels against the friend sheet's line icons. One pattern now. */
+.stat-card svg { opacity: 0.7; margin-bottom: var(--sp-1); }
+
+/* An empty state carries an icon everywhere else in the app. */
+.empty-symbol svg { width: 30px; height: 30px; }
+
+/* The camera tray is three labelled pills across the narrowest phone; without
+   this "Send to" wrapped onto a second line and pushed its arrow outside the
+   pill. */
+.tray .pill { white-space: nowrap; min-width: 0; }
+@media (max-width: 359px) {
+  .tray { gap: var(--sp-2); padding: 0 10px; }
+  .tray .pill { padding: 12px 13px; font-size: var(--fs-sm); }
+}
+
+/* 41-43px tall: under the 44px touch minimum on the two surfaces that use it
+   (the camera tray and the memory viewer's actions). */
+.pill { min-height: 44px; }
+
+/* The chat list opens your profile by tapping your own avatar — a 34px target
+   in the corner of the screen, and the only way in to settings. */
+.avatar-btn {
+  min-width: 44px; min-height: 44px;
+  display: grid; place-items: center;
+  background: none; padding: 0;
+  /* Pull the button's slack back so the avatar still lines up with the header
+     padding rather than sitting 5px in from everything below it. */
+  margin-left: -5px;
+}
+
+/* Both of these were tall enough to read and too short to hit: the friend-info
+   area in the chat header, and the camera's filter chips. */
+.chat-peer { min-height: 44px; }
+.cam-filter { min-height: 44px; }
+
+/* A toast that blinks into existence mid-screen reads as a glitch; it should
+   arrive from the same edge it is anchored to, like the sheets. The translateX
+   is part of the toast's own centring, so the keyframe has to carry it. */
+.toast { animation: toast-in 200ms ease-out; }
+@keyframes toast-in { from { opacity: 0; transform: translateX(-50%) translateY(10px); } }
+.offline-bar { animation: bar-down 240ms ease-out; }
+@keyframes bar-down { from { transform: translateY(-100%); } }

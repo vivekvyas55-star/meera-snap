@@ -36,8 +36,9 @@ import SnapViewer from '../components/SnapViewer'
 import Portal from '../components/Portal'
 import Sheet from '../components/Sheet'
 import KeptTogether from '../components/KeptTogether'
+import HeartBurst from '../components/HeartBurst'
 import Confirm from '../components/Confirm'
-import { ArrowIcon, BackIcon, CalendarIcon, CheckIcon, CloseIcon, FlameIcon, ForwardIcon, GridIcon, HeartIcon, ImageIcon, LockIcon, MicIcon, PhoneIcon, PlayIcon, PlusIcon, ReplyIcon, SaveIcon, SmileyIcon, VideoIcon } from '../components/Icons'
+import { ArrowIcon, BackIcon, CalendarIcon, ChatIcon, CheckIcon, ChevronIcon, CloseIcon, FlameIcon, ForwardIcon, GridIcon, HeartIcon, ImageIcon, LockIcon, MicIcon, PhoneIcon, PlayIcon, PlusIcon, ReplyIcon, SaveIcon, SmileyIcon, VideoIcon } from '../components/Icons'
 import { useAudioRecorder } from '../hooks/useAudioRecorder'
 import { useCall } from '../hooks/useCall'
 import QuestionCards from '../components/QuestionCards'
@@ -119,6 +120,7 @@ export default function Chat({ friend, onBack }) {
   const [anniv, setAnniv] = useState(null) // "together since" date for this pair
   const [stickers, setStickers] = useState(false)
   const [friendSheet, setFriendSheet] = useState(false)
+  const [burst, setBurst] = useState(null) // { key, x, y } — hearts leaving a double-tapped bubble
   const [recSecs, setRecSecs] = useState(0)
   const threadRef = useRef(null)
   const requestRef = useRef(0)
@@ -230,6 +232,8 @@ export default function Chat({ friend, onBack }) {
       if (oldestCursor) oldestRef.current = oldestCursor
       setHasMore(more)
       if (older.length) {
+        // Scrolled-back history is not an arrival, whatever order it mounts in.
+        for (const m of older) knownRef.current?.add(m.id)
         setMessages((cur) => mergeMessages(older, cur))
         requestAnimationFrame(() => {
           if (el) el.scrollTop = prevTop + (el.scrollHeight - prevH)
@@ -405,6 +409,14 @@ export default function Chat({ friend, onBack }) {
     }
   }
 
+  // Messages already on screen when the thread opened must not animate in —
+  // that would run an entrance for the whole first page at once. Only what
+  // arrives (or is sent) while you are looking is "fresh".
+  const knownRef = useRef(null)
+  if (knownRef.current === null && messages.length > 0) {
+    knownRef.current = new Set(messages.map((m) => m.id))
+  }
+
   const visible = messages.filter((m) => isVisibleTo(m, me))
   const byId = useMemo(() => {
     const map = {}
@@ -422,7 +434,19 @@ export default function Chat({ friend, onBack }) {
             announced "Friend info, button" and never said who you were talking
             to. Name the button by the name itself. */}
         <button className="chat-peer" onClick={() => setFriendSheet(true)} aria-labelledby="chat-peer-name">
-          <Avatar profile={friend} size="sm" />
+          {/* Snapchat signals "they're in this chat" with the friend's Bitmoji
+              holding a phone — not a badge beside the name. Riding the avatar
+              is the nearest equivalent, and costs no header width: at 320px the
+              back circle and two call buttons already leave the name barely
+              five characters. */}
+          <span className="chat-peer-av">
+            <Avatar profile={friend} size="sm" />
+            {theyArePresent && (
+              <span className="in-chat" title={`${friendName} is in the chat`} role="img" aria-label="in the chat">
+                <ChatIcon width={10} height={10} />
+              </span>
+            )}
+          </span>
           <h1 className="chat-peer-h1">
             <span
               className={`presence-dot ${isOnline(friend.id) ? 'live' : 'off'}`}
@@ -433,19 +457,6 @@ export default function Chat({ friend, onBack }) {
           </h1>
           <span className="sr-only">— friend info</span>
         </button>
-        {/* Snapchat signals "they're in this chat" with the friend's Bitmoji
-            holding a phone — not a text badge. This is the nearest equivalent
-            available without Bitmoji art. */}
-        {theyArePresent && (
-          <span
-            title={`${friendName} is in the chat`}
-            style={{ fontSize: 18 }}
-            role="img"
-            aria-label="in the chat"
-          >
-            📱
-          </span>
-        )}
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
           <button className="circle filled" onClick={() => startCall(friend, false)} aria-label="Voice call">
             <PhoneIcon />
@@ -457,15 +468,26 @@ export default function Chat({ friend, onBack }) {
       </div>
 
       {anniv && (() => {
-        // Only surface on the actual anniversary day — a celebration, not a
-        // permanent chip under the name. The everyday count lives in FriendSheet.
+        // Only surface on a day that is actually one: the anniversary, or a
+        // round hundred days. Any other day this is a permanent chip under the
+        // name, and the everyday count already lives in FriendSheet.
         const s = togetherStats(anniv)
-        if (!s || !s.isAnniversary) return null
-        return (
-          <div className="anniv-chip celebrate">
-            💛 Happy anniversary — {s.years} year{s.years === 1 ? '' : 's'} with {friendName} today!
-          </div>
-        )
+        if (!s) return null
+        if (s.isAnniversary) {
+          return (
+            <div className="anniv-chip celebrate">
+              💛 Happy anniversary — {s.years} year{s.years === 1 ? '' : 's'} with {friendName} today!
+            </div>
+          )
+        }
+        if (s.days > 0 && s.days % 100 === 0) {
+          return (
+            <div className="anniv-chip celebrate">
+              💛 {s.days.toLocaleString()} days with {friendName} today
+            </div>
+          )
+        }
+        return null
       })()}
 
       <QuestionCards me={me} friend={friend} friendName={friendName} />
@@ -481,9 +503,9 @@ export default function Chat({ friend, onBack }) {
         )}
         {visible.length === 0 && !loadError && (
           <div className="empty">
-            Nothing here yet.
-            <br />
-            Messages disappear after they're viewed.
+            <div className="empty-symbol" aria-hidden="true"><ChatIcon /></div>
+            <h2>Say the first thing.</h2>
+            <p>Whatever you send here fades once it has been read.</p>
           </div>
         )}
 
@@ -509,8 +531,12 @@ export default function Chat({ friend, onBack }) {
             onLongPress={() => setMenuMsg(m)}
             onReply={() => setReplyingTo(m)}
             repliedTo={m.reply_to ? byId[m.reply_to] : null}
-            onQuickReact={async () => {
+            fresh={knownRef.current !== null && !knownRef.current.has(m.id)}
+            onQuickReact={async (point) => {
               const mine = (m.reactions ?? {})[me]
+              // Only a tapback being ADDED celebrates; taking one back is a
+              // correction, and a burst would make undo feel like approval.
+              if (mine !== '❤️' && point) setBurst({ key: Date.now(), ...point })
               await reactToMessage(m.id, mine === '❤️' ? '' : '❤️').catch((err) => toast(err.message))
               load()
             }}
@@ -645,6 +671,10 @@ export default function Chat({ friend, onBack }) {
             load()
           }}
         />
+      )}
+
+      {burst && (
+        <HeartBurst key={burst.key} x={burst.x} y={burst.y} onDone={() => setBurst(null)} />
       )}
 
       {viewing && (
@@ -812,7 +842,7 @@ function FriendSheet({ friend, friendName, me, onClose, onRemoved }) {
                 <span className="fp-row-title">Kept together</span>
                 <span className="fp-row-sub">Photos and videos you both saved</span>
               </span>
-              <span className="fp-row-go">›</span>
+              <span className="fp-row-go"><ChevronIcon width={17} height={17} /></span>
             </button>
             {kept && (
               <KeptTogether friendId={friend.id} friendName={friendName} onClose={() => setKept(false)} />
@@ -970,7 +1000,7 @@ function replyPreview(m) {
 
 function MessageRow({
   message, me, friend, friendName, myProfile, startsRun = true, endsRun = true,
-  onSeen, onOpenSnap, onLongPress, onQuickReact, onReply, repliedTo,
+  fresh = false, onSeen, onOpenSnap, onLongPress, onQuickReact, onReply, repliedTo,
 }) {
   const mine = message.sender_id === me
   // Your own older chats render reversed as an over-the-shoulder deterrent.
@@ -1004,6 +1034,13 @@ function MessageRow({
   const pressTimer = useRef(null)
   const longPressed = useRef(false)
   const lastTap = useRef(0)
+  // Where the last press landed, so a double-tap heart can bloom from the
+  // finger rather than from an arbitrary corner of the bubble.
+  const tapPoint = useRef(null)
+  const notePoint = (e) => {
+    const t = e.touches?.[0] ?? e
+    if (typeof t?.clientX === 'number') tapPoint.current = { x: t.clientX, y: t.clientY }
+  }
   const startPress = () => {
     if (message.kind === 'call') return // call logs are not actionable
     longPressed.current = false
@@ -1022,6 +1059,7 @@ function MessageRow({
   const swiping = useRef(false)
   const [dragX, setDragX] = useState(0)
   const onTouchStart = (e) => {
+    notePoint(e)
     startX.current = e.touches[0].clientX
     startY.current = e.touches[0].clientY
     swiping.current = false
@@ -1081,7 +1119,7 @@ function MessageRow({
     const now = Date.now()
     if (now - lastTap.current < 300) {
       lastTap.current = 0
-      onQuickReact()
+      onQuickReact(tapPoint.current)
       return
     }
     lastTap.current = now
@@ -1093,7 +1131,7 @@ function MessageRow({
   return (
     <div
       data-message-id={message.id}
-      className={`msg${mine ? ' mine' : ''}${saved ? ' saved' : ''}`}
+      className={`msg${mine ? ' mine' : ''}${saved ? ' saved' : ''}${fresh ? ' msg-in' : ''}`}
       style={{
         transform: dragX ? `translateX(${dragX}px)` : undefined,
         transition: dragX ? 'none' : 'transform .18s ease-out',
@@ -1102,7 +1140,7 @@ function MessageRow({
       onTouchMove={onTouchMove}
       onTouchEnd={onTouchEnd}
       onTouchCancel={onTouchEnd}
-      onMouseDown={startPress}
+      onMouseDown={(e) => { notePoint(e); startPress() }}
       onMouseUp={endPress}
       onMouseLeave={endPress}
     >

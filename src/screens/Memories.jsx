@@ -3,7 +3,7 @@ import { deleteMemory, listMemories, postStory, signedUrl } from '../lib/db'
 import Confirm from '../components/Confirm'
 import { useToast } from '../hooks/useToast'
 import Portal from '../components/Portal'
-import { BackIcon } from '../components/Icons'
+import { BackIcon, GridIcon, PlayIcon } from '../components/Icons'
 
 // A private gallery of your own saved snaps. Owner-only (RLS). Tap one to view
 // it full-screen and re-share to your Story, save to your device, or delete.
@@ -29,19 +29,27 @@ export default function Memories({ me, onBack }) {
         <h1>Memories</h1>
       </div>
 
-      <div className="list">
+      <div className="list overlay-list">
         {error && (
           <div className="error" role="alert">
             <span>Couldn’t load your memories.</span>
             <button onClick={load}>Retry</button>
           </div>
         )}
-        {items === null && !error && <div className="empty" role="status">Loading…</div>}
+        {/* Tiles in the shape the grid will take, rather than a bare line of
+            text replaced a moment later by a full screen of photos. */}
+        {items === null && !error && (
+          <div className="mem-grid" role="status" aria-label="Loading your memories">
+            {Array.from({ length: 9 }, (_, i) => (
+              <div key={i} className="mem-thumb mem-skel" />
+            ))}
+          </div>
+        )}
         {items?.length === 0 && !error && (
           <div className="empty">
-            No memories yet.
-            <br />
-            Take a snap and tap Save to keep it here.
+            <div className="empty-symbol" aria-hidden="true"><GridIcon /></div>
+            <h2>Nothing kept yet.</h2>
+            <p>Snaps you save in the camera land here — private, and only yours.</p>
           </div>
         )}
         {items && items.length > 0 && (
@@ -94,7 +102,9 @@ function MemThumb({ memory, onOpen }) {
       ) : (
         <div className="mem-ph" />
       )}
-      {memory.media_type === 'video' && <span className="mem-play">▶</span>}
+      {memory.media_type === 'video' && (
+        <span className="mem-play"><PlayIcon width={15} height={15} /></span>
+      )}
     </button>
   )
 }

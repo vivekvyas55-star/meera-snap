@@ -238,3 +238,40 @@ export const GridIcon = (p) => (
     <rect x="13.5" y="13.5" width="7" height="7" rx="2" />
   </svg>
 )
+
+export const BellIcon = (p) => (
+  <svg {...base} {...p}>
+    <path d="M6.5 10a5.5 5.5 0 0 1 11 0c0 3 .8 4.4 1.5 5.2H5c.7-.8 1.5-2.2 1.5-5.2z" />
+    <path d="M10 18.5a2 2 0 0 0 4 0" />
+  </svg>
+)
+
+export const ChevronIcon = (p) => (
+  <svg {...base} {...p}>
+    <path d="M9.5 5l7 7-7 7" />
+  </svg>
+)
+
+export const NoteIcon = (p) => (
+  <svg {...base} {...p}>
+    <path d="M4.5 6.5A2.5 2.5 0 0 1 7 4h10a2.5 2.5 0 0 1 2.5 2.5v6A2.5 2.5 0 0 1 17 15H9.5L5.5 18.5V15A2.5 2.5 0 0 1 4.5 12.5z" />
+  </svg>
+)
+
+export const UsersIcon = (p) => (
+  <svg {...base} {...p}>
+    <circle cx="9.5" cy="8.5" r="3.2" />
+    <path d="M3.5 19a6 6 0 0 1 12 0" />
+    <path d="M16 5.6a3.2 3.2 0 0 1 0 5.8" />
+    <path d="M17.5 14.4a6 6 0 0 1 3 4.6" />
+  </svg>
+)
+
+// Credit meter. Two concentric rings — a plain token, not a currency glyph.
+// Credits are not rupees and the icon should not imply they convert to any.
+export const CoinIcon = (p) => (
+  <svg {...base} {...p}>
+    <circle cx="12" cy="12" r="8.5" />
+    <circle cx="12" cy="12" r="4" />
+  </svg>
+)
