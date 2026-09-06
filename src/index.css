@@ -1016,3 +1016,64 @@ input, textarea { font: inherit; }
   font-size: 13px; opacity: 0.8; padding: 10px 13px;
   background: rgba(255, 255, 255, 0.35); border-radius: 14px;
 }
+
+/* Everyday polish: quiet lavender surfaces, legible controls, clear states. */
+:root { --muted: #686873; --card: #f3f2f7; --card-press: #e9e6f0; }
+button, a, input, textarea, select { touch-action: manipulation; }
+button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible {
+  outline: 3px solid var(--indigo); outline-offset: 3px;
+}
+button:disabled { cursor: not-allowed; }
+.header { padding-bottom: 16px; }
+.header h1 { font-weight: 450; letter-spacing: -0.045em; }
+.circle { min-width: 44px; min-height: 44px; }
+.screen-subtitle { color: var(--muted); font-size: 13px; line-height: 1.5; margin: 0 0 16px; }
+.chat-tools { padding: 0 16px 14px; }
+.search-field input {
+  width: 100%; min-height: 46px; padding: 12px 16px; border-radius: 16px;
+  border: 1px solid var(--hairline); background: #faf9fc; color: var(--ink); font-size: 16px;
+}
+.search-field input::placeholder { color: var(--muted); }
+.chat-row { min-height: 80px; border: 1px solid transparent; transition: background 150ms; }
+.chat-row.is-unread { background: #eeecfc; border-color: #dad5f5; }
+.chat-row.is-unread .row-name { font-weight: 650; }
+.chat-row.is-unread .row-time { color: var(--indigo); font-weight: 600; }
+.row-sub { line-height: 1.45; }
+.story-subtitle { margin: -2px 16px 16px; }
+.empty { padding: 38px 24px; }
+.empty h2 { color: var(--ink); font-size: 23px; line-height: 1.2; font-weight: 500; letter-spacing: -0.035em; margin: 16px 0 10px; }
+.empty p { margin: 0 0 20px; font-size: 14px; }
+.empty-symbol { width: 68px; height: 68px; margin: auto; display: grid; place-items: center; border-radius: 24px; background: #eeebfa; color: var(--indigo); font-size: 32px; }
+.empty .btn-dark { font-size: 14px; }
+.tabbar { padding: 7px; box-shadow: 0 8px 24px #16161a26; gap: 5px; }
+.tabbar button { min-height: 52px; border-radius: 20px; justify-content: center; font-size: 11px; color: #c2c0cd; transition: background 160ms, color 160ms; }
+.tabbar button.active { background: #dcd6f5; color: #252036; }
+.tabbar button:focus-visible { outline-color: var(--lavender); }
+.auth { overflow-y: auto; justify-content: flex-start; padding: max(32px, var(--safe-top)) 26px calc(var(--safe-bottom) + 28px); background: #fff; }
+.auth::before { content: ''; flex: 1 0 12px; }
+.auth::after { content: ''; flex: 1 0 12px; }
+.auth > * { flex-shrink: 0; }
+.auth-brand { background: #ece8fa; width: 58px; height: 58px; border-radius: 20px; display: flex; align-items: center; justify-content: center; font-size: 37px; font-weight: 500; letter-spacing: -5px; margin-bottom: 22px; color: #494078; padding-right: 5px; }
+.auth-brand span { color: var(--coral); }
+.eyebrow { text-transform: uppercase; letter-spacing: 0.12em; color: var(--muted); font-size: 10px; font-weight: 650; margin-bottom: 12px; }
+.auth h1 { font-size: 38px; font-weight: 450; line-height: 1.08; max-width: 320px; margin-bottom: 14px; }
+.auth p { font-size: 14px; margin-bottom: 24px; }
+.field-label { display: block; color: var(--ink); font-size: 12px; font-weight: 600; margin: 4px 0 8px; }
+.auth input, .auth-select { border: 1px solid #e8e5ee; background-color: #f7f6fa; padding: 14px 16px; border-radius: 14px; }
+.auth-select { padding-right: 40px; }
+.password-control { position: relative; }
+.password-control input { padding-right: 72px; }
+.password-toggle { position: absolute; right: 5px; top: 3px; min-height: 44px; min-width: 60px; font-size: 12px; font-weight: 600; color: var(--indigo); border-radius: 10px; }
+.auth .switch { margin-top: 8px; min-height: 44px; color: #51476d; }
+.auth .error { background: #fff0ed; color: #9c3024; border: 1px solid #f3c9c0; line-height: 1.45; }
+.msg.mine .msg-body { background: #eeebfa; }
+.msg.mine.saved .msg-body { background: #ded8f2; }
+@media (hover: hover) {
+  .row:hover { background: var(--card-press); }
+  .circle:hover { background: var(--card); }
+  .circle.dark:hover { background: #34313e; }
+  .tabbar button:not(.active):hover { background: #ffffff16; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
+}

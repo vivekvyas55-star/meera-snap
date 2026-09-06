@@ -13,7 +13,7 @@ import Avatar from '../components/Avatar'
 import Portal from '../components/Portal'
 import { supabase } from '../lib/supabase'
 
-export default function Stories({ active }) {
+export default function Stories({ active, onCapture }) {
   const { profile } = useAuth()
   const me = profile.id
   const alias = useAlias()
@@ -21,18 +21,28 @@ export default function Stories({ active }) {
   const [stories, setStories] = useState([])
   const [authors, setAuthors] = useState({})
   const [views, setViews] = useState([])
-  const [openIdx, setOpenIdx] = useState(null)
+  const [openAuthor, setOpenAuthor] = useState(null)
 
+  const requestRef = useRef(0)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
   const load = useCallback(async () => {
+    const request = ++requestRef.current
+    try {
     const rows = await listStories()
-    setStories(rows)
-    setViews(await listMyStoryViews(rows.map((r) => r.id)))
+    const nextViews = await listMyStoryViews(rows.map((r) => r.id))
 
     const ids = [...new Set(rows.map((r) => r.user_id))]
     const entries = await Promise.all(
       ids.map(async (id) => [id, await getProfile(id).catch(() => null)])
     )
+    if (request !== requestRef.current) return
+    setStories(rows)
+    setViews(nextViews)
     setAuthors(Object.fromEntries(entries.filter(([, p]) => p)))
+    setError(null)
+    } catch (err) { if (request === requestRef.current) setError(err.message) }
+    finally { if (request === requestRef.current) setLoading(false) }
   }, [])
 
   useEffect(() => {
@@ -41,7 +51,7 @@ export default function Stories({ active }) {
 
   useEffect(() => {
     const channel = supabase
-      .channel('stories')
+      .channel(`updates:${me}:stories`, { config: { private: true } })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'stories' }, load)
       .subscribe()
     return () => supabase.removeChannel(channel)
@@ -67,26 +77,31 @@ export default function Stories({ active }) {
       .sort((a, b) => Number(b.mine) - Number(a.mine) || Number(a.allSeen) - Number(b.allSeen))
   }, [stories, views, me])
 
+  const currentGroup = groups.find(g => g.userId === openAuthor)
   return (
     <>
       <div className="header">
         <h1>Stories</h1>
       </div>
 
-      <div className="list" style={{ paddingBottom: 72 }}>
-        {groups.length === 0 && (
+      <p className="screen-subtitle story-subtitle">A glimpse of each other’s day.</p>
+      <div className="list" aria-busy={loading}>
+        {loading && <div className="empty" role="status">Loading stories…</div>}
+        {error && <div className="error">{error}<button onClick={load}>Retry</button></div>}
+        {!loading && groups.length === 0 && !error && (
           <div className="empty">
-            No stories right now.
-            <br />
-            Take a snap and tap 📖 Story to post one.
+            <div className="empty-symbol" aria-hidden="true">☀</div>
+            <h2>Everyday is worth sharing.</h2>
+            <p>A morning sky. A favourite song. A little piece of your day.</p>
+            {onCapture && <button className="btn-dark" onClick={onCapture}>Capture a moment</button>}
           </div>
         )}
 
-        {groups.map((g, i) => {
+        {groups.map((g) => {
           const author = authors[g.userId]
           if (!author) return null
           return (
-            <button className="row" key={g.userId} onClick={() => setOpenIdx(i)}>
+            <button className="row" key={g.userId} onClick={() => setOpenAuthor(g.userId)}>
               {/* Snapchat's indicator is present-vs-absent, not the
                   filled-vs-grey ring Instagram uses: once you've watched a
                   friend's story the preview disappears entirely. */}
@@ -105,26 +120,26 @@ export default function Stories({ active }) {
         })}
       </div>
 
-      {openIdx !== null && groups[openIdx] && (
+      {currentGroup && (
         <StoryViewer
           // Keyed by author: advancing to the next author must reset the
           // within-author index. Without this the viewer kept the previous
           // author's idx, and moving from a 3-story author to a 1-story one
           // indexed past the end — group.items[idx] undefined, and reading
           // story.id threw before anything rendered.
-          key={groups[openIdx].userId}
-          group={groups[openIdx]}
-          author={authors[groups[openIdx].userId]}
+          key={currentGroup.userId}
+          group={currentGroup}
+          author={authors[currentGroup.userId]}
           me={me}
           onClose={() => {
-            setOpenIdx(null)
+            setOpenAuthor(null)
             load()
           }}
           onNextAuthor={() => {
-            const next = openIdx + 1
-            if (next < groups.length) setOpenIdx(next)
+            const next = groups.findIndex(g => g.userId === openAuthor) + 1
+            if (next < groups.length) setOpenAuthor(groups[next].userId)
             else {
-              setOpenIdx(null)
+              setOpenAuthor(null)
               load()
             }
           }}
@@ -136,7 +151,9 @@ export default function Stories({ active }) {
 
 function StoryViewer({ group, author, me, onClose, onNextAuthor }) {
   const alias = useAlias()
-  const [idx, setIdx] = useState(0)
+  const [storyId, setStoryId] = useState(null)
+  const [ready, setReady] = useState(false)
+  const [mediaError, setMediaError] = useState(false)
   const [url, setUrl] = useState(null)
   const [paused, setPaused] = useState(false)
   const [elapsed, setElapsed] = useState(0)
@@ -149,38 +166,44 @@ function StoryViewer({ group, author, me, onClose, onNextAuthor }) {
   const onNextAuthorRef = useRef(onNextAuthor)
   onNextAuthorRef.current = onNextAuthor
 
+  const idx = Math.max(0, group.items.findIndex(s => s.id === storyId))
   const story = group.items[idx]
+  const mediaPath = story?.media_path
+  const currentStoryId = story?.id
   const DURATION = 5000
   const TICK = 50
 
   useEffect(() => {
     let alive = true
+    setReady(false)
+    setMediaError(false)
+    if (!currentStoryId) return
     setUrl(null)
     setElapsed(0)
-    signedUrl(story.media_path)
+    signedUrl(mediaPath)
       .then((u) => alive && setUrl(u))
       .catch(() => alive && onCloseRef.current())
-    if (!group.mine) markStoryViewed(story.id, me).catch(() => {}) // don't record self-views
+
     return () => {
       alive = false
     }
-  }, [story.id, story.media_path, me, group.mine])
+  }, [currentStoryId, mediaPath, me, group.mine])
 
   const advance = useCallback(() => {
     // Reset the bar as part of advancing, so the completion effect below can't
     // observe a filled bar again against the next story.
     setElapsed(0)
-    if (idx + 1 < group.items.length) setIdx(idx + 1)
+    if (idx + 1 < group.items.length) setStoryId(group.items[idx + 1].id)
     else onNextAuthorRef.current()
-  }, [idx, group.items.length])
+  }, [idx, group.items])
 
   // Auto-advance, held while the user presses and holds. The interval only
   // fills the bar; advancing happens in the effect below.
   useEffect(() => {
-    if (!url || paused) return
+    if (!url || !ready || paused || viewers !== null) return
     const t = setInterval(() => setElapsed((e) => Math.min(e + TICK, DURATION)), TICK)
     return () => clearInterval(t)
-  }, [url, paused])
+  }, [url, ready, paused, viewers])
 
   // Advance when the bar fills. This deliberately does NOT live inside the
   // setElapsed updater: updaters must be pure, and StrictMode double-invokes
@@ -191,9 +214,10 @@ function StoryViewer({ group, author, me, onClose, onNextAuthor }) {
   }, [elapsed, advance])
 
   const back = () => {
-    if (idx > 0) setIdx(idx - 1)
+    if (idx > 0) setStoryId(group.items[idx - 1].id)
   }
 
+  if (!story) return null
   return (
     <Portal>
     <div
@@ -202,7 +226,11 @@ function StoryViewer({ group, author, me, onClose, onNextAuthor }) {
       onPointerUp={() => setPaused(false)}
       onPointerCancel={() => setPaused(false)}
     >
-      {url && <img src={url} alt="" />}
+      {url && <img key={story.id} src={url} alt="" onLoad={() => {
+        setReady(true)
+        if (!group.mine) markStoryViewed(story.id, me).catch(() => {})
+      }} onError={() => setMediaError(true)} />}
+      {mediaError && <div className="viewer-loading">Could not load this story. Tap Next or Close.</div>}
 
       <div className="progress">
         {group.items.map((s, i) => (

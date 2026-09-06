@@ -9,6 +9,8 @@ import Portal from './Portal'
 // done by tapping the snap again in the chat, so there's no in-viewer replay.
 export default function SnapViewer({ message, me, onClose, onScreenshot }) {
   const isMine = message.sender_id === me
+  const [error, setError] = useState(null)
+  const [counting, setCounting] = useState(false)
   const [url, setUrl] = useState(null)
   const [ready, setReady] = useState(false) // media actually on screen
   // Own snaps: no countdown, view as long as you like.
@@ -44,11 +46,14 @@ export default function SnapViewer({ message, me, onClose, onScreenshot }) {
   // Count the open (and start the timer) only once the media is actually
   // rendered — a photo on its onLoad, a video on onPlaying — so a slow signed-
   // URL fetch doesn't burn the countdown while the snap is still blank.
-  const countOpen = () => {
+  const countOpen = async () => {
     setReady(true)
     if (openedRef.current) return
     openedRef.current = true
-    if (!isMine) recordSnapOpen(message.id).catch(() => {}) // own views don't burn the recipient's count
+    if (!isMine) {
+      try { await recordSnapOpen(message.id) }
+      catch { setError('Could not record this view. Close and try again.'); setReady(false) }
+    }
   }
 
   // Photo countdown starts when the image is on screen (videos use their own
@@ -98,6 +103,7 @@ export default function SnapViewer({ message, me, onClose, onScreenshot }) {
               preload="auto"
               controls={false}
               onPlaying={countOpen}
+              onError={() => setError('Could not play this video. Close and try again.')}
               onEnded={() => onCloseRef.current()}
               // If iOS blocks autoplay-with-audio, a tap (user gesture) starts
               // it — and until it plays the open isn't counted, so it's never
@@ -106,9 +112,10 @@ export default function SnapViewer({ message, me, onClose, onScreenshot }) {
               style={{ width: '100%', height: '100%', objectFit: 'contain' }}
             />
           ) : (
-            <img src={url} alt="" onLoad={countOpen} />
+            <img src={url} alt="" onLoad={countOpen} onError={() => setError("Could not load this snap. Close and try again.")} />
           ))}
-        {url && !ready && <div className="viewer-loading">Loading…</div>}
+        {error && <div className="viewer-loading">{error}</div>}
+        {url && !ready && !error && <div className="viewer-loading">Loading…</div>}
         {message.body && ready && <div className="viewer-caption">{message.body}</div>}
 
         {remaining !== null && ready && <div className="timer">{remaining}</div>}
@@ -140,10 +147,15 @@ export default function SnapViewer({ message, me, onClose, onScreenshot }) {
             {!isVideo && !isMine && reopensLeft > 0 && ready && (
               <button
                 className="pill"
-                onClick={() => {
-                  recordSnapOpen(message.id).catch(() => {})
-                  setReplays((r) => r + 1)
-                  setRemaining(message.view_seconds ?? null) // restart the timer
+                disabled={counting || Boolean(error)}
+                onClick={async () => {
+                  setCounting(true)
+                  try {
+                    await recordSnapOpen(message.id)
+                    setReplays(r => r + 1)
+                    setRemaining(message.view_seconds ?? null)
+                  } catch { setError('Could not replay this snap.') }
+                  finally { setCounting(false) }
                 }}
               >
                 ↻ Replay

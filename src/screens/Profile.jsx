@@ -10,12 +10,12 @@ import {
   updateProfile,
 } from '../lib/db'
 import { useAuth } from '../hooks/useAuth'
-import { useToast } from '../components/Toast'
+import { useToast } from '../hooks/useToast'
 import Avatar from '../components/Avatar'
 import { BackIcon, CheckIcon, PowerIcon } from '../components/Icons'
-import { lockApp } from '../components/PinLock'
+import { lockApp } from '../lib/appLock'
 import Memories from './Memories'
-import { SECURITY_QUESTIONS } from './Auth'
+import { SECURITY_QUESTIONS } from '../lib/securityQuestions'
 import { blockedReason, disablePush, enablePush, isEnabled } from '../lib/push'
 
 // A curated set — the full native emoji keyboard is available by typing into
@@ -52,7 +52,7 @@ export default function Profile({ onBack }) {
   const pushBlocked = blockedReason()
 
   useEffect(() => {
-    isEnabled().then(setPushOn).catch(() => {})
+    isEnabled(me).then(setPushOn).catch(() => {})
     listStatusNotes()
       .then((byUser) => {
         setNoteSaved(byUser[me] ?? '')
@@ -170,7 +170,7 @@ export default function Profile({ onBack }) {
           <BackIcon />
         </button>
         <h1>Profile</h1>
-        <button className="circle filled" onClick={signOut} aria-label="Log out">
+        <button className="circle filled" onClick={() => signOut().catch(err => toast(err.message))} aria-label="Log out">
           <PowerIcon />
         </button>
       </div>

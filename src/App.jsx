@@ -1,23 +1,27 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { AuthProvider, useAuth } from './hooks/useAuth'
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
+import { AuthProvider } from './hooks/AuthProvider'
+import { useAuth } from './hooks/useAuth'
 import Auth from './screens/Auth'
 import ChatList from './screens/ChatList'
-import Chat from './screens/Chat'
+const Chat = lazy(() => import('./screens/Chat'))
 import CameraScreen from './screens/CameraScreen'
 import Stories from './screens/Stories'
-import Profile from './screens/Profile'
-import SnapMap from './screens/SnapMap'
-import { ToastProvider, useToast } from './components/Toast'
-import { CallProvider } from './hooks/useCall'
+const Profile = lazy(() => import('./screens/Profile'))
+const SnapMap = lazy(() => import('./screens/SnapMap'))
+import { ToastProvider } from './components/Toast'
+import { useToast } from './hooks/useToast'
+import { CallProvider } from './hooks/CallProvider'
 import CallOverlay from './components/CallOverlay'
 import { findByUsername, sendFriendRequest } from './lib/db'
 import { primeRing } from './lib/ringtone'
 import { saveSubscription } from './lib/push'
-import { AliasClockProvider } from './hooks/useAliasClock'
-import { OnlinePresenceProvider } from './hooks/useOnlinePresence'
+import { AliasClockProvider } from './hooks/AliasClockProvider'
+import { OnlinePresenceProvider } from './hooks/OnlinePresenceProvider'
 import { CameraIcon, ChatIcon, StoriesIcon } from './components/Icons'
 import InstallPrompt from './components/InstallPrompt'
-import PinLock, { isUnlocked } from './components/PinLock'
+import OutboxDelivery from './components/OutboxDelivery'
+import PinLock from './components/PinLock'
+import { isUnlocked } from './lib/appLock'
 
 const PANES = [
   { key: 'chat', label: 'Chat', Icon: ChatIcon },
@@ -26,9 +30,9 @@ const PANES = [
 ]
 
 function Shell() {
-  const { session, profile, loading } = useAuth()
+  const { session, profile, loading, profileError, retryProfile } = useAuth()
   const toast = useToast()
-  const [pane, setPane] = useState(2) // open on Stories (camera stays off until swiped to)
+  const [pane, setPane] = useState(0) // start with conversations; camera activates only when selected
   const [openChat, setOpenChat] = useState(null)
   const [showProfile, setShowProfile] = useState(false)
   const [showMap, setShowMap] = useState(false)
@@ -66,7 +70,7 @@ function Shell() {
     const start = touch.current
     touch.current = null
     if (start?.axis === 'x' && drag !== null) {
-      const threshold = window.innerWidth * 0.22
+      const threshold = Math.min(window.innerWidth, 420) * 0.22
       if (drag < -threshold) setPane((p) => Math.min(p + 1, PANES.length - 1))
       else if (drag > threshold) setPane((p) => Math.max(p - 1, 0))
     }
@@ -117,9 +121,9 @@ function Shell() {
     })()
   }, [profile, toast])
 
-  if (loading) return <div className="app" />
+  if (loading) return <div className="app"><div className="empty" role="status">Opening your space…</div></div>
   if (!session) return <Auth />
-  if (!profile) return <div className="app" />
+  if (!profile) return <div className="app"><div className="empty">{profileError || "Loading your profile…"}{profileError && <button className="btn-dark" onClick={retryProfile}>Retry</button>}</div></div>
 
   if (showProfile) {
     return <Profile onBack={() => setShowProfile(false)} />
@@ -149,28 +153,28 @@ function Shell() {
       onTouchCancel={onTouchEnd}
     >
       <div className={`pager${drag !== null ? ' dragging' : ''}`} style={style}>
-        <div className="pane">
+        <div className="pane" inert={pane !== 0} aria-hidden={pane !== 0}>
           <ChatList
             onOpenChat={goToChat}
             onOpenProfile={() => setShowProfile(true)}
             onOpenMap={() => setShowMap(true)}
           />
         </div>
-        <div className="pane">
+        <div className="pane" inert={pane !== 1} aria-hidden={pane !== 1}>
           <CameraScreen active={pane === 1} onSent={() => setPane(0)} onEditing={setEditing} />
         </div>
-        <div className="pane">
-          <Stories active={pane === 2} />
+        <div className="pane" inert={pane !== 2} aria-hidden={pane !== 2}>
+          <Stories active={pane === 2} onCapture={() => setPane(1)} />
         </div>
       </div>
 
-      <div className="tabbar">
+      <nav className="tabbar" aria-label="Main navigation">
         {PANES.map(({ key, label, Icon }, i) => (
           <button
             key={key}
             className={pane === i ? 'active' : ''}
             onClick={() => setPane(i)}
-            aria-current={pane === i}
+            aria-current={pane === i ? 'page' : undefined}
           >
             <span className="glyph">
               <Icon />
@@ -178,11 +182,16 @@ function Shell() {
             {label}
           </button>
         ))}
-      </div>
+      </nav>
 
       <InstallPrompt />
     </div>
   )
+}
+
+function SessionShell() {
+  const { user } = useAuth()
+  return <Suspense fallback={<div className="app"><div className="empty">Loading…</div></div>}><Shell key={user?.id || 'guest'} /></Suspense>
 }
 
 export default function App() {
@@ -221,7 +230,8 @@ export default function App() {
         <OnlinePresenceProvider>
           <AliasClockProvider>
             <CallProvider>
-              <Shell />
+              <OutboxDelivery />
+              <SessionShell />
               <CallOverlay />
             </CallProvider>
           </AliasClockProvider>

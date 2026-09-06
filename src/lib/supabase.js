@@ -1,3 +1,4 @@
+import { authStorage } from './authStorage'
 import { createClient } from '@supabase/supabase-js'
 
 const url = import.meta.env.VITE_SUPABASE_URL
@@ -11,7 +12,7 @@ if (!url || !anonKey) {
 }
 
 export const supabase = createClient(url, anonKey, {
-  auth: { persistSession: true, autoRefreshToken: true },
+  auth: { storage: authStorage, persistSession: true, autoRefreshToken: true },
   realtime: { params: { eventsPerSecond: 20 } },
 })
 

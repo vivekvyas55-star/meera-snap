@@ -4,7 +4,7 @@ import 'leaflet/dist/leaflet.css'
 import { getMyLocation, getProfile, getVisibleLocations, setMyLocation, stopSharingLocation } from '../lib/db'
 import { useAuth } from '../hooks/useAuth'
 import { useAlias } from '../hooks/useAliasClock'
-import { useToast } from '../components/Toast'
+import { useToast } from '../hooks/useToast'
 import { BackIcon } from '../components/Icons'
 
 // Great-circle distance in km. Both coordinates are already on the map, so the
@@ -27,7 +27,11 @@ function avatarHtml(p) {
   const emoji = p?.avatar_emoji
   const bg = emoji ? '#ffffff' : `hsl(${p?.avatar_hue ?? 45} 70% 55%)`
   const content = emoji || (p?.display_name || p?.username || '?').charAt(0).toUpperCase()
-  return `<div class="map-avatar" style="background:${bg}">${content}</div>`
+  const el = document.createElement('div')
+  el.className = 'map-avatar'
+  el.style.background = bg
+  el.textContent = content
+  return el
 }
 
 export default function SnapMap({ onBack }) {
@@ -74,7 +78,9 @@ export default function SnapMap({ onBack }) {
       const marker = L.marker([loc.lat, loc.lng], {
         icon: L.divIcon({ className: 'map-pin', html: avatarHtml(prof), iconSize: [42, 42], iconAnchor: [21, 21] }),
       }).addTo(map)
-      marker.bindPopup(loc.user_id === me ? 'You' : (prof ? alias(prof) : 'Friend'))
+      const label = document.createElement('span')
+      label.textContent = loc.user_id === me ? 'You' : (prof ? alias(prof) : 'Friend')
+      marker.bindPopup(label)
       markersRef.current[loc.user_id] = marker
       pts.push([loc.lat, loc.lng])
     }

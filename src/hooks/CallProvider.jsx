@@ -1,9 +1,9 @@
-import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
-import { supabase } from '../lib/supabase'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { sendSignal, signalReceiver } from '../lib/privateRealtime'
 import { ICE_SERVERS, rtcSupported } from '../lib/rtc'
 import { useAuth } from './useAuth'
 import { useOnline } from './useOnlinePresence'
-import { useToast } from '../components/Toast'
+import { useToast } from '../hooks/useToast'
 import { logCall } from '../lib/db'
 import { notify } from '../lib/push'
 
@@ -14,8 +14,7 @@ import { notify } from '../lib/push'
 //     exchange the SDP offer/answer + ICE there.
 // Media flows peer-to-peer (STUN) or via TURN. Only signaling touches Supabase.
 
-const CallCtx = createContext(null)
-export const useCall = () => useContext(CallCtx)
+import { CallCtx } from './useCall'
 
 const CONNECT_TIMEOUT_MS = 40000
 // 'disconnected' is often a transient ICE blip on mobile networks that recovers
@@ -35,6 +34,7 @@ export function CallProvider({ children }) {
   const pcRef = useRef(null)
   const localRef = useRef(null)
   const roomRef = useRef(null)
+  const roomHandlers = useRef({})
   const pendingIce = useRef([])
   const callRef = useRef(null)
   const meRef = useRef(me)
@@ -63,7 +63,7 @@ export function CallProvider({ children }) {
     setLocalStream(null)
     setRemoteStream(null)
     if (roomRef.current) {
-      supabase.removeChannel(roomRef.current)
+      roomRef.current.close()
       roomRef.current = null
     }
     pendingIce.current = []
@@ -73,12 +73,10 @@ export function CallProvider({ children }) {
   }, [])
 
   const signalInbox = useCallback(async (toId, event, payload) => {
-    try {
-      const ch = supabase.channel(`rtc:${toId}`)
-      ch.subscribe()
-      await ch.send({ type: 'broadcast', event, payload: { ...payload, from: meRef.current } })
-      setTimeout(() => supabase.removeChannel(ch), 1500)
-    } catch { /* peer offline / channel error — surfaces as no-answer */ }
+    const from = meRef.current
+    const room = payload.room ?? callRef.current?.room
+    try { await sendSignal(from, toId, event, { ...payload, room }) }
+    catch { /* local expiry handles unreachable peers */ }
   }, [])
 
   const sendRoom = (event, payload) =>
@@ -92,26 +90,28 @@ export function CallProvider({ children }) {
     logCall(meRef.current, c.peer.id, { video: c.video, status, seconds }).catch(() => {})
   }
 
-  const armWatchdog = useCallback(() => {
+  const armWatchdog = useCallback((delay = CONNECT_TIMEOUT_MS) => {
     clearTimeout(watchdog.current)
     watchdog.current = setTimeout(() => {
       const c = callRef.current
       if (c && c.state !== 'connected') {
         toast('Couldn’t connect the call')
         logEnd(c, 'missed')
-        if (c.state === 'outgoing') signalInbox(c.peer.id, 'cancel', {})
+        if (c.role === 'caller') signalInbox(c.peer.id, 'cancel', { room: c.room })
         teardown()
       }
-    }, CONNECT_TIMEOUT_MS)
+    }, Math.max(0, delay))
   }, [toast, signalInbox, teardown])
 
   const drainIce = useCallback(async () => {
-    for (const cand of pendingIce.current) {
+    const pc = pcRef.current
+    const candidates = pendingIce.current.splice(0)
+    for (const cand of candidates) {
+      if (pcRef.current !== pc) return
       try {
-        await pcRef.current?.addIceCandidate(cand)
+        await pc?.addIceCandidate(cand)
       } catch { /* stale candidate */ }
     }
-    pendingIce.current = []
   }, [])
 
   // Acquire mic/camera and build the RTCPeerConnection. Guarded by a generation
@@ -178,7 +178,12 @@ export function CallProvider({ children }) {
 
   const joinRoom = useCallback(
     (room) => {
-      const ch = supabase.channel(`rtc-room:${room}`, { config: { broadcast: { self: false } } })
+      const ch = {
+        on(_type, filter, handler) { roomHandlers.current[filter.event] = handler; return ch },
+        subscribe() { return ch },
+        send(message) { return signalInbox(callRef.current?.peer?.id, message.event, { ...message.payload, room }) },
+        close() { roomHandlers.current = {} },
+      }
       ch.on('broadcast', { event: 'offer' }, async ({ payload }) => {
         const pc = pcRef.current
         if (!pc) return
@@ -187,14 +192,15 @@ export function CallProvider({ children }) {
           await drainIce()
           const answer = await pc.createAnswer()
           await pc.setLocalDescription(answer)
-          sendRoom('answer', { sdp: answer })
-        } catch { teardown() }
+          if (pcRef.current === pc && callRef.current?.room === room) sendRoom('answer', { sdp: answer })
+        } catch { if (pcRef.current === pc) teardown() }
       })
         .on('broadcast', { event: 'answer' }, async ({ payload }) => {
+          const pc = pcRef.current
           try {
-            await pcRef.current?.setRemoteDescription(payload.sdp)
-            await drainIce()
-          } catch { teardown() }
+            await pc?.setRemoteDescription(payload.sdp)
+            if (pcRef.current === pc) await drainIce()
+          } catch { if (pcRef.current === pc) teardown() }
         })
         .on('broadcast', { event: 'ice' }, async ({ payload }) => {
           if (pcRef.current?.remoteDescription) {
@@ -218,8 +224,9 @@ export function CallProvider({ children }) {
   // The ring: personal inbox channel.
   useEffect(() => {
     if (!me) return
-    const ch = supabase.channel(`rtc:${me}`, { config: { broadcast: { self: false } } })
+    const ch = signalReceiver(me)
     ch.on('broadcast', { event: 'invite' }, ({ payload }) => {
+      if (!Number.isFinite(payload.expiresAt) || payload.expiresAt <= Date.now() || payload.expiresAt > Date.now() + CONNECT_TIMEOUT_MS) return
       const c = callRef.current
       // The caller re-broadcasts the invite while ringing (so a phone woken by
       // a push notification still finds the call in progress). Re-arriving
@@ -237,18 +244,20 @@ export function CallProvider({ children }) {
           // Left running, it would fire mid-ring on the incoming call we're
           // flipping to and tear it down with "Couldn't connect the call".
           clearTimeout(watchdog.current)
-          if (roomRef.current) { supabase.removeChannel(roomRef.current); roomRef.current = null }
+          if (roomRef.current) { roomRef.current.close(); roomRef.current = null }
           setCall({ state: 'incoming', peer: payload.peer, video: !!payload.video, room: payload.room, role: 'callee' })
+          armWatchdog(payload.expiresAt - Date.now())
           return
         }
-        signalInbox(payload.from, 'busy', {})
+        signalInbox(payload.from, 'busy', { room: payload.room })
         return
       }
       setCall({ state: 'incoming', peer: payload.peer, video: !!payload.video, room: payload.room, role: 'callee' })
+          armWatchdog(payload.expiresAt - Date.now())
     })
       .on('broadcast', { event: 'accept' }, async ({ payload }) => {
         const c = callRef.current
-        if (!c || c.state !== 'outgoing' || payload.from !== c.peer?.id) return
+        if (!c || c.state !== 'outgoing' || payload.from !== c.peer?.id || payload.room !== c.room) return
         joinRoom(c.room)
         setCall((x) => (x ? { ...x, state: 'connecting' } : x))
         armWatchdog()
@@ -257,23 +266,37 @@ export function CallProvider({ children }) {
         try {
           const offer = await pc.createOffer()
           await pc.setLocalDescription(offer)
-          sendRoom('offer', { sdp: offer })
-        } catch { teardown() }
+          if (pcRef.current === pc && callRef.current?.room === c.room) sendRoom('offer', { sdp: offer })
+        } catch { if (pcRef.current === pc) teardown() }
       })
-      .on('broadcast', { event: 'decline' }, () => {
+      .on('broadcast', { event: 'decline' }, ({ payload }) => {
         const c = callRef.current
+        if (payload.from !== c?.peer?.id || payload.room !== c?.room) return
         if (c && c.state !== 'connected') { logEnd(c, 'missed'); teardown() }
       })
-      .on('broadcast', { event: 'cancel' }, () => {
+      .on('broadcast', { event: 'cancel' }, ({ payload }) => {
         const c = callRef.current
+        if (payload.from !== c?.peer?.id || payload.room !== c?.room) return
         if (c && c.state !== 'connected') teardown()
       })
-      .on('broadcast', { event: 'busy' }, () => {
+      .on('broadcast', { event: 'busy' }, ({ payload }) => {
         const c = callRef.current
+        if (payload.from !== c?.peer?.id || payload.room !== c?.room) return
         if (c?.state === 'outgoing') { logEnd(c, 'missed'); teardown() }
       })
+      .on('broadcast', { event: 'offer' }, deliverRoom('offer'))
+      .on('broadcast', { event: 'answer' }, deliverRoom('answer'))
+      .on('broadcast', { event: 'ice' }, deliverRoom('ice'))
+      .on('broadcast', { event: 'hangup' }, deliverRoom('hangup'))
       .subscribe()
-    return () => supabase.removeChannel(ch)
+    function deliverRoom(event) {
+      return ({ payload }) => {
+        const c = callRef.current
+        if (!c || payload.from !== c.peer.id || payload.room !== c.room) return
+        roomHandlers.current[event]?.({ payload })
+      }
+    }
+    return () => ch.close()
   }, [me, joinRoom, setupPeer, signalInbox, armWatchdog, teardown])
 
   // --- public actions ---
@@ -285,10 +308,11 @@ export function CallProvider({ children }) {
       }
       if (!meRef.current || callRef.current || startingRef.current) return
       startingRef.current = true
-      const room = `${[meRef.current, peer.id].sort().join(':')}:${Math.floor(performance.now())}`
+      const room = crypto.randomUUID()
+      const expiresAt = Date.now() + CONNECT_TIMEOUT_MS
       setCall({ state: 'outgoing', peer, video: !!video, room, role: 'caller' })
       armWatchdog()
-      signalInbox(peer.id, 'invite', { peer: profileRef.current, video: !!video, room })
+      signalInbox(peer.id, 'invite', { peer: profileRef.current, video: !!video, room, expiresAt })
 
       // Re-broadcast while ringing. The invite is a transient Realtime message
       // with no retention, so a friend whose phone was woken by the push below
@@ -301,7 +325,7 @@ export function CallProvider({ children }) {
           clearInterval(ringRepeat.current)
           return
         }
-        signalInbox(peer.id, 'invite', { peer: profileRef.current, video: !!video, room })
+        signalInbox(peer.id, 'invite', { peer: profileRef.current, video: !!video, room, expiresAt })
       }, 3000)
 
       setTimeout(() => { startingRef.current = false }, 600)
@@ -315,6 +339,7 @@ export function CallProvider({ children }) {
       if (!delivered && !isOnline(peer.id)) {
         const c = callRef.current
         if (c?.room === room && c.state === 'outgoing') {
+          signalInbox(peer.id, 'cancel', { room })
           toast(`${peer.display_name || peer.username} isn’t available right now`)
           logEnd(c, 'missed')
           teardown()
@@ -346,7 +371,7 @@ export function CallProvider({ children }) {
     const c = callRef.current
     if (!c) return
     sendRoom('hangup', {})
-    if (c.state === 'outgoing') signalInbox(c.peer.id, 'cancel', {}) // ring not yet in a room
+    if (c.role === 'caller') signalInbox(c.peer.id, 'cancel', { room: c.room }) // ring not yet in a room
     logEnd(c, c.state === 'connected' ? 'ended' : 'missed')
     teardown()
   }, [signalInbox, teardown])

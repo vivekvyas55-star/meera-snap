@@ -97,21 +97,26 @@ export async function saveSubscription(userId, sub) {
 }
 
 export async function disablePush() {
-  if (!supported()) return
-  const reg = await readySW()
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) return
+  const reg = await navigator.serviceWorker.getRegistration()
+  if (!reg) return
   const sub = await reg.pushManager.getSubscription()
   if (!sub) return
   // Delete the row FIRST: if unsubscribe succeeds but the delete fails, the
   // server keeps pushing to an endpoint that no longer exists.
-  await supabase.from('push_subscriptions').delete().eq('endpoint', sub.endpoint)
-  await sub.unsubscribe().catch(() => {})
+  const { error } = await supabase.from('push_subscriptions').delete().eq('endpoint', sub.endpoint)
+  if (error) throw error
+  await sub.unsubscribe()
 }
 
-export async function isEnabled() {
+export async function isEnabled(userId) {
   if (!supported() || Notification.permission !== 'granted') return false
   try {
     const reg = await readySW()
-    return Boolean(await reg.pushManager.getSubscription())
+    const sub = await reg.pushManager.getSubscription()
+    if (!sub || !userId) return false
+    const { data, error } = await supabase.from('push_subscriptions').select('id').eq('user_id', userId).eq('endpoint', sub.endpoint).maybeSingle()
+    return !error && Boolean(data)
   } catch {
     return false
   }

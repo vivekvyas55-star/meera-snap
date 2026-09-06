@@ -5,11 +5,7 @@
 -- and defensive so one bad row never stops the batch.
 -- ============================================================================
 
--- 1. Trim to the 7 kept accounts (delete cascades to their messages/friendships).
-delete from auth.users
- where email like '%@meera.local'
-   and lower(split_part(email, '@', 1)) not in
-       ('vivek','sneha','aarav','isha','priya','karan','nisha');
+-- Account deletion belongs in explicit administrative operations, never migrations.
 
 -- 2. Mark the 5 bots.
 alter table public.profiles add column if not exists is_bot boolean not null default false;
@@ -24,7 +20,7 @@ insert into public.friendships (user_a, user_b, requested_by, status)
 select least(r.id, b.id), greatest(r.id, b.id), b.id, 'accepted'
   from public.profiles r
   join public.profiles b on b.is_bot and not r.is_bot
- on conflict (user_a, user_b) do update set status = 'accepted';
+ on conflict (user_a, user_b) do nothing;
 
 -- ...and auto-friend any FUTURE real user with all bots on signup.
 create or replace function public.autofriend_bots()
@@ -34,7 +30,7 @@ begin
   insert into public.friendships (user_a, user_b, requested_by, status)
   select least(new.id, b.id), greatest(new.id, b.id), b.id, 'accepted'
     from public.profiles b where b.is_bot
-  on conflict (user_a, user_b) do update set status = 'accepted';
+  on conflict (user_a, user_b) do nothing;
   return new;
 exception when others then
   return new; -- never block a signup on this
@@ -104,4 +100,4 @@ end $$;
 -- 6. Send one round now so it's verifiable immediately. (Daily scheduling via
 --    pg_cron is applied separately — see supabase/cron.sql — because enabling
 --    the extension can abort a batched transaction on some projects.)
-select public.send_morning_quotes() as sent_now;
+-- Scheduled delivery only; migration replay must not send messages.

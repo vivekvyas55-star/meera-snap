@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { listFriendsWithProfiles, postStory, saveToMemory, sendSnap } from '../lib/db'
 import { useCamera } from '../hooks/useCamera'
 import { useAuth } from '../hooks/useAuth'
-import { useToast } from '../components/Toast'
+import { useToast } from '../hooks/useToast'
 import Avatar from '../components/Avatar'
 import Portal from '../components/Portal'
 import SnapEditor from '../components/SnapEditor'
@@ -51,6 +51,9 @@ export default function CameraScreen({ active, onSent, onEditing }) {
   const [picking, setPicking] = useState(false)
   const [friends, setFriends] = useState([])
   const editorRef = useRef(null)
+  const deliveries = useRef(new Map())
+  const batchRef = useRef(null)
+  const [batchStarted, setBatchStarted] = useState(false)
   const [filter, setFilter] = useState('none')
 
   // Bake the chosen colour filter into a blob via canvas (after any doodle/text
@@ -121,6 +124,9 @@ export default function CameraScreen({ active, onSent, onEditing }) {
       return
     }
     pause() // freeze the preview but keep the grant, so discard doesn't re-prompt
+    deliveries.current.clear()
+    batchRef.current = null
+    setBatchStarted(false)
     setSavedMemory(false)
     setShot({ blob, url: URL.createObjectURL(blob) })
   }
@@ -149,9 +155,14 @@ export default function CameraScreen({ active, onSent, onEditing }) {
     if (friendIds.length === 0) return
     setSending(true)
     try {
-      const blob = await composeBlob()
+      if (!batchRef.current) batchRef.current = { blob: await composeBlob(), viewSeconds, caption }
+      setBatchStarted(true)
       for (const id of friendIds) {
-        await sendSnap(me, id, { blob, viewSeconds, caption })
+        let delivery = deliveries.current.get(id)
+        if (!delivery) { delivery = { id: crypto.randomUUID(), sent: false }; deliveries.current.set(id, delivery) }
+        if (delivery.sent) continue
+        await sendSnap(me, id, { ...batchRef.current, clientId: delivery.id })
+        delivery.sent = true
       }
       toast(`Snap sent to ${friendIds.length} ${friendIds.length === 1 ? 'friend' : 'friends'}`)
       setPicking(false)
@@ -215,14 +226,15 @@ export default function CameraScreen({ active, onSent, onEditing }) {
 
       {shot && (
         <>
-          <SnapEditor ref={editorRef} shot={shot} filter={FILTERS[filter].css} />
+          <div style={{ pointerEvents: batchStarted ? "none" : undefined }}><SnapEditor ref={editorRef} shot={shot} filter={FILTERS[filter].css} /></div>
 
           <div className="cam-top">
-            <button className="cam-side" onClick={discard} aria-label="Discard">
+            <button className="cam-side" onClick={discard} disabled={sending} aria-label="Discard">
               <CloseIcon />
             </button>
             <button
               className="cam-side"
+              disabled={sending || batchStarted}
               onClick={() => setTimerIdx((i) => (i + 1) % TIMERS.length)}
               aria-label={`Display time: ${timerLabel}. Tap to change.`}
               style={{ fontSize: 15, fontWeight: 500 }}
@@ -238,6 +250,7 @@ export default function CameraScreen({ active, onSent, onEditing }) {
                   key={k}
                   type="button"
                   className={`cam-filter${filter === k ? ' on' : ''}`}
+                  disabled={sending || batchStarted}
                   onClick={() => setFilter(k)}
                 >
                   {f.label}
@@ -247,10 +260,10 @@ export default function CameraScreen({ active, onSent, onEditing }) {
           )}
 
           <div className="tray">
-            <button className="pill" onClick={saveMemory} disabled={sending || savedMemory}>
+            <button className="pill" onClick={saveMemory} disabled={sending || batchStarted || savedMemory}>
               {savedMemory ? '✓ Saved' : '💾 Save'}
             </button>
-            <button className="pill" onClick={addToStory} disabled={sending}>
+            <button className="pill" onClick={addToStory} disabled={sending || batchStarted}>
               📖 Story
             </button>
             <button className="pill send" onClick={() => setPicking(true)} disabled={sending}>

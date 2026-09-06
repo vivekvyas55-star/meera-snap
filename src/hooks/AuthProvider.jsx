@@ -1,58 +1,35 @@
-import { createContext, useContext, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { supabase, emailForUsername } from '../lib/supabase'
-import { getProfile, setSecurityQuestion } from '../lib/db'
+import { getProfile, clearMediaCache } from '../lib/db'
+import { disablePush } from '../lib/push'
+import { clearOutbox } from '../lib/outbox'
 
-// If a signup-time security-question write failed (both attempts flaked), Auth
-// stashes the intended Q+A here so we can retry it once authenticated — recovery
-// stays armed even if the original write didn't land.
-//
-// That stash is the PLAINTEXT answer, i.e. the credential that can reset the
-// password, sitting in localStorage. It's a deliberate durability trade, but it
-// has to be time-boxed: if the retry never succeeds, the answer must not live on
-// the device indefinitely. Give up after a day and let the user set the question
-// again from Profile.
-const PENDING_SECQ_KEY = 'meera_pending_secq'
-const PENDING_SECQ_MAX_AGE_MS = 24 * 60 * 60 * 1000
-
-async function flushPendingSecurityQuestion() {
-  let pending
-  try {
-    pending = JSON.parse(localStorage.getItem(PENDING_SECQ_KEY) || 'null')
-  } catch {
-    pending = null
-  }
-  if (!pending?.question || !pending?.answer) return
-  // Older entries predate `at`; treat a missing timestamp as expired.
-  if (!pending.at || Date.now() - pending.at > PENDING_SECQ_MAX_AGE_MS) {
-    localStorage.removeItem(PENDING_SECQ_KEY)
-    return
-  }
-  try {
-    await setSecurityQuestion(pending.question, pending.answer)
-    localStorage.removeItem(PENDING_SECQ_KEY)
-  } catch {
-    /* leave it stashed; retry on the next authenticated mount */
-  }
-}
-
-const AuthContext = createContext(null)
+import { AuthContext } from './useAuth'
 
 export function AuthProvider({ children }) {
   const [session, setSession] = useState(null)
   const [profile, setProfile] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [profileError, setProfileError] = useState(null)
+  const [retry, setRetry] = useState(0)
+  const userId = session?.user?.id
+  const retryProfile = () => setRetry(n => n + 1)
 
   useEffect(() => {
+    try { localStorage.removeItem('meera_pending_secq') } catch { /* legacy secret */ }
     supabase.auth.getSession().then(({ data }) => {
       setSession(data.session)
       setLoading(false)
-    })
+    }).catch(err => { setProfileError(err.message); setLoading(false) })
     const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => setSession(s))
     return () => sub.subscription.unsubscribe()
   }, [])
 
   useEffect(() => {
-    if (!session?.user) {
+    clearMediaCache()
+    setProfile(null)
+    setProfileError(null)
+    if (!userId) {
       setProfile(null)
       return
     }
@@ -61,22 +38,27 @@ export function AuthProvider({ children }) {
     let cancelled = false
     const load = async (attempt = 0) => {
       try {
-        const p = await getProfile(session.user.id)
+        const p = await getProfile(userId)
         if (!cancelled) {
           setProfile(p)
-          flushPendingSecurityQuestion()
+
         }
-      } catch {
-        if (attempt < 5 && !cancelled) setTimeout(() => load(attempt + 1), 400)
+      } catch (err) {
+        if (cancelled) return
+        if (attempt < 5) setTimeout(() => load(attempt + 1), 400)
+        else setProfileError(err.message || 'Could not load your profile')
       }
     }
     load()
+    window.addEventListener('online', loadAgain)
+    function loadAgain() { load() }
     return () => {
+      window.removeEventListener('online', loadAgain)
       cancelled = true
     }
-  }, [session])
+  }, [userId, retry])
 
-  const signUp = async (username, password, displayName) => {
+  const signUp = async (username, password, displayName, question, answer) => {
     const clean = username.trim().toLowerCase()
     if (!/^[a-z0-9_.]{3,20}$/.test(clean)) {
       throw new Error('Username must be 3-20 characters: letters, numbers, _ or .')
@@ -84,7 +66,7 @@ export function AuthProvider({ children }) {
     const { error } = await supabase.auth.signUp({
       email: emailForUsername(clean),
       password,
-      options: { data: { username: clean, display_name: displayName || clean } },
+      options: { data: { username: clean, display_name: displayName || clean, recovery_question: question, recovery_answer: answer } },
     })
     if (error) throw new Error(humanize(error.message))
   }
@@ -97,7 +79,13 @@ export function AuthProvider({ children }) {
     if (error) throw new Error(humanize(error.message))
   }
 
-  const signOut = () => supabase.auth.signOut()
+  const signOut = async () => {
+    await disablePush()
+    clearOutbox(session?.user?.id)
+    clearMediaCache()
+    const { error } = await supabase.auth.signOut()
+    if (error) throw error
+  }
 
   return (
     <AuthContext.Provider
@@ -105,7 +93,7 @@ export function AuthProvider({ children }) {
       // Without it the Profile screen wrote through the object in place, which
       // mutated state React believed to be immutable: nothing re-rendered, and
       // any consumer that memoised on `profile` would have gone stale.
-      value={{ session, profile, setProfile, user: session?.user ?? null, loading, signUp, signIn, signOut }}
+      value={{ session, profile: profile?.id === session?.user?.id ? profile : null, profileError, retryProfile, setProfile, user: session?.user ?? null, loading, signUp, signIn, signOut }}
     >
       {children}
     </AuthContext.Provider>
@@ -121,8 +109,3 @@ function humanize(message) {
   return message
 }
 
-export const useAuth = () => {
-  const ctx = useContext(AuthContext)
-  if (!ctx) throw new Error('useAuth must be used inside <AuthProvider>')
-  return ctx
-}

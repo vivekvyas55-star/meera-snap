@@ -6,7 +6,7 @@ import MarketDecoy from './MarketDecoy'
 // is the account login + row-level security. It gates the UI on each cold open
 // (unlock persists for the tab session only).
 const PIN = '9934'
-const KEY = 'meera:unlocked'
+import { UNLOCK_KEY as KEY } from '../lib/appLock'
 
 // After this many wrong entries the app locks for LOCKOUT_MS and shows a decoy
 // markets screen instead of the passcode pad. Showing "locked out" would tell a
@@ -41,24 +41,6 @@ const clearKeys = () => {
   } catch {
     /* ignore */
   }
-}
-
-export function isUnlocked() {
-  try {
-    return sessionStorage.getItem(KEY) === '1'
-  } catch {
-    return false
-  }
-}
-
-// Re-lock the app from anywhere (e.g. a Lock button in Profile).
-export function lockApp() {
-  try {
-    sessionStorage.removeItem(KEY)
-  } catch {
-    /* ignore */
-  }
-  window.dispatchEvent(new Event('meera:lock'))
 }
 
 export default function PinLock({ onUnlock }) {

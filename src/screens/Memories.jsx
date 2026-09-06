@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { deleteMemory, listMemories, postStory, signedUrl } from '../lib/db'
-import { useToast } from '../components/Toast'
+import { useToast } from '../hooks/useToast'
 import Portal from '../components/Portal'
 import { BackIcon } from '../components/Icons'
 

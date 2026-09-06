@@ -1,11 +1,12 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   answerPrompt,
+  istToday,
   getPromptStatus,
   getTodaysPrompt,
   listPromptAnswers,
 } from '../lib/db'
-import { useToast } from './Toast'
+import { useToast } from '../hooks/useToast'
 
 // One shared question a day. You write your answer, and their answer only
 // appears once yours is in — that simultaneity is the whole point, and it's
@@ -24,32 +25,47 @@ export default function DailyQuestion({ me, friend, friendName }) {
   const [open, setOpen] = useState(false)
   const [busy, setBusy] = useState(false)
 
+  const requestRef = useRef(0)
+  const dayRef = useRef(null)
+  const [needsReview, setNeedsReview] = useState(false)
   const load = useCallback(async () => {
+    const request = ++requestRef.current
     const [p, s, a] = await Promise.all([
       getTodaysPrompt(),
       getPromptStatus(friend.id),
       listPromptAnswers(me, friend.id),
     ])
+    if (request !== requestRef.current) return
+    if (dayRef.current && dayRef.current !== p?.on_date) setNeedsReview(true)
+    dayRef.current = p?.on_date
     setPrompt(p)
     setStatus(s)
     setAnswers(a)
   }, [me, friend.id])
 
   useEffect(() => {
-    load().catch(() => {})
+    const refresh = () => { if (document.visibilityState === 'visible') load().catch(() => {}) }
+    refresh()
+    const interval = setInterval(refresh, 10000)
+    window.addEventListener('focus', refresh)
+    document.addEventListener('visibilitychange', refresh)
+    const requests = requestRef
+    return () => { requests.current++; clearInterval(interval); window.removeEventListener('focus', refresh); document.removeEventListener('visibilitychange', refresh) }
   }, [load])
 
   const submit = async (e) => {
     e.preventDefault()
     const text = draft.trim()
-    if (!text || !prompt) return
+    if (!text || !prompt || busy || needsReview) return
+    if (prompt.on_date !== istToday()) { await load(); setNeedsReview(true); return }
     setBusy(true)
     try {
-      await answerPrompt(me, friend.id, prompt.id, text)
+      await answerPrompt(me, friend.id, prompt.id, text, prompt.on_date)
       setDraft('')
       await load()
     } catch (err) {
       // The unique constraint is what stops a double submit racing itself.
+      load().catch(() => {})
       toast(/duplicate|unique/i.test(err.message) ? 'You already answered today' : err.message)
     } finally {
       setBusy(false)
@@ -89,6 +105,7 @@ export default function DailyQuestion({ me, friend, friendName }) {
         </button>
       </div>
       <div className="dq-question">{prompt.body}</div>
+      {needsReview && <button onClick={() => setNeedsReview(false)}>A new day has started. I have reviewed today’s question.</button>}
 
       {!answered ? (
         <form className="dq-form" onSubmit={submit}>
@@ -105,7 +122,7 @@ export default function DailyQuestion({ me, friend, friendName }) {
                 ? `${friendName} has answered — you'll see it once you do`
                 : 'You’ll both see each other’s answers once you’ve both replied'}
             </span>
-            <button className="btn-dark" type="submit" disabled={busy || !draft.trim()}>
+            <button className="btn-dark" type="submit" disabled={busy || needsReview || !draft.trim()}>
               {busy ? 'Saving…' : 'Answer'}
             </button>
           </div>

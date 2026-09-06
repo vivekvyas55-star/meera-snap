@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import {
   acceptFriendRequest,
@@ -16,11 +16,11 @@ import { statusFor } from '../lib/status'
 import { useAuth } from '../hooks/useAuth'
 import { useAlias } from '../hooks/useAliasClock'
 import { useOnline } from '../hooks/useOnlinePresence'
-import { useToast } from '../components/Toast'
+import { useToast } from '../hooks/useToast'
 import Avatar from '../components/Avatar'
 import StatusIcon from '../components/StatusIcon'
 import Portal from '../components/Portal'
-import Snapcode from '../components/Snapcode'
+const Snapcode = lazy(() => import('../components/Snapcode'))
 import { CheckIcon, MapIcon, PlusIcon } from '../components/Icons'
 
 export default function ChatList({ onOpenChat, onOpenProfile, onOpenMap }) {
@@ -30,6 +30,10 @@ export default function ChatList({ onOpenChat, onOpenProfile, onOpenMap }) {
   const alias = useAlias()
   const isOnline = useOnline()
 
+  const [query, setQuery] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+  const requestRef = useRef(0)
   const [friends, setFriends] = useState([])
   const [lastByFriend, setLastByFriend] = useState({})
   const [streaks, setStreaks] = useState([])
@@ -41,6 +45,8 @@ export default function ChatList({ onOpenChat, onOpenProfile, onOpenMap }) {
   // realtime event below, so it has to stay cheap — it used to pull a 200-row
   // page per accepted friend, i.e. a full N x 200 refetch per message received.
   const load = useCallback(async () => {
+    const request = ++requestRef.current
+    try {
     const [list, streakRows, latest] = await Promise.all([
       listFriendsWithProfiles(me),
       getStreaks(me),
@@ -51,12 +57,16 @@ export default function ChatList({ onOpenChat, onOpenProfile, onOpenMap }) {
         return {}
       }),
     ])
+    if (request !== requestRef.current) return
+    setError(null)
     setFriends(list)
     setStreaks(streakRows)
     setLastByFriend(latest)
     // Cosmetic extras — never let them fail the list.
     listStatusNotes().then(setNotes).catch(() => {})
     birthdaysToday().then(setBirthdays).catch(() => {})
+    } catch (err) { if (request === requestRef.current) setError(err.message) }
+    finally { if (request === requestRef.current) setLoading(false) }
   }, [me])
 
   useEffect(() => {
@@ -67,7 +77,7 @@ export default function ChatList({ onOpenChat, onOpenProfile, onOpenMap }) {
   // here rather than per-row.
   useEffect(() => {
     const channel = supabase
-      .channel('chatlist')
+      .channel(`updates:${me}:chatlist`, { config: { private: true } })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, load)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'friendships' }, load)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'streaks' }, load)
@@ -130,7 +140,13 @@ export default function ChatList({ onOpenChat, onOpenProfile, onOpenMap }) {
         </button>
       </div>
 
-      <div className="list">
+      <div className="chat-tools">
+        <p className="screen-subtitle">Little moments start with a hello.</p>
+        <div className="search-field">
+          <input type="search" aria-label="Search chats" placeholder="Find your people" value={query} onChange={e => setQuery(e.target.value)} />
+        </div>
+      </div>
+      <div className="list" aria-busy={loading}>
         {requests.length > 0 && (
           <>
             <div className="section">Requests</div>
@@ -144,9 +160,11 @@ export default function ChatList({ onOpenChat, onOpenProfile, onOpenMap }) {
                 <button
                   className="circle dark"
                   onClick={async () => {
-                    await acceptFriendRequest(me, f.profile.id)
-                    toast('Friend added')
-                    load()
+                    try {
+                      await acceptFriendRequest(me, f.profile.id)
+                      toast('Friend added')
+                      load()
+                    } catch (err) { toast(err.message) }
                   }}
                   aria-label={`Accept ${f.profile.username}`}
                 >
@@ -158,15 +176,19 @@ export default function ChatList({ onOpenChat, onOpenProfile, onOpenMap }) {
           </>
         )}
 
-        {accepted.length === 0 && requests.length === 0 && (
+        {error && <div className="error">{error}<button onClick={load}>Retry</button></div>}
+        {loading && <div className="empty" role="status">Loading your people…</div>}
+        {!loading && !error && accepted.length === 0 && requests.length === 0 && (
           <div className="empty">
-            No friends yet.
-            <br />
-            Tap ＋ and add someone by their username.
+            <div className="empty-symbol" aria-hidden="true">＋</div>
+            <h2>Make room for your people.</h2>
+            <p>Add someone by username to start sharing your everyday.</p>
+            <button className="btn-dark" onClick={() => setAdding(true)}>Add your first friend</button>
           </div>
         )}
 
-        {accepted.map((f) => {
+        {!loading && accepted.length > 0 && !accepted.some(f => alias(f.profile).toLowerCase().includes(query.trim().toLowerCase())) && <div className="empty" role="status"><h2>No chats found</h2><p>Try another name.</p><button className="chip" onClick={() => setQuery('')}>Clear search</button></div>}
+        {accepted.filter(f => alias(f.profile).toLowerCase().includes(query.trim().toLowerCase())).map((f) => {
           const last = lastByFriend[f.profile.id]
           const st = last ? statusFor(last, me) : null
           const streak = streakFor(f.profile.id)
@@ -174,7 +196,7 @@ export default function ChatList({ onOpenChat, onOpenProfile, onOpenMap }) {
           // the last message doesn't leave a permanent New badge.
           const unread = last && last.sender_id !== me && last.kind !== 'call' && !last.opened_at
           return (
-            <button className="row" key={f.profile.id} onClick={() => onOpenChat(f.profile)}>
+            <button className={`row chat-row${unread ? ' is-unread' : ''}`} key={f.profile.id} onClick={() => onOpenChat(f.profile)}>
               <Avatar profile={f.profile} />
               <div className="row-main">
                 <div className="row-name">

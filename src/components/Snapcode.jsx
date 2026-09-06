@@ -5,8 +5,7 @@ import Avatar from './Avatar'
 // A user's Snapcode is a QR of a deep link to the app with ?add=<username>.
 // A friend scans it with their phone's normal camera, which opens Meera and
 // sends the friend request — no in-app scanner needed.
-export const snapcodeUrl = (username) =>
-  `${location.origin}/?add=${encodeURIComponent(username)}`
+import { snapcodeUrl } from '../lib/snapcode'
 
 export default function Snapcode({ profile }) {
   const [dataUrl, setDataUrl] = useState(null)

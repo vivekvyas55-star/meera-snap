@@ -25,12 +25,7 @@ create policy anniv_write on public.anniversaries
 
 grant select, insert, update, delete on public.anniversaries to authenticated;
 
--- Seed vivek + sneha: together since 28 May 2018 (4 years reached 28 May 2022).
-insert into public.anniversaries (user_a, user_b, started_on)
-select least(v.id, s.id), greatest(v.id, s.id), date '2018-05-28'
-  from (select id from public.profiles where username = 'vivek') v,
-       (select id from public.profiles where username = 'sneha') s
-on conflict (user_a, user_b) do update set started_on = excluded.started_on;
+-- Personal anniversary values are user data; migration replay must not overwrite them.
 
 notify pgrst, 'reload schema';
 select 'anniversaries table ready; vivek+sneha seeded 2018-05-28' as status;

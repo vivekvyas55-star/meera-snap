@@ -1,3 +1,4 @@
+import VoicePlayer from '../components/VoicePlayer'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import {
@@ -17,18 +18,18 @@ import {
   sendSticker,
   sendVoiceNote,
   setAnniversaryDate,
-  signedUrl,
   SNAP_MAX_OPENS,
   toggleSaved,
   unsend,
 } from '../lib/db'
 import { barColorFor, statusFor } from '../lib/status'
-import { enqueue, flushOutbox, looksOffline, outboxFor } from '../lib/outbox'
+import { enqueue, outboxFor, retryQueued, removeQueued, OUTBOX_EVENT } from '../lib/outbox'
+import { mergeMessages } from '../lib/messageState'
 import { useAuth } from '../hooks/useAuth'
 import { useAlias } from '../hooks/useAliasClock'
 import { useOnline } from '../hooks/useOnlinePresence'
 import { useConversationPresence } from '../hooks/usePresence'
-import { useToast } from '../components/Toast'
+import { useToast } from '../hooks/useToast'
 import Avatar from '../components/Avatar'
 import StatusIcon from '../components/StatusIcon'
 import SnapViewer from '../components/SnapViewer'
@@ -113,11 +114,17 @@ export default function Chat({ friend, onBack }) {
   const [friendSheet, setFriendSheet] = useState(false)
   const [recSecs, setRecSecs] = useState(0)
   const threadRef = useRef(null)
+  const requestRef = useRef(0)
+  const eventRef = useRef(new Map())
+  const seenRef = useRef(new Set())
+  const visitRef = useRef(crypto.randomUUID())
+  const seenWrites = useRef([])
+  const [loadError, setLoadError] = useState(null)
   const fileRef = useRef(null)
   const [hasMore, setHasMore] = useState(false) // older history remains to load
   const oldestRef = useRef(null) // created_at cursor for scroll-back paging
   const loadingOlderRef = useRef(false)
-  const [pending, setPending] = useState(() => outboxFor(me, friend.id)) // offline outbox
+  const [pending, setPending] = useState(() => { try { return outboxFor(me, friend.id) } catch { return [] } }) // offline outbox
   const recTimer = useRef(null)
   const { recording, start: startRec, stop: stopRec } = useAudioRecorder()
 
@@ -176,18 +183,27 @@ export default function Chat({ friend, onBack }) {
   }, [onBack])
 
   useEffect(() => {
+    const seen = seenRef.current, writes = seenWrites.current, visit = visitRef.current
     return () => {
-      clearViewedChats(me, friend.id).catch(() => {})
+      const ids = [...seen]
+      Promise.allSettled(writes).then(() => clearViewedChats(me, friend.id, ids, visit)).catch(() => {})
+      requestRef.current += 1
       clearInterval(recTimer.current)
       stopRec(true).catch(() => {})
     }
   }, [me, friend.id, stopRec])
 
   const load = useCallback(async () => {
-    const { messages: rows, oldestCursor, hasMore: more } = await listMessages(me, friend.id)
-    setMessages(rows)
-    oldestRef.current = oldestCursor
-    setHasMore(more)
+    const request = ++requestRef.current
+    const after = Date.now()
+    try {
+      const { messages: rows, oldestCursor, hasMore: more } = await listMessages(me, friend.id)
+      if (request !== requestRef.current) return
+      const fresh = rows.filter(row => !eventRef.current.has(row.id) || eventRef.current.get(row.id) < after)
+      setMessages(cur => mergeMessages(cur, fresh))
+      if (!oldestRef.current) { oldestRef.current = oldestCursor; setHasMore(more) }
+      setLoadError(null)
+    } catch (err) { if (request === requestRef.current) setLoadError(err.message) }
   }, [me, friend.id])
 
   // Scroll-back: fetch the next older page and prepend it, holding the visual
@@ -203,12 +219,12 @@ export default function Chat({ friend, onBack }) {
       if (oldestCursor) oldestRef.current = oldestCursor
       setHasMore(more)
       if (older.length) {
-        setMessages((cur) => [...older, ...cur])
+        setMessages((cur) => mergeMessages(older, cur))
         requestAnimationFrame(() => {
           if (el) el.scrollTop = prevTop + (el.scrollHeight - prevH)
         })
       }
-    } finally {
+    } catch (err) { setLoadError(err.message) } finally {
       loadingOlderRef.current = false
     }
   }, [me, friend.id])
@@ -235,24 +251,20 @@ export default function Chat({ friend, onBack }) {
   useEffect(() => {
     const { user_a, user_b } = pairKey(me, friend.id)
     const channel = supabase
-      .channel(`msgs:${user_a}:${user_b}`)
+      .channel(`updates:${me}:msgs-${user_a}-${user_b}`, { config: { private: true } })
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'messages', filter: `user_a=eq.${user_a}` },
         (payload) => {
-          const row = payload.new ?? payload.old
-          if (row?.user_b !== user_b) return
-          // Append new inserts (keeps any scrolled-back history in place);
-          // updates/deletes (reactions, unsend, clears) fall back to a reload.
-          if (payload.eventType === 'INSERT' && payload.new) {
-            setMessages((cur) => {
-              if (cur.some((m) => m.id === payload.new.id)) return cur
-              if (!isVisibleTo(payload.new, me)) return cur
-              return [...cur, payload.new]
-            })
-          } else {
-            load()
+          if (payload.eventType === 'DELETE') {
+            const id = payload.old?.id
+            if (id) { eventRef.current.set(id, Date.now()); setMessages(cur => cur.filter(m => m.id !== id)) }
+            return
           }
+          const row = payload.new
+          if (!row?.id || row.user_b !== user_b) return
+          eventRef.current.set(row.id, Date.now())
+          setMessages(cur => mergeMessages(cur, [row]))
         }
       )
       .subscribe()
@@ -275,71 +287,48 @@ export default function Chat({ friend, onBack }) {
     if (nearBottom) el.scrollTo({ top: el.scrollHeight })
   }, [messages, theirTyping])
 
-  // Opening the conversation marks their unread chats, voice notes and stickers
-  // as read (one atomic call, so the chat-list New indicator clears reliably)
-  // and starts them on the 3-view clear. Snaps stay sealed until tapped.
-  useEffect(() => {
-    const hasUnopened = messages.some(
-      (m) =>
-        m.sender_id !== me &&
-        (m.kind === 'chat' || m.kind === 'voice' || m.kind === 'sticker') &&
-        !m.opened_at
-    )
-    if (hasUnopened) markChatsOpened(friend.id).catch(() => {})
-  }, [messages, me, friend.id])
+  const recordSeen = useCallback((id) => {
+    if (seenRef.current.has(id)) return
+    seenRef.current.add(id)
+    const write = markChatsOpened(friend.id, [id], visitRef.current).catch(() => { seenRef.current.delete(id) })
+    seenWrites.current.push(write)
+  }, [friend.id])
 
-  const submit = async (e) => {
+  useEffect(() => {
+    const root = threadRef.current
+    if (!root) return
+    const observer = new IntersectionObserver(entries => {
+      if (document.visibilityState !== 'visible') return
+      for (const entry of entries) {
+        if (!entry.isIntersecting || entry.intersectionRatio < 0.7) continue
+        const id = entry.target.dataset.messageId
+        const m = messages.find(row => row.id === id)
+        if (m && ['chat', 'sticker'].includes(m.kind)) recordSeen(id)
+      }
+    }, { root, threshold: 0.7 })
+    root.querySelectorAll('[data-message-id]').forEach(el => observer.observe(el))
+    return () => observer.disconnect()
+  }, [messages, recordSeen])
+
+  const submit = (e) => {
     e.preventDefault()
     const text = draft.trim()
     if (!text) return
-    const replyTo = replyingTo?.id ?? null
-    setDraft('')
-    setTyping(false)
-    setReplyingTo(null)
-    // Offline: queue it and show it as pending — it auto-sends on reconnect.
-    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
-      setPending((p) => [...p, enqueue({ me, otherId: friend.id, text, replyTo })])
-      return
-    }
     try {
-      const data = await sendChat(me, friend.id, text, replyTo)
-      // Show it immediately (realtime echo dedupes on id), without resetting any
-      // scrolled-back history.
-      if (data) setMessages((cur) => (cur.some((m) => m.id === data.id) ? cur : [...cur, data]))
-    } catch (err) {
-      // A network failure queues instead of erroring; a real error still shows.
-      if (looksOffline(err)) {
-        setPending((p) => [...p, enqueue({ me, otherId: friend.id, text, replyTo })])
-      } else {
-        toast(err.message)
-        setDraft(text)
-        setReplyingTo(replyingTo) // restore the reply context on a real failure
-      }
-    }
+      enqueue({ me, otherId: friend.id, text, replyTo: replyingTo?.id ?? null })
+      setDraft('')
+      setTyping(false)
+      setReplyingTo(null)
+    } catch (err) { toast(err.message) }
   }
 
-  // Flush the outbox on mount and whenever the connection returns. Anything the
-  // queue gives up on (undeliverable, or too old) is reported rather than
-  // disappearing quietly — a queued message must never just evaporate.
-  const flush = useCallback(async () => {
-    const { sent, dropped } = await flushOutbox(
-      (item) => sendChat(item.me, item.otherId, item.text, item.replyTo),
-      me
-    )
-    if (dropped.length) {
-      toast(`${dropped.length} queued message${dropped.length === 1 ? '' : 's'} couldn’t be sent`)
-    }
-    if (sent.length || dropped.length) {
-      setPending(outboxFor(me, friend.id))
-      if (sent.length) load()
-    }
-  }, [me, friend.id, load, toast])
-
   useEffect(() => {
-    flush()
-    window.addEventListener('online', flush)
-    return () => window.removeEventListener('online', flush)
-  }, [flush])
+    const refresh = () => { load(); try { setPending(outboxFor(me, friend.id)) } catch (err) { toast(err.message) } }
+    refresh()
+    window.addEventListener(OUTBOX_EVENT, refresh)
+    window.addEventListener('storage', refresh)
+    return () => { window.removeEventListener(OUTBOX_EVENT, refresh); window.removeEventListener('storage', refresh) }
+  }, [me, friend.id, toast, load])
 
   const onDraftChange = (e) => {
     setDraft(e.target.value)
@@ -428,7 +417,8 @@ export default function Chat({ friend, onBack }) {
       <DailyQuestion me={me} friend={friend} friendName={friendName} />
 
       <div className="thread" ref={threadRef} onScroll={onThreadScroll}>
-        {visible.length === 0 && (
+        {loadError && <div className="error">{loadError}<button onClick={load}>Retry</button></div>}
+        {visible.length === 0 && !loadError && (
           <div className="empty">
             Nothing here yet.
             <br />
@@ -444,6 +434,7 @@ export default function Chat({ friend, onBack }) {
             friend={friend}
             friendName={friendName}
             myProfile={profile}
+            onSeen={() => recordSeen(m.id)}
             onOpenSnap={() => setViewing(m)}
             onLongPress={() => setMenuMsg(m)}
             onReply={() => setReplyingTo(m)}
@@ -462,7 +453,9 @@ export default function Chat({ friend, onBack }) {
             <div className="msg-body" style={{ borderLeftColor: barColorFor(profile) }}>
               {p.text}
             </div>
-            <div className="msg-pending-tag">⏳ Pending · sends when you’re back online</div>
+            <div className="msg-pending-tag">{p.error || '⏳ Pending · sends when you’re back online'}</div>
+            <button onClick={() => { setDraft(p.text); removeQueued(p.tempId) }}>Edit pending message</button>
+            {p.error && <button onClick={() => retryQueued(p.tempId)}>Retry</button>}
           </div>
         ))}
 
@@ -618,76 +611,6 @@ export default function Chat({ friend, onBack }) {
         <ForwardSheet me={me} message={forwardMsg} onClose={() => setForwardMsg(null)} />
       )}
     </div>
-  )
-}
-
-// Only one voice note plays at a time across the whole thread; starting one
-// pauses whatever else is playing. Tracked at module scope so every VoicePlayer
-// coordinates through it.
-let currentVoice = null
-
-function VoicePlayer({ message, bar }) {
-  const [playing, setPlaying] = useState(false)
-  const audioRef = useRef(null)
-  const loadingRef = useRef(false)
-  const aliveRef = useRef(true)
-
-  // Stop and release the audio if this row unmounts mid-playback (leaving the
-  // chat, or the message clearing / being unsent) — otherwise a detached
-  // <audio> keeps playing with no control left to stop it.
-  useEffect(() => {
-    return () => {
-      aliveRef.current = false
-      const el = audioRef.current
-      if (el) {
-        el.onplay = el.onpause = el.onended = null
-        el.pause()
-        if (currentVoice === el) currentVoice = null
-      }
-    }
-  }, [])
-
-  const toggle = async (e) => {
-    e.stopPropagation()
-    let el = audioRef.current
-    if (!el) {
-      if (loadingRef.current) return // a signed-URL fetch is already in flight
-      loadingRef.current = true
-      const url = await signedUrl(message.media_path).catch(() => null)
-      loadingRef.current = false
-      // Bail if the chat was closed while the URL was fetching — otherwise we'd
-      // create and play an <audio> the unmount cleanup already ran past.
-      if (!url || !aliveRef.current) return
-      el = new Audio(url)
-      // Drive the ▶/❚❚ state off the element's own events, so a pause triggered
-      // by another row (below) also flips this button back to ▶.
-      el.onplay = () => setPlaying(true)
-      el.onpause = () => setPlaying(false)
-      el.onended = () => {
-        setPlaying(false)
-        if (currentVoice === el) currentVoice = null
-      }
-      audioRef.current = el
-    }
-    if (el.paused) {
-      if (currentVoice && currentVoice !== el) currentVoice.pause()
-      currentVoice = el
-      el.play().catch(() => setPlaying(false))
-    } else {
-      el.pause()
-      if (currentVoice === el) currentVoice = null
-    }
-  }
-  return (
-    <button className="msg-voice" style={{ borderLeftColor: bar }} onClick={toggle}>
-      <span className="voice-play">{playing ? '❚❚' : '▶'}</span>
-      <span className="voice-wave" aria-hidden>
-        {Array.from({ length: 14 }, (_, i) => (
-          <i key={i} style={{ height: `${6 + ((i * 5) % 16)}px` }} />
-        ))}
-      </span>
-      <span style={{ fontSize: 13, color: 'var(--muted)' }}>Voice</span>
-    </button>
   )
 }
 
@@ -916,7 +839,7 @@ function replyPreview(m) {
 
 function MessageRow({
   message, me, friend, friendName, myProfile,
-  onOpenSnap, onLongPress, onQuickReact, onReply, repliedTo,
+  onSeen, onOpenSnap, onLongPress, onQuickReact, onReply, repliedTo,
 }) {
   const mine = message.sender_id === me
   const status = statusFor(message, me)
@@ -1016,6 +939,7 @@ function MessageRow({
 
   return (
     <div
+      data-message-id={message.id}
       className={`msg${mine ? ' mine' : ''}${saved ? ' saved' : ''}`}
       style={{
         transform: dragX ? `translateX(${dragX}px)` : undefined,
@@ -1053,7 +977,7 @@ function MessageRow({
           {message.body}
         </div>
       ) : message.kind === 'voice' ? (
-        <VoicePlayer message={message} bar={bar} />
+        <VoicePlayer message={message} bar={bar} onSeen={onSeen} />
       ) : message.kind === 'call' ? (
         <div className="msg-call">
           {(message.body || '').startsWith('video') ? (

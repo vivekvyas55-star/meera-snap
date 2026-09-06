@@ -1,15 +1,8 @@
 import { useState } from 'react'
 import { useAuth } from '../hooks/useAuth'
-import { getSecurityQuestion, resetPassword, setSecurityQuestion } from '../lib/db'
+import { getSecurityQuestion, resetPassword } from '../lib/db'
 
-export const SECURITY_QUESTIONS = [
-  'What was your first pet’s name?',
-  'What city were you born in?',
-  'What’s your favourite food?',
-  'What was your childhood nickname?',
-  'What is your mother’s maiden name?',
-  'What was the name of your first school?',
-]
+import { SECURITY_QUESTIONS } from '../lib/securityQuestions'
 
 export default function Auth() {
   const { signIn, signUp } = useAuth()
@@ -21,11 +14,13 @@ export default function Auth() {
   const [answer, setAnswer] = useState('')
   const [error, setError] = useState(null)
   const [busy, setBusy] = useState(false)
+  const [passwordVisible, setPasswordVisible] = useState(false)
   const [resetStep, setResetStep] = useState(1) // 1: username → question, 2: answer + new password
   const [foundQuestion, setFoundQuestion] = useState('')
 
   const go = (m) => {
     setMode(m)
+    setPasswordVisible(false)
     setError(null)
     setResetStep(1)
     setFoundQuestion('')
@@ -48,28 +43,7 @@ export default function Auth() {
     setBusy(true)
     try {
       if (mode === 'signup') {
-        const ans = answer.trim()
-        await signUp(username, password, displayName)
-        // Session is active now — store the recovery Q+A, retrying once for the
-        // profile-creation trigger to land. If both fail, stash it so useAuth
-        // retries once authenticated (recovery never silently goes unarmed).
-        try {
-          await setSecurityQuestion(question, ans)
-        } catch {
-          await new Promise((r) => setTimeout(r, 1000))
-          try {
-            await setSecurityQuestion(question, ans)
-          } catch {
-            try {
-              // `at` time-boxes the stash — useAuth discards it after a day so
-              // the plaintext answer can't linger on the device forever.
-              localStorage.setItem(
-                'meera_pending_secq',
-                JSON.stringify({ question, answer: ans, at: Date.now() })
-              )
-            } catch { /* storage unavailable — nothing more we can do here */ }
-          }
-        }
+        await signUp(username, password, displayName, question, answer.trim())
       } else if (mode === 'signin') {
         await signIn(username, password)
       } else if (resetStep === 1) {
@@ -99,7 +73,9 @@ export default function Auth() {
 
   return (
     <form className="auth" onSubmit={submit}>
-      <h1>Meera</h1>
+      <div className="auth-brand" aria-hidden="true">m<span>·</span></div>
+      <div className="eyebrow">A little closer, every day</div>
+      <h1>{mode === 'signup' ? 'Your people. Your space.' : mode === 'reset' ? 'Let’s get you back.' : 'Welcome to Meera.'}</h1>
       <p>
         {mode === 'signup'
           ? 'Pick a username your friends can add you by.'
@@ -108,10 +84,11 @@ export default function Auth() {
             : 'Welcome back.'}
       </p>
 
-      {error && <div className="error">{error}</div>}
+      {error && <div className="error" role="alert">{error}</div>}
 
-      <input
-        placeholder="username"
+      <label className="field-label" htmlFor="auth-username">Username</label>
+      <input id="auth-username"
+        placeholder="your username"
         value={username}
         onChange={(e) => setUsername(e.target.value)}
         autoCapitalize="none"
@@ -125,7 +102,7 @@ export default function Auth() {
       />
 
       {mode === 'signup' && (
-        <input
+        <input aria-label="Display name (optional)"
           placeholder="display name (optional)"
           value={displayName}
           onChange={(e) => setDisplayName(e.target.value)}
@@ -134,8 +111,11 @@ export default function Auth() {
       )}
 
       {showPassword && (
-        <input
-          type="password"
+        <div className="password-field">
+        <label className="field-label" htmlFor="auth-password">{mode === 'reset' ? 'New password' : 'Password'}</label>
+        <div className="password-control">
+        <input id="auth-password"
+          type={passwordVisible ? 'text' : 'password'}
           placeholder={mode === 'reset' ? 'new password' : 'password'}
           value={password}
           onChange={(e) => setPassword(e.target.value)}
@@ -143,16 +123,20 @@ export default function Auth() {
           minLength={mode === 'signin' ? undefined : 6}
           required
         />
+        <button type="button" className="password-toggle" aria-label={passwordVisible ? 'Hide password' : 'Show password'} aria-pressed={passwordVisible} onClick={() => setPasswordVisible(v => !v)}>{passwordVisible ? 'Hide' : 'Show'}</button>
+        </div></div>
       )}
 
       {mode === 'signup' && (
         <>
-          <select className="auth-select" value={question} onChange={(e) => setQuestion(e.target.value)}>
+          <label className="field-label" htmlFor="auth-question">Account recovery</label>
+          <select id="auth-question" className="auth-select" value={question} onChange={(e) => setQuestion(e.target.value)}>
             {SECURITY_QUESTIONS.map((q) => (
               <option key={q} value={q}>{q}</option>
             ))}
           </select>
           <input
+            aria-label="Security answer"
             placeholder="answer (to recover your account later)"
             value={answer}
             onChange={(e) => setAnswer(e.target.value)}
@@ -166,6 +150,7 @@ export default function Auth() {
         <>
           <div className="auth-q">{foundQuestion}</div>
           <input
+            aria-label="Security answer"
             placeholder="your answer"
             value={answer}
             onChange={(e) => setAnswer(e.target.value)}
@@ -188,13 +173,14 @@ export default function Auth() {
       </button>
 
       {mode === 'signin' && (
-        <button type="button" className="switch" onClick={() => go('reset')}>
+        <button type="button" className="switch" disabled={busy} onClick={() => go('reset')}>
           Forgot password?
         </button>
       )}
       <button
         type="button"
         className="switch"
+        disabled={busy}
         onClick={() => go(mode === 'signup' || mode === 'reset' ? 'signin' : 'signup')}
       >
         {mode === 'signup'

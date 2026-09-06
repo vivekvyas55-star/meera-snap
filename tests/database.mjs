@@ -1,0 +1,105 @@
+import { PGlite } from '@electric-sql/pglite'
+import { citext } from '@electric-sql/pglite/contrib/citext'
+import { pgcrypto } from '@electric-sql/pglite/contrib/pgcrypto'
+import fs from 'node:fs'
+import assert from 'node:assert/strict'
+const db = new PGlite({ extensions: { citext, pgcrypto } })
+await db.exec(`
+ create role anon; create role authenticated; create role service_role bypassrls;
+ create schema auth; create schema storage; create schema realtime;
+ create table auth.users(id uuid primary key, email text, raw_user_meta_data jsonb default '{}', encrypted_password text, updated_at timestamptz);
+ create table auth.sessions(id uuid primary key, user_id uuid);
+ create table auth.refresh_tokens(user_id text);
+ create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid $$;
+ grant usage on schema auth to authenticated,anon;
+ create table storage.buckets(id text primary key,name text,public boolean);
+ create table storage.objects(id uuid primary key default gen_random_uuid(),bucket_id text,name text);
+ alter table storage.objects enable row level security;
+ create function storage.foldername(text) returns text[] language sql immutable as $$ select string_to_array($1,'/') $$;
+ create table realtime.messages(topic text,extension text);
+ alter table realtime.messages enable row level security;
+ create function realtime.topic() returns text language sql stable as $$ select current_setting('realtime.topic',true) $$;
+ create publication supabase_realtime;
+`)
+try {
+ await db.exec(fs.readFileSync('supabase/migrations/202609060000_baseline.sql','utf8'))
+ console.log('PASS fresh baseline')
+ await db.exec(fs.readFileSync('supabase/migrations/202609060001_audit_fixes.sql','utf8'))
+ console.log('PASS audit upgrade')
+ await db.exec(fs.readFileSync('supabase/migrations/202609060001_audit_fixes.sql','utf8'))
+ console.log('PASS upgrade replay')
+} catch (err) { console.error('Migration failure:',err.message,err.where,err.position); await db.close(); process.exit(1) }
+const A='00000000-0000-4000-8000-000000000001',B='00000000-0000-4000-8000-000000000002',C='00000000-0000-4000-8000-000000000003'
+const query = async (sql,args=[]) => (await db.query(sql,args)).rows
+const insertedUsers = await db.query(`insert into auth.users(id,email,raw_user_meta_data) values($1,'alice@meera.local',$2),($3,'bobby@meera.local','{}'),($4,'carol@meera.local','{}') returning raw_user_meta_data`,[A,JSON.stringify({recovery_question:'A question',recovery_answer:'secret answer'}),B,C])
+assert.equal(insertedUsers.rows[0].raw_user_meta_data.recovery_answer,undefined)
+assert.equal((await query('select raw_user_meta_data from auth.users where id=$1',[A]))[0].raw_user_meta_data.recovery_answer,undefined)
+assert.equal((await query('select count(*)::int n from public.security_questions where user_id=$1',[A]))[0].n,1)
+console.log('PASS transactional recovery setup and metadata scrubbing')
+await db.query(`insert into public.friendships(user_a,user_b,requested_by,status) values($1,$2,$1,'accepted')`,[A,B])
+async function asUser(id, fn) {
+ await db.query(`select set_config('request.jwt.claim.sub',$1,false)`,[id])
+ await db.exec('set role authenticated')
+ try { return await fn() } finally { await db.exec('reset role') }
+}
+await asUser(A,async()=>{
+ assert.equal((await query("select public.realtime_allowed($1,true) ok",[`signal:${B}:${A}`]))[0].ok,true)
+ assert.equal((await query("select public.realtime_allowed($1,true) ok",[`signal:${A}:${B}`]))[0].ok,false)
+ assert.equal((await query("select public.realtime_allowed($1,false) ok",[`online:${C}`]))[0].ok,false)
+ const privileges=await query("select has_function_privilege('authenticated','public.send_morning_quotes()','execute') ok")
+ assert.equal(privileges[0].ok,false)
+})
+console.log('PASS private writer identity, stranger presence and bot execution restrictions')
+// Identical timestamps must page without dropping the boundary row.
+await db.query(`insert into public.messages(user_a,user_b,sender_id,kind,body,created_at) select $1,$2,$1,'chat','message '||n,now() from generate_series(1,3) n`,[A,B])
+await asUser(B,async()=>{
+ const page=await query('select * from message_page($1,null,null,2)',[A])
+ assert.equal(page.length,2)
+ const older=await query('select * from message_page($1,$2,$3,2)',[A,page[1].created_at,page[1].id])
+ assert.equal(older.length,1)
+ assert.equal(new Set([...page,...older].map(m=>m.id)).size,3)
+ const visit='10000000-0000-4000-8000-000000000001'
+ await query('select mark_messages_seen($1,$2,$3)',[A,[page[0].id],visit])
+ await query('select leave_seen_messages($1,$2,$3)',[A,[page[0].id,page[1].id],visit])
+ await query('select leave_seen_messages($1,$2,$3)',[A,[page[0].id],visit])
+ const rows=await query('select id,view_leaves,opened_at from messages')
+ assert.equal(rows.find(m=>m.id===page[0].id).view_leaves[B],1)
+ assert.equal(rows.find(m=>m.id===page[1].id).opened_at,null)
+})
+console.log('PASS composite paging and exact seen IDs with idempotent leave')
+await asUser(A,async()=>{
+ const prompt=(await query('select * from todays_prompt()'))[0]
+ await assert.rejects(query('select answer_daily_prompt($1,$2,$3,$4)',[B,prompt.id,'test','2000-01-01']))
+ await query('select answer_daily_prompt($1,$2,$3,$4)',[B,prompt.id,'test',prompt.on_date])
+ await assert.rejects(query('select answer_daily_prompt($1,$2,$3,$4)',[B,prompt.id,'duplicate',prompt.on_date]))
+})
+console.log('PASS daily prompt day validation and single answer')
+await db.query(`insert into public.messages(user_a,user_b,sender_id,kind,body,created_at,opened_at) values($1,$2,$1,'call','voice|ended',now()-interval '40 days',now()-interval '39 days')`,[A,B])
+await db.exec('select public.purge_expired()')
+assert.equal((await query("select count(*)::int n from public.messages where kind='call'"))[0].n,1)
+console.log('PASS call history survives purge')
+// Media ownership and cleanup are enforced by real SQL, including late references.
+const ownedPath=`${A}/snaps/test.jpg`
+await asUser(A,()=>query('select queue_media_cleanup($1)',[ownedPath]))
+await db.query("insert into storage.objects(bucket_id,name) values('media',$1)",[ownedPath])
+await asUser(A,()=>query("insert into messages(user_a,user_b,sender_id,kind,media_path,media_type) values($1,$2,$1,'snap',$3,'image')",[A,B,ownedPath]))
+await db.query("update media_cleanup set due_at=now()-interval '1 hour' where path=$1",[ownedPath])
+assert.equal((await query('select claim_media_cleanup($1) ok',[ownedPath]))[0].ok,false)
+await asUser(B,()=>assert.rejects(query("insert into messages(user_a,user_b,sender_id,kind,media_path,media_type) values($1,$2,$2,'snap',$3,'image')",[A,B,ownedPath])))
+const orphan=`${A}/snaps/orphan.jpg`
+await asUser(A,()=>query('select queue_media_cleanup($1)',[orphan]))
+await db.query("insert into storage.objects(bucket_id,name) values('media',$1)",[orphan])
+await db.query("update media_cleanup set due_at=now()-interval '1 hour' where path=$1",[orphan])
+assert.equal((await query('select claim_media_cleanup($1) ok',[orphan]))[0].ok,true)
+await asUser(A,()=>assert.rejects(query("insert into messages(user_a,user_b,sender_id,kind,media_path,media_type) values($1,$2,$1,'snap',$3,'image')",[A,B,orphan])))
+console.log('PASS media ownership, referenced-file preservation and cleanup locking')
+// Recovery lockout is enforced in SQL and a successful reset revokes sessions.
+await db.query("insert into auth.sessions(id,user_id) values(gen_random_uuid(),$1)",[A])
+await db.query("insert into auth.refresh_tokens(user_id) values($1)",[A])
+assert.equal((await query("select reset_password('alice','secret answer','new-password') ok"))[0].ok,true)
+assert.equal((await query('select count(*)::int n from auth.sessions where user_id=$1',[A]))[0].n,0)
+assert.equal((await query('select count(*)::int n from auth.refresh_tokens where user_id=$1',[A]))[0].n,0)
+for(let i=0;i<5;i++) assert.equal((await query("select reset_password('alice','wrong','new-password') ok"))[0].ok,false)
+assert.equal((await query("select reset_password('alice','secret answer','new-password') ok"))[0].ok,false)
+console.log('PASS recovery session revocation and guess lockout')
+await db.close()

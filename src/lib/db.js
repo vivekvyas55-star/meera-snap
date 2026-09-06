@@ -142,36 +142,35 @@ export const MESSAGE_PAGE = 200
 // so the scroll-up handler that would fetch the next page never fires. Keep
 // pulling pages until something is visible, bounded so a long run of cleared
 // history can't turn one open into an unbounded fetch loop.
-const MAX_EMPTY_PAGES = 5
-async function fetchPage(me, otherId, before) {
-  let q = supabase
-    .from('messages')
-    .select('*')
-    .match(pairFilter(me, otherId))
-    .is('unsent_at', null)
-    .order('created_at', { ascending: false })
-    .limit(MESSAGE_PAGE)
-  if (before) q = q.lt('created_at', before)
-  const { data, error } = await q
+export async function listMessages(me, otherId, before = null) {
+  const { data, error } = await supabase.rpc('message_page', {
+    other: otherId, before_time: before?.created_at ?? null,
+    before_id: before?.id ?? null, page_size: MESSAGE_PAGE,
+  })
   if (error) throw error
-  const raw = data ?? [] // newest-first
-  return {
-    messages: raw.slice().reverse().filter((m) => isVisibleTo(m, me)),
-    oldestCursor: raw.length ? raw[raw.length - 1].created_at : null,
-    hasMore: raw.length >= MESSAGE_PAGE,
-  }
+  const raw = data ?? []
+  return { messages: raw.slice().reverse(), oldestCursor: raw.length ? { created_at: raw.at(-1).created_at, id: raw.at(-1).id } : null, hasMore: raw.length === MESSAGE_PAGE }
 }
 
-export async function listMessages(me, otherId, before = null) {
-  let page = await fetchPage(me, otherId, before)
-  for (let i = 0; i < MAX_EMPTY_PAGES && page.messages.length === 0 && page.hasMore; i++) {
-    const next = await fetchPage(me, otherId, page.oldestCursor)
-    // Carry the older cursor forward even when the next page is empty too, so
-    // the caller keeps paging from the right place.
-    page = { ...next, oldestCursor: next.oldestCursor ?? page.oldestCursor }
+// Idempotency is enforced by (sender_id, client_id) in the database.
+async function insertMessage(row) {
+  const { data, error } = await supabase.from('messages').insert(row).select().single()
+  if (!error) return data
+  if (row.client_id) {
+    const existing = await supabase.from('messages').select('*').eq('sender_id', row.sender_id).eq('client_id', row.client_id).maybeSingle()
+    if (existing.data) return existing.data
   }
-  return page
+  throw error
 }
+
+async function uploadMedia(path, blob) {
+  // Durable cleanup work is registered BEFORE uploading; a crashed client cannot orphan it.
+  const { error: queued } = await supabase.rpc('queue_media_cleanup', { object_path: path })
+  if (queued) throw queued
+  const { error } = await supabase.storage.from('media').upload(path, blob, { contentType: blob.type || 'application/octet-stream', cacheControl: UPLOAD_CACHE })
+  if (error && String(error.statusCode) !== '409' && !/already exists|duplicate/i.test(error.message)) throw error
+}
+const mediaExtension = (blob) => ({ 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif', 'video/mp4': 'mp4', 'video/webm': 'webm', 'video/quicktime': 'mov', 'audio/webm': 'webm', 'audio/mp4': 'm4a', 'audio/ogg': 'ogg' }[blob.type?.split(';')[0]] || 'bin')
 
 // Newest visible message per conversation, for the chat list, in ONE round trip
 // (see chatlist_perf.sql). Returns { [otherUserId]: message | null }. The RPC
@@ -190,87 +189,30 @@ export async function listLatestPerFriend(me) {
   return byFriend
 }
 
-export async function sendChat(me, otherId, body, replyTo = null) {
+export async function sendChat(me, otherId, body, replyTo = null, clientId = crypto.randomUUID()) {
   const text = body.trim()
   if (!text) return null
-  const { data, error } = await supabase
-    .from('messages')
-    .insert({
-      ...pairFilter(me, otherId),
-      sender_id: me,
-      kind: 'chat',
-      body: text,
-      delivered_at: new Date().toISOString(),
-      reply_to: replyTo || null,
-    })
-    .select()
-    .single()
-  if (error) throw error
+  const data = await insertMessage({ ...pairFilter(me, otherId), sender_id: me, client_id: clientId, kind: 'chat', body: text, delivered_at: new Date().toISOString(), reply_to: replyTo || null })
   notify(otherId, 'chat')
   return data
 }
 
-export async function sendSnap(me, otherId, { blob, viewSeconds, caption }) {
-  const path = `${me}/snaps/${crypto.randomUUID()}.jpg`
+export async function sendSnap(me, otherId, { blob, viewSeconds, caption, clientId = crypto.randomUUID() }) {
   const body = await downscaleImage(blob, 1600, 0.85)
-  const { error: upErr } = await supabase.storage
-    .from('media')
-    .upload(path, body, { contentType: 'image/jpeg', upsert: false, cacheControl: UPLOAD_CACHE })
-  if (upErr) throw upErr
-
-  const { data, error } = await supabase
-    .from('messages')
-    .insert({
-      ...pairFilter(me, otherId),
-      sender_id: me,
-      kind: 'snap',
-      body: caption || null,
-      media_path: path,
-      media_type: 'image',
-      view_seconds: viewSeconds, // null means "no limit"
-      delivered_at: new Date().toISOString(),
-    })
-    .select()
-    .single()
-  if (error) throw error
+  const path = `${me}/snaps/${clientId}.${mediaExtension(body)}`
+  await uploadMedia(path, body)
+  const data = await insertMessage({ ...pairFilter(me, otherId), sender_id: me, client_id: clientId, kind: 'snap', body: caption || null, media_path: path, media_type: 'image', view_seconds: viewSeconds, delivered_at: new Date().toISOString() })
   notify(otherId, 'snap')
   return data
 }
 
-// Send an image OR video snap from a File (e.g. picked via the chat composer's
-// attach button). Images default to a 3s timer; videos play once in full.
-export async function sendSnapMedia(me, otherId, { file, viewSeconds, caption }) {
-  const isVideo = (file.type || '').startsWith('video')
-  const ext = isVideo ? 'mp4' : 'jpg'
-  const path = `${me}/snaps/${crypto.randomUUID()}.${ext}`
-  // A photo straight off the camera roll is several MB, and the recipient
-  // re-downloads all of it on every view. Video can't be transcoded in the
-  // browser, so it goes up as-is (the 50MB picker cap in Chat.jsx is the guard).
+export async function sendSnapMedia(me, otherId, { file, viewSeconds, caption, clientId = crypto.randomUUID() }) {
+  const isVideo = file.type?.startsWith('video/')
+  if (!isVideo && !file.type?.startsWith('image/')) throw new Error('Choose an image or video')
   const body = isVideo ? file : await downscaleImage(file, 1600, 0.8)
-  const { error: upErr } = await supabase.storage
-    .from('media')
-    .upload(path, body, {
-      contentType: file.type || (isVideo ? 'video/mp4' : 'image/jpeg'),
-      cacheControl: UPLOAD_CACHE,
-    })
-  if (upErr) throw upErr
-
-  const { data, error } = await supabase
-    .from('messages')
-    .insert({
-      ...pairFilter(me, otherId),
-      sender_id: me,
-      kind: 'snap',
-      body: caption || null,
-      media_path: path,
-      media_type: isVideo ? 'video' : 'image',
-      has_audio: isVideo,
-      view_seconds: viewSeconds ?? (isVideo ? null : 45),
-      delivered_at: new Date().toISOString(),
-    })
-    .select()
-    .single()
-  if (error) throw error
+  const path = `${me}/snaps/${clientId}.${mediaExtension(body)}`
+  await uploadMedia(path, body)
+  const data = await insertMessage({ ...pairFilter(me, otherId), sender_id: me, client_id: clientId, kind: 'snap', body: caption || null, media_path: path, media_type: isVideo ? 'video' : 'image', has_audio: Boolean(isVideo), view_seconds: viewSeconds === undefined ? (isVideo ? null : 45) : viewSeconds, delivered_at: new Date().toISOString() })
   notify(otherId, 'snap')
   return data
 }
@@ -284,31 +226,17 @@ export async function recordSnapOpen(messageId) {
 }
 
 // Mark all incoming chats in a conversation read, in one atomic call.
-export async function markChatsOpened(otherId) {
-  const { error } = await supabase.rpc('mark_chats_opened', { other: otherId })
+export async function markChatsOpened(otherId, ids, visit) {
+  if (!ids?.length) return
+  const { error } = await supabase.rpc('mark_messages_seen', { other: otherId, ids, visit })
   if (error) throw error
 }
 
 // Send a recorded voice note (audio blob) as a chat-ephemeral message.
-export async function sendVoiceNote(me, otherId, blob) {
-  const path = `${me}/voice/${crypto.randomUUID()}.webm`
-  const { error: upErr } = await supabase.storage
-    .from('media')
-    .upload(path, blob, { contentType: blob.type || 'audio/webm', cacheControl: UPLOAD_CACHE })
-  if (upErr) throw upErr
-  const { data, error } = await supabase
-    .from('messages')
-    .insert({
-      ...pairFilter(me, otherId),
-      sender_id: me,
-      kind: 'voice',
-      media_path: path,
-      media_type: 'audio',
-      delivered_at: new Date().toISOString(),
-    })
-    .select()
-    .single()
-  if (error) throw error
+export async function sendVoiceNote(me, otherId, blob, clientId = crypto.randomUUID()) {
+  const path = `${me}/voice/${clientId}.${mediaExtension(blob)}`
+  await uploadMedia(path, blob)
+  const data = await insertMessage({ ...pairFilter(me, otherId), sender_id: me, client_id: clientId, kind: 'voice', media_path: path, media_type: 'audio', delivered_at: new Date().toISOString() })
   notify(otherId, 'voice')
   return data
 }
@@ -433,8 +361,9 @@ export function isVisibleTo(message, me) {
 
 // Snapchat "Delete after viewing": call when leaving a conversation to clear
 // the chats this user has already opened.
-export async function clearViewedChats(me, otherId) {
-  const { error } = await supabase.rpc('clear_viewed_chats', { other: otherId })
+export async function clearViewedChats(me, otherId, ids = [], visit) {
+  if (!ids.length) return
+  const { error } = await supabase.rpc('leave_seen_messages', { other: otherId, ids, visit })
   if (error) throw error
 }
 
@@ -634,13 +563,10 @@ export async function listPromptAnswers(me, otherId) {
   }
 }
 
-export async function answerPrompt(me, otherId, promptId, body) {
+export async function answerPrompt(me, otherId, promptId, body, day) {
   const text = (body ?? '').trim()
   if (!text) return
-  const { user_a, user_b } = pairKey(me, otherId)
-  const { error } = await supabase
-    .from('prompt_answers')
-    .insert({ user_a, user_b, responder: me, prompt_id: promptId, body: text.slice(0, 500) })
+  const { error } = await supabase.rpc('answer_daily_prompt', { other: otherId, prompt: promptId, answer: text.slice(0, 500), expected_day: day })
   if (error) throw error
 }
 
@@ -662,6 +588,8 @@ export async function answerPrompt(me, otherId, promptId, body) {
 // short signed-URL expiry for enforcement.
 const SIGNED_TTL = 3600
 const SIGNED_REFRESH_BEFORE = 5 * 60 * 1000 // re-mint this long before expiry
+let mediaGeneration = 0
+export function clearMediaCache() { mediaGeneration += 1; urlCache.clear() }
 const urlCache = new Map() // media_path -> { url, expiresAt }
 
 export function forgetSignedUrl(path) {
@@ -669,12 +597,14 @@ export function forgetSignedUrl(path) {
 }
 
 export async function signedUrl(path, expiresIn = SIGNED_TTL) {
+  const generation = mediaGeneration
   const hit = urlCache.get(path)
   if (hit && hit.expiresAt - Date.now() > SIGNED_REFRESH_BEFORE) return hit.url
   const { data, error } = await supabase.storage
     .from('media')
     .createSignedUrl(path, expiresIn)
   if (error) throw error
+  if (generation !== mediaGeneration) throw new Error('Account changed while loading media')
   urlCache.set(path, { url: data.signedUrl, expiresAt: Date.now() + expiresIn * 1000 })
   return data.signedUrl
 }
@@ -720,10 +650,7 @@ export async function postStory(me, blob, caption) {
   // A story is watched by every friend, so it's the most re-downloaded media
   // in the app — worth the most aggressive downscale.
   const body = await downscaleImage(blob, 1440, 0.8)
-  const { error: upErr } = await supabase.storage
-    .from('media')
-    .upload(path, body, { contentType: 'image/jpeg', cacheControl: UPLOAD_CACHE })
-  if (upErr) throw upErr
+  await uploadMedia(path, body)
 
   const { data, error } = await supabase
     .from('stories')
@@ -796,12 +723,9 @@ export async function markStoryViewed(storyId, me) {
 export async function saveToMemory(me, blob, caption) {
   const isVideo = blob.type?.startsWith('video')
   const id = crypto.randomUUID()
-  const path = `${me}/memories/${id}.${isVideo ? 'mp4' : 'jpg'}`
   const body = isVideo ? blob : await downscaleImage(blob, 1600, 0.85)
-  const { error: upErr } = await supabase.storage
-    .from('media')
-    .upload(path, body, { contentType: blob.type || 'image/jpeg', cacheControl: UPLOAD_CACHE })
-  if (upErr) throw upErr
+  const path = `${me}/memories/${id}.${mediaExtension(body)}`
+  await uploadMedia(path, body)
 
   // Store a small thumbnail alongside the original. The Memories grid renders
   // one tile per memory; without this it loads every FULL-SIZE original just to
@@ -812,10 +736,7 @@ export async function saveToMemory(me, blob, caption) {
     const thumb = await makeThumbnail(body)
     if (thumb) {
       const tp = `${me}/memories/thumb_${id}.jpg`
-      const { error: tErr } = await supabase.storage
-        .from('media')
-        .upload(tp, thumb, { contentType: 'image/jpeg', cacheControl: UPLOAD_CACHE })
-      if (!tErr) thumbPath = tp
+      try { await uploadMedia(tp, thumb); thumbPath = tp } catch { /* original is usable */ }
     }
   }
 
@@ -840,6 +761,10 @@ export async function listMemories(me) {
 }
 
 export async function deleteMemory(memory) {
+  for (const path of [memory.media_path, memory.thumb_path].filter(Boolean)) {
+    const { error } = await supabase.rpc('queue_media_cleanup', { object_path: path })
+    if (error) throw error
+  }
   const { error } = await supabase.from('memories').delete().eq('id', memory.id)
   if (error) throw error
   // Best-effort: remove the stored files too (row is already gone regardless),

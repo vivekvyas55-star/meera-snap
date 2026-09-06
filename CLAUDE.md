@@ -1,3 +1,14 @@
+> Current implementation: see README.md and AUDIT-FIXES.md. The audit-fixes branch
+> introduces ordered migrations, private signaling, exact seen-message receipts,
+> transactional recovery setup, and separate provider/hook modules. Historical
+> notes below describe earlier versions; do not replay their SQL instructions.
+>
+> **Live as of 6 Sep 2026.** The audit upgrade is applied to production
+> (`mqxfggwncoazgmcswedi`), the `cleanup` worker is deployed and scheduled every
+> 15 min, the frontend is deployed, and **Realtime public channel access is
+> disabled** — every channel is now private. Two-user smoke tests on real devices
+> are still outstanding; see the checklist at the end of AUDIT-FIXES.md.
+
 # CLAUDE.md
 
 Snapchat-style ephemeral messaging app for mobile Chrome. React + Vite static
@@ -25,7 +36,12 @@ conversation is open rather than rendering as a fourth pane.
 
 - `src/lib/db.js` — all queries, pair ordering, ephemerality rules
 - `src/lib/status.js` — status icon semantics, friend emojis
-- `src/hooks/` — auth, camera, presence, screenshot heuristic
+- `src/hooks/` — auth, camera, presence, screenshot heuristic. **Providers and
+  hooks are separate modules** (`AuthProvider.jsx` + `useAuth.js`, likewise for
+  call / presence / alias clock), so a file exports either components or hooks,
+  never both — mixing them breaks fast refresh and the lint rule.
+- `src/lib/privateRealtime.js` — authenticated signaling; every topic has exactly
+  one authorised writer
 - `supabase/schema.sql` — tables, RLS, streak trigger, storage bucket
 
 ## Conventions and gotchas
@@ -81,6 +97,30 @@ session, which is why `useAuth` retries the profile fetch.
 
 **Typing and presence are Realtime broadcast, never database rows.** Persisting
 them would be both wasteful and wrong.
+
+**Realtime is private-only — every channel needs `{ config: { private: true } }`.**
+"Allow public access to channels" is **disabled** on the project, so a channel
+opened without that flag never subscribes and the feature silently goes dead.
+This applies to `postgres_changes` subscriptions too, not just broadcast and
+presence — that was the last thing caught before the switch was flipped.
+
+Authorisation is one database function, `public.realtime_allowed(topic, writing)`
+(`supabase/migrations/202609060003_private_updates.sql`), which the policies on
+`realtime.messages` call. The topic name *is* the access-control statement, so
+the grammar is fixed:
+
+| Topic | Writer | Reader |
+|---|---|---|
+| `updates:<me>:<label>` | nobody (read-only) | `<me>` — own `postgres_changes` |
+| `online:<id>` | `<id>` | `<id>` + accepted friends |
+| `signal:<recipient>:<sender>` | `<sender>` | `<recipient>` (accepted friends only) |
+| `typing:<recipient>:<sender>` | `<sender>` | `<recipient>` (accepted friends only) |
+
+Each topic therefore has exactly **one** authorised writer, which is why
+`privateRealtime.js` derives a message's sender from the topic it subscribed to
+and never from the payload. A peer cannot claim to be someone else. Adding a new
+channel means adding a branch to `realtime_allowed` in the same change, or it is
+unreachable.
 
 **The camera needs a secure context.** `getUserMedia` fails on plain http off
 localhost, which is the most common reason a deploy looks broken. `useCamera`
@@ -435,15 +475,17 @@ Emoji avatars: `avatar_emoji` on profiles; `Avatar.jsx` renders it over the
 letter+hue fallback. Edited in the Profile screen (tap your avatar in the chat
 list). Profile also shows a snap-score aggregate and friend count.
 
-Rotating aliases (`lib/alias.js`, `hooks/useAliasClock.jsx`): each user shows a
-name that rotates through 3-5 aliases derived from their name (VIVEK → V, 5, V5,
-KEVIV, KE), advancing every 30 min. Deterministic on a global time bucket +
-per-user phase, so every viewer sees the same alias at the same time with no
-backend. `@username` stays visible in the send/add sheets as the stable handle.
+Rotating aliases (`lib/alias.js`, `hooks/AliasClockProvider.jsx` +
+`useAliasClock.js`): each user shows a name that rotates through 3-5 aliases
+derived from their name (VIVEK → V, 5, V5, KEVIV, KE), advancing every 30 min.
+Deterministic on a global time bucket + per-user phase, so every viewer sees the
+same alias at the same time with no backend. `@username` stays visible in the
+send/add sheets as the stable handle.
 
-Live presence (`hooks/useOnlinePresence.jsx`): a single global Realtime
-presence channel every client joins; the chat list and chat header show a green
-dot for online friends, muted grey otherwise. Transient, never persisted.
+Live presence (`hooks/OnlinePresenceProvider.jsx` + `useOnlinePresence.js`): a
+per-user private presence topic `online:<id>`, readable by accepted friends; the
+chat list and chat header show a green dot for online friends, muted grey
+otherwise. Transient, never persisted.
 
 **`useAlias()` and `useOnline()` must stay `useCallback`-stable.** Both return a
 *function*, and both are read inside `useCallback`/`useEffect` dependency
@@ -493,12 +535,14 @@ countdown. Messages show timestamps.
 - **Memories** (`screens/Memories.jsx`, `memories` table): a private, owner-only
   gallery of your saved snaps. 💾 Save in the camera; open from Profile to
   re-share to Story, save to device, or delete.
-- **Voice / video calls** (`hooks/useCall.jsx`, `components/CallOverlay.jsx`,
-  `lib/rtc.js`): 1:1 WebRTC. Signaling rides Supabase Realtime — a personal
-  inbox channel `rtc:<id>` carries the ring (invite/accept/decline/cancel/busy);
-  once accepted, both join a private `rtc-room:<room>` for the SDP offer/answer
-  + ICE. Media is P2P (STUN) or relayed (free OpenRelay TURN — swap for a
-  dedicated TURN in production). Call buttons live in the Chat header;
+- **Voice / video calls** (`hooks/CallProvider.jsx` + `useCall.js`,
+  `components/CallOverlay.jsx`, `lib/rtc.js`): 1:1 WebRTC. Signaling rides
+  Supabase Realtime on **private per-writer topics** `signal:<recipient>:<sender>`
+  (`lib/privateRealtime.js`) carrying the ring and then the SDP offer/answer +
+  ICE. The sender identity is derived from the topic you subscribed to, never
+  from the payload, so a peer cannot claim to be someone else. Media is P2P
+  (STUN) or relayed (free OpenRelay TURN — swap for a dedicated TURN in
+  production). Call buttons live in the Chat header;
   `CallProvider` wraps `Shell`, `CallOverlay` renders the ring + in-call UI.
   Caveats: needs real two-device testing (WebRTC can't be validated headlessly),
   and ringing only reaches a friend whose app is OPEN (closed-app ring needs Web

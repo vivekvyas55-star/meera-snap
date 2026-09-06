@@ -4,14 +4,7 @@
 -- a PostgREST schema-cache reload. Idempotent.
 -- ============================================================================
 
--- 1. Ensure every pair of real (non-bot) users is an accepted friendship, so
---    chat/snap inserts pass the friends-only RLS check both directions.
-insert into public.friendships (user_a, user_b, requested_by, status)
-select a.id, b.id, a.id, 'accepted'
-  from public.profiles a
-  join public.profiles b on a.id < b.id
- where not a.is_bot and not b.is_bot
-on conflict (user_a, user_b) do update set status = 'accepted';
+-- Schema repair must preserve relationship consent and blocked state.
 
 -- 1b. Ensure the columns the RPCs depend on exist FIRST (snap_reopen.sql may
 --     have truncated on paste, so open_count/reactions/cleared_by can be absent).
