@@ -121,6 +121,11 @@ export function CallProvider({ children }) {
   const setupPeer = useCallback(
     async (wantVideo) => {
       const gen = genRef.current
+      // CameraScreen keeps its stream alive but disabled while you're elsewhere
+      // in the app, so without this the call asks for a camera the app already
+      // holds — an extra prompt on iOS, and NotReadableError / black video on
+      // devices that won't hand out the same camera twice.
+      window.dispatchEvent(new Event('meera:camera-release'))
       let stream
       try {
         stream = await navigator.mediaDevices.getUserMedia({

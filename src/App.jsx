@@ -125,19 +125,21 @@ function Shell() {
   if (!session) return <Auth />
   if (!profile) return <div className="app"><div className="empty">{profileError || "Loading your profile…"}{profileError && <button className="btn-dark" onClick={retryProfile}>Retry</button>}</div></div>
 
-  if (showProfile) {
-    return <Profile onBack={() => setShowProfile(false)} />
-  }
-
-  if (showMap) {
-    return <SnapMap onBack={() => setShowMap(false)} />
-  }
-
-  if (openChat) {
+  // Chat / Profile / Map cover the shell rather than replacing it. They used to
+  // be early returns, which unmounted the pager — and unmounting CameraScreen
+  // releases the camera, so every chat you opened cost another permission
+  // prompt when you came back. The shell stays mounted and display:none'd; the
+  // camera is merely paused (tracks disabled, grant kept), which is the same
+  // thing swiping between panes already does.
+  const overlay = showProfile ? (
+    <Profile onBack={() => setShowProfile(false)} />
+  ) : showMap ? (
+    <SnapMap onBack={() => setShowMap(false)} />
+  ) : openChat ? (
     // key per friend → a fresh Chat instance when switching, so no message/ref
     // state from one conversation ever bleeds into another.
-    return <Chat key={openChat.id} friend={openChat} onBack={() => setOpenChat(null)} />
-  }
+    <Chat key={openChat.id} friend={openChat} onBack={() => setOpenChat(null)} />
+  ) : null
 
   const offset = -pane * (100 / PANES.length)
   const style = {
@@ -145,8 +147,11 @@ function Shell() {
   }
 
   return (
+    <>
     <div
       className="app"
+      style={overlay ? { display: 'none' } : undefined}
+      inert={!!overlay}
       onTouchStart={onTouchStart}
       onTouchMove={onTouchMove}
       onTouchEnd={onTouchEnd}
@@ -161,10 +166,10 @@ function Shell() {
           />
         </div>
         <div className="pane" inert={pane !== 1} aria-hidden={pane !== 1}>
-          <CameraScreen active={pane === 1} onSent={() => setPane(0)} onEditing={setEditing} />
+          <CameraScreen active={pane === 1 && !overlay} onSent={() => setPane(0)} onEditing={setEditing} />
         </div>
         <div className="pane" inert={pane !== 2} aria-hidden={pane !== 2}>
-          <Stories active={pane === 2} onCapture={() => setPane(1)} />
+          <Stories active={pane === 2 && !overlay} onCapture={() => setPane(1)} />
         </div>
       </div>
 
@@ -186,6 +191,8 @@ function Shell() {
 
       <InstallPrompt />
     </div>
+    {overlay}
+    </>
   )
 }
 

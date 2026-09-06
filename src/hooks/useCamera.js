@@ -22,6 +22,12 @@ export function useCamera() {
   // Bumped on every stop() so a getUserMedia that resolves after we've left the
   // pane can detect it's stale and shut its own tracks down (no zombie stream).
   const genRef = useRef(0)
+  // A start() already waiting on getUserMedia. Without this, two starts that
+  // overlap (discard() calling start() while its own state change re-runs the
+  // effect, or StrictMode's double mount) each issue their own getUserMedia —
+  // two permission prompts back to back, and the first stream thrown away by
+  // the second one's stop().
+  const pendingRef = useRef(null)
 
   const stop = useCallback(() => {
     genRef.current += 1
@@ -67,8 +73,8 @@ export function useCamera() {
     }
   }, [])
 
-  const start = useCallback(
-    async (mode = facingRef.current) => {
+  const acquire = useCallback(
+    async (mode) => {
       setError(null)
       if (!isSecureContext) {
         setError('Camera needs HTTPS. Open this page over https:// (or localhost).')
@@ -130,6 +136,20 @@ export function useCamera() {
       )
     },
     [stop, attach]
+  )
+
+  // Public entry point: collapses concurrent starts for the same camera into a
+  // single getUserMedia, so overlapping callers can never produce two prompts.
+  const start = useCallback(
+    (mode = facingRef.current) => {
+      if (pendingRef.current?.mode === mode) return pendingRef.current.promise
+      const promise = acquire(mode).finally(() => {
+        if (pendingRef.current?.promise === promise) pendingRef.current = null
+      })
+      pendingRef.current = { mode, promise }
+      return promise
+    },
+    [acquire]
   )
 
   const flip = useCallback(() => {

@@ -206,13 +206,13 @@ export async function sendSnap(me, otherId, { blob, viewSeconds, caption, client
   return data
 }
 
-export async function sendSnapMedia(me, otherId, { file, viewSeconds, caption, clientId = crypto.randomUUID() }) {
+export async function sendSnapMedia(me, otherId, { file, viewSeconds, caption, replyTo = null, clientId = crypto.randomUUID() }) {
   const isVideo = file.type?.startsWith('video/')
   if (!isVideo && !file.type?.startsWith('image/')) throw new Error('Choose an image or video')
   const body = isVideo ? file : await downscaleImage(file, 1600, 0.8)
   const path = `${me}/snaps/${clientId}.${mediaExtension(body)}`
   await uploadMedia(path, body)
-  const data = await insertMessage({ ...pairFilter(me, otherId), sender_id: me, client_id: clientId, kind: 'snap', body: caption || null, media_path: path, media_type: isVideo ? 'video' : 'image', has_audio: Boolean(isVideo), view_seconds: viewSeconds === undefined ? (isVideo ? null : 45) : viewSeconds, delivered_at: new Date().toISOString() })
+  const data = await insertMessage({ ...pairFilter(me, otherId), sender_id: me, client_id: clientId, kind: 'snap', body: caption || null, media_path: path, media_type: isVideo ? 'video' : 'image', has_audio: Boolean(isVideo), reply_to: replyTo, view_seconds: viewSeconds === undefined ? (isVideo ? null : 45) : viewSeconds, delivered_at: new Date().toISOString() })
   notify(otherId, 'snap')
   return data
 }
@@ -233,16 +233,16 @@ export async function markChatsOpened(otherId, ids, visit) {
 }
 
 // Send a recorded voice note (audio blob) as a chat-ephemeral message.
-export async function sendVoiceNote(me, otherId, blob, clientId = crypto.randomUUID()) {
+export async function sendVoiceNote(me, otherId, blob, replyTo = null, clientId = crypto.randomUUID()) {
   const path = `${me}/voice/${clientId}.${mediaExtension(blob)}`
   await uploadMedia(path, blob)
-  const data = await insertMessage({ ...pairFilter(me, otherId), sender_id: me, client_id: clientId, kind: 'voice', media_path: path, media_type: 'audio', delivered_at: new Date().toISOString() })
+  const data = await insertMessage({ ...pairFilter(me, otherId), sender_id: me, client_id: clientId, kind: 'voice', media_path: path, media_type: 'audio', reply_to: replyTo, delivered_at: new Date().toISOString() })
   notify(otherId, 'voice')
   return data
 }
 
 // Send a single emoji as a large sticker.
-export async function sendSticker(me, otherId, emoji) {
+export async function sendSticker(me, otherId, emoji, replyTo = null) {
   const { data, error } = await supabase
     .from('messages')
     .insert({
@@ -250,6 +250,7 @@ export async function sendSticker(me, otherId, emoji) {
       sender_id: me,
       kind: 'sticker',
       body: emoji,
+      reply_to: replyTo,
       delivered_at: new Date().toISOString(),
     })
     .select()

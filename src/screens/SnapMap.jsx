@@ -4,6 +4,7 @@ import 'leaflet/dist/leaflet.css'
 import { getMyLocation, getProfile, getVisibleLocations, setMyLocation, stopSharingLocation } from '../lib/db'
 import { useAuth } from '../hooks/useAuth'
 import { useAlias } from '../hooks/useAliasClock'
+import { isSecureContext } from '../hooks/useCamera'
 import { useToast } from '../hooks/useToast'
 import { BackIcon } from '../components/Icons'
 
@@ -34,6 +35,10 @@ function avatarHtml(p) {
   return el
 }
 
+// A friend map is measured in kilometres — a fix from the last few minutes is
+// as good as a fresh one, and costs no new GPS acquisition (or prompt).
+const FIX_TTL_MS = 5 * 60 * 1000
+
 export default function SnapMap({ onBack }) {
   const { profile } = useAuth()
   const me = profile.id
@@ -45,7 +50,11 @@ export default function SnapMap({ onBack }) {
   const markersRef = useRef({})
   const profileCache = useRef({}) // user_id -> profile, so a reload isn't N+1 again
   const didFitRef = useRef(false) // the map is framed once, never re-framed under the user
-  const [sharing, setSharingState] = useState(false)
+  // null = not known yet. Defaulting to false rendered the Ghost panel and its
+  // Share button while getMyLocation was still in flight, so a tap during that
+  // window re-prompted someone who was already sharing.
+  const [sharing, setSharingState] = useState(null)
+  const lastFix = useRef(null) // { lat, lng, at } — lets a Ghost→Share toggle reuse a recent fix
   const [busy, setBusy] = useState(false)
   const [count, setCount] = useState(0)
   const [nearest, setNearest] = useState(null) // { name, km } — closest sharing friend
@@ -108,7 +117,7 @@ export default function SnapMap({ onBack }) {
   }, [me, profile, alias])
 
   useEffect(() => {
-    getMyLocation(me).then((loc) => setSharingState(!!loc?.sharing)).catch(() => {})
+    getMyLocation(me).then((loc) => setSharingState(!!loc?.sharing)).catch(() => setSharingState(false))
     load().catch(() => {})
   }, [me, load])
 
@@ -126,25 +135,58 @@ export default function SnapMap({ onBack }) {
     }
   }
 
-  const startSharing = () => {
+  const publish = async (lat, lng) => {
+    try {
+      await setMyLocation(me, lat, lng, true)
+      lastFix.current = { lat, lng, at: Date.now() }
+      setSharingState(true)
+      toast('Sharing your location with friends')
+      load().catch(() => {})
+    } catch (err) {
+      toast(err.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const startSharing = async () => {
+    // Geolocation exists on insecure origins too — the object is there, the
+    // call just fails. Say why rather than letting the browser prompt-loop.
+    if (!isSecureContext) {
+      toast('Location needs HTTPS. Open this page over https://')
+      return
+    }
     if (!navigator.geolocation) {
       toast('Location isn’t available on this device')
       return
     }
     setBusy(true)
+
+    // Ghost Mode deletes the server row by design, so a Ghost→Share toggle used
+    // to mean a whole new GPS acquisition — and another prompt — every time.
+    // Reuse a fix from the last few minutes instead.
+    const fix = lastFix.current
+    if (fix && Date.now() - fix.at < FIX_TTL_MS) {
+      await publish(fix.lat, fix.lng)
+      return
+    }
+
+    // If the grant was already refused, calling again just re-shows the browser's
+    // blocked-permission bubble. Tell the user where to fix it instead.
+    try {
+      const status = await navigator.permissions?.query({ name: 'geolocation' })
+      if (status?.state === 'denied') {
+        toast('Location is blocked — allow it in your browser’s site settings')
+        setBusy(false)
+        return
+      }
+    } catch {
+      // Permissions API is optional (Safari lacks the geolocation descriptor);
+      // fall through and just ask.
+    }
+
     navigator.geolocation.getCurrentPosition(
-      async (pos) => {
-        try {
-          await setMyLocation(me, pos.coords.latitude, pos.coords.longitude, true)
-          setSharingState(true)
-          toast('Sharing your location with friends')
-          load().catch(() => {})
-        } catch (err) {
-          toast(err.message)
-        } finally {
-          setBusy(false)
-        }
-      },
+      (pos) => publish(pos.coords.latitude, pos.coords.longitude),
       (err) => {
         toast(
           err.code === err.PERMISSION_DENIED
@@ -155,7 +197,10 @@ export default function SnapMap({ onBack }) {
         )
         setBusy(false)
       },
-      { enableHighAccuracy: true, timeout: 12000 }
+      // maximumAge defaults to 0, which forces a brand-new high-accuracy GPS
+      // acquisition on every tap — the most prompt-visible thing you can ask
+      // for. A recent cached fix is plenty for a friend map measured in km.
+      { enableHighAccuracy: false, timeout: 12000, maximumAge: FIX_TTL_MS }
     )
   }
 
@@ -173,7 +218,9 @@ export default function SnapMap({ onBack }) {
 
         <div className="map-panel">
           <div className="map-panel-txt">
-            {sharing ? (
+            {sharing === null ? (
+              <>Checking your map settings…</>
+            ) : sharing ? (
               <>
                 {nearest ? (
                   <>💛 You’re {prettyDistance(nearest.km)} from {nearest.name}</>
@@ -185,7 +232,9 @@ export default function SnapMap({ onBack }) {
               <>👻 Ghost Mode — nobody can see you. Share to appear on your friends’ maps.</>
             )}
           </div>
-          {sharing ? (
+          {sharing === null ? (
+            <button className="btn-dark" disabled>Checking…</button>
+          ) : sharing ? (
             <button className="btn-dark" onClick={goGhost}>Go Ghost</button>
           ) : (
             <button className="btn-dark" onClick={startSharing} disabled={busy}>

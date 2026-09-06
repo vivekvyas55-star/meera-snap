@@ -300,7 +300,9 @@ input, textarea { font: inherit; }
 .msg.pending .msg-body { opacity: 0.55; }
 .msg-pending-tag {
   font-size: 11.5px; color: var(--muted);
-  text-align: right; margin: 3px 4px 0 0;
+  margin: 3px 4px 0 0;
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  justify-content: flex-end;
 }
 /* Swipe-to-reply gesture hint + quoted-reply preview */
 .msg-swipe-hint {
@@ -1076,4 +1078,29 @@ button:disabled { cursor: not-allowed; }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
+}
+
+/* A failed conversation load used to render as unstyled black text with a bare
+   inline Retry — and it printed the raw Postgres error at the user. */
+.thread-error {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  margin: 12px 4px;
+  padding: 18px;
+  border-radius: var(--r-card);
+  background: var(--coral);
+  color: var(--ink);
+  font-size: 15px;
+}
+
+/* A queued message is a state, not an error: a pill chip plus quiet actions,
+   rather than two unstyled text buttons stacked under the bubble. */
+.link-btn {
+  min-height: 44px;
+  padding: 0 10px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--indigo);
 }

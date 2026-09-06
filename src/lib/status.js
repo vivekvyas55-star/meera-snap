@@ -4,15 +4,15 @@
 // RECEIVED. Fill encodes whether it has been opened: solid = still unopened,
 // hollow = opened.
 //
-// Colour encodes content type:
-//   red    -> snap without audio
-//   purple -> snap with audio
-//   blue   -> chat message
+// Colour encodes content type. Snapchat's red/purple/blue is remapped onto the
+// ABC palette — the semantics are Snapchat's, the tint is ours. These read the
+// CSS custom properties declared in index.css so the palette has exactly one
+// definition; they land on SVG fill/stroke, which resolves var() fine.
 export const COLORS = {
-  snap: '#F23C57',
-  snapAudio: '#B14FE8',
-  chat: '#00C2FF',
-  pending: '#8E8E93',
+  snap: 'var(--snap)',
+  snapAudio: 'var(--snap-audio)',
+  chat: 'var(--chat)',
+  pending: 'var(--pending)',
 }
 
 export function colorFor(message) {
@@ -25,8 +25,12 @@ export function colorFor(message) {
 // of a message in the thread is a separate thing: a per-participant colour
 // (Snapchat+ lets you pick your own). Conflating the two is a common mistake —
 // the bar identifies who is speaking, not what kind of message it is.
+// Picked from the palette rather than generated, so the thread never grows a
+// colour the design language doesn't contain. avatar_hue still chooses it, so a
+// given person keeps the same bar everywhere.
+const BARS = ['var(--indigo)', 'var(--coral)', 'var(--lavender)', 'var(--lime)']
 export function barColorFor(profile) {
-  return `hsl(${profile?.avatar_hue ?? 45} 85% 52%)`
+  return BARS[Math.abs(Math.round(profile?.avatar_hue ?? 45)) % BARS.length]
 }
 
 // Returns everything the chat-list row and the message row need to render.

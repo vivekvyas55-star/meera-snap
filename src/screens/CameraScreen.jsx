@@ -41,7 +41,7 @@ export default function CameraScreen({ active, onSent, onEditing }) {
   const { profile } = useAuth()
   const me = profile.id
   const toast = useToast()
-  const { videoRef, start, pause, flip, capture, facing, error, ready } = useCamera()
+  const { videoRef, start, stop, pause, flip, capture, facing, error, ready } = useCamera()
 
   const [shot, setShot] = useState(null) // { blob, url }
   const [caption, setCaption] = useState('')
@@ -94,6 +94,30 @@ export default function CameraScreen({ active, onSent, onEditing }) {
     if (active && !shot) start()
     else if (!active) pause()
   }, [active, shot, start, pause])
+
+  // A call needs the camera to itself — hand it over rather than holding a
+  // paused stream the call can't get past.
+  useEffect(() => {
+    window.addEventListener('meera:camera-release', stop)
+    return () => window.removeEventListener('meera:camera-release', stop)
+  }, [stop])
+
+  // iOS ends or mutes camera tracks when the page goes to the background, and
+  // nothing in `active`/`shot` changes when you come back — so the preview
+  // stayed black until some other action happened to call start() again, and
+  // that call then had to re-prompt. Re-acquire deliberately on return instead.
+  useEffect(() => {
+    if (!active || shot) return
+    const revive = () => {
+      if (document.visibilityState === 'visible') start()
+    }
+    document.addEventListener('visibilitychange', revive)
+    window.addEventListener('pageshow', revive)
+    return () => {
+      document.removeEventListener('visibilitychange', revive)
+      window.removeEventListener('pageshow', revive)
+    }
+  }, [active, shot, start])
 
   useEffect(() => {
     listFriendsWithProfiles(me)

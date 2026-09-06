@@ -152,7 +152,8 @@ export default function Chat({ friend, onBack }) {
     const blob = await stopRec(cancel)
     if (cancel || !blob) return
     try {
-      await sendVoiceNote(me, friend.id, blob)
+      await sendVoiceNote(me, friend.id, blob, replyingTo?.id ?? null)
+      setReplyingTo(null)
       load()
     } catch (err) {
       toast(err.message)
@@ -161,7 +162,8 @@ export default function Chat({ friend, onBack }) {
   const pickSticker = async (emoji) => {
     setStickers(false)
     try {
-      await sendSticker(me, friend.id, emoji)
+      await sendSticker(me, friend.id, emoji, replyingTo?.id ?? null)
+      setReplyingTo(null)
       load()
     } catch (err) {
       toast(err.message)
@@ -346,7 +348,8 @@ export default function Chat({ friend, onBack }) {
     }
     setAttaching(true)
     try {
-      await sendSnapMedia(me, friend.id, { file })
+      await sendSnapMedia(me, friend.id, { file, replyTo: replyingTo?.id ?? null })
+      setReplyingTo(null)
       toast(file.type.startsWith('video') ? 'Video snap sent' : 'Photo snap sent')
       load()
     } catch (err) {
@@ -417,7 +420,12 @@ export default function Chat({ friend, onBack }) {
       <DailyQuestion me={me} friend={friend} friendName={friendName} />
 
       <div className="thread" ref={threadRef} onScroll={onThreadScroll}>
-        {loadError && <div className="error">{loadError}<button onClick={load}>Retry</button></div>}
+        {loadError && (
+          <div className="thread-error" role="alert">
+            <span>Couldn’t load this conversation.</span>
+            <button className="btn-dark" onClick={load}>Retry</button>
+          </div>
+        )}
         {visible.length === 0 && !loadError && (
           <div className="empty">
             Nothing here yet.
@@ -453,16 +461,18 @@ export default function Chat({ friend, onBack }) {
             <div className="msg-body" style={{ borderLeftColor: barColorFor(profile) }}>
               {p.text}
             </div>
-            <div className="msg-pending-tag">{p.error || '⏳ Pending · sends when you’re back online'}</div>
-            <button onClick={() => { setDraft(p.text); removeQueued(p.tempId) }}>Edit pending message</button>
-            {p.error && <button onClick={() => retryQueued(p.tempId)}>Retry</button>}
+            <div className="msg-pending-tag">
+              <span className="chip">{p.error || 'Pending'}</span>
+              <button className="link-btn" onClick={() => { setDraft(p.text); removeQueued(p.tempId) }}>Edit</button>
+              {p.error && <button className="link-btn" onClick={() => retryQueued(p.tempId)}>Retry</button>}
+            </div>
           </div>
         ))}
 
         {theirTyping && <div className="typing">{friendName} is typing…</div>}
       </div>
 
-      {replyingTo && !recording && (
+      {replyingTo && (
         <div className="reply-bar">
           <div className="reply-bar-text">
             <span className="reply-bar-who">
@@ -882,9 +892,13 @@ function MessageRow({
   const onTouchMove = (e) => {
     const dx = e.touches[0].clientX - startX.current
     const dy = e.touches[0].clientY - startY.current
+    // ANY real movement cancels the long-press, not just a horizontal one.
+    // Cancelling only on the swipe gate meant a slow vertical scroll never
+    // cleared the timer, so holding a scroll for 420ms popped the action menu
+    // open mid-drag.
+    if (Math.abs(dx) > 8 || Math.abs(dy) > 8) clearTimeout(pressTimer.current)
     if (!swiping.current && Math.abs(dx) > 8 && Math.abs(dx) > Math.abs(dy) * 1.3) {
       swiping.current = true
-      clearTimeout(pressTimer.current) // a swipe, not a long-press
     }
     if (swiping.current) {
       const off = Math.max(Math.min(dx, 0), -80) // leftward only, capped at 80px
@@ -948,6 +962,7 @@ function MessageRow({
       onTouchStart={onTouchStart}
       onTouchMove={onTouchMove}
       onTouchEnd={onTouchEnd}
+      onTouchCancel={onTouchEnd}
       onMouseDown={startPress}
       onMouseUp={endPress}
       onMouseLeave={endPress}
