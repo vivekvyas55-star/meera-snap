@@ -195,6 +195,7 @@ function Shell() {
       <div className={`pager${drag !== null ? ' dragging' : ''}`} style={style}>
         <div className="pane" inert={pane !== 0} aria-hidden={pane !== 0}>
           <ChatList
+            active={pane === 0 && !overlay}
             onOpenChat={goToChat}
             onOpenProfile={() => setShowProfile(true)}
             onOpenMap={() => setShowMap(true)}

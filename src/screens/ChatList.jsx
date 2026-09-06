@@ -25,7 +25,7 @@ import Sheet from '../components/Sheet'
 const Snapcode = lazy(() => import('../components/Snapcode'))
 import { CheckIcon, MapIcon, PlusIcon } from '../components/Icons'
 
-export default function ChatList({ onOpenChat, onOpenProfile, onOpenMap }) {
+export default function ChatList({ active = true, onOpenChat, onOpenProfile, onOpenMap }) {
   const { profile } = useAuth()
   const me = profile.id
   const toast = useToast()
@@ -76,6 +76,13 @@ export default function ChatList({ onOpenChat, onOpenProfile, onOpenMap }) {
   useEffect(() => {
     load()
   }, [load])
+
+  // Coming back from a conversation must refresh the list. It no longer
+  // remounts on return (Chat/Profile/Map cover the shell rather than replacing
+  // it), so without this a chat you just read kept its unread badge.
+  useEffect(() => {
+    if (active) load()
+  }, [active, load])
 
   // Any new or updated message anywhere touches this list, so subscribe once
   // here rather than per-row.

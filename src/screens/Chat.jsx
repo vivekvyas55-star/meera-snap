@@ -36,7 +36,7 @@ import SnapViewer from '../components/SnapViewer'
 import Portal from '../components/Portal'
 import Sheet from '../components/Sheet'
 import KeptTogether from '../components/KeptTogether'
-import { ArrowIcon, BackIcon, CheckIcon, CloseIcon, ImageIcon, LockIcon, MicIcon, PhoneIcon, PlayIcon, PlusIcon, SmileyIcon, VideoIcon } from '../components/Icons'
+import { ArrowIcon, BackIcon, CheckIcon, CloseIcon, ForwardIcon, ImageIcon, LockIcon, MicIcon, PhoneIcon, PlayIcon, PlusIcon, ReplyIcon, SaveIcon, SmileyIcon, VideoIcon } from '../components/Icons'
 import { useAudioRecorder } from '../hooks/useAudioRecorder'
 import { useCall } from '../hooks/useCall'
 import DailyQuestion from '../components/DailyQuestion'
@@ -328,12 +328,17 @@ export default function Chat({ friend, onBack }) {
     const observer = new IntersectionObserver(entries => {
       if (document.visibilityState !== 'visible') return
       for (const entry of entries) {
-        if (!entry.isIntersecting || entry.intersectionRatio < 0.7) continue
+        if (!entry.isIntersecting) continue
+        // A message taller than the scroller can never reach a 0.7 ratio, so a
+        // long one was never marked read and its chat kept an unread badge
+        // forever. Treat "fills most of the viewport" as seen too.
+        const tall = entry.boundingClientRect.height > entry.rootBounds?.height * 0.7
+        if (entry.intersectionRatio < 0.7 && !tall) continue
         const id = entry.target.dataset.messageId
         const m = messages.find(row => row.id === id)
         if (m && ['chat', 'sticker'].includes(m.kind)) recordSeen(id)
       }
-    }, { root, threshold: 0.7 })
+    }, { root, threshold: [0.35, 0.7] })
     root.querySelectorAll('[data-message-id]').forEach(el => observer.observe(el))
     return () => observer.disconnect()
   }, [messages, recordSeen])
@@ -543,7 +548,7 @@ export default function Chat({ friend, onBack }) {
             onClick={() => setReplyingTo(null)}
             aria-label="Cancel reply"
           >
-            ✕
+            <CloseIcon width={16} height={16} />
           </button>
         </div>
       )}
@@ -793,7 +798,7 @@ function FriendSheet({ friend, friendName, me, onClose, onRemoved }) {
             )}
           </div>
           <button className="menu-action danger" onClick={remove} disabled={busy}>
-            {busy ? 'Removing…' : '✕ Remove friend'}
+            {busy ? 'Removing…' : <><CloseIcon width={17} height={17} /> Remove friend</>}
           </button>
       </Sheet>
     </Portal>
@@ -887,20 +892,20 @@ function MessageMenu({ message, me, onClose, onReact, onSave, onUnsend, onReply,
           </div>
           {message.kind !== 'call' && (
             <button className="menu-action" onClick={onReply}>
-              ↩︎ Reply
+              <ReplyIcon width={18} height={18} /> Reply
             </button>
           )}
           {message.kind === 'chat' && (
             <button className="menu-action" onClick={onForward}>
-              ➡️ Forward
+              <ForwardIcon width={18} height={18} /> Forward
             </button>
           )}
           <button className="menu-action" onClick={onSave}>
-            {saved ? '💾 Unsave' : '💾 Save in chat'}
+            <SaveIcon width={18} height={18} /> {saved ? 'Unsave' : 'Save in chat'}
           </button>
           {mine && (
             <button className="menu-action danger" onClick={onUnsend}>
-              ↩︎ Unsend
+              <CloseIcon width={18} height={18} /> Unsend
             </button>
           )}
       </Sheet>

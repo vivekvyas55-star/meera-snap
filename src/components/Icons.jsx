@@ -175,3 +175,38 @@ export const BackspaceIcon = (p) => (
     <path d="M17 9.5l-5 5M12 9.5l5 5" />
   </svg>
 )
+
+export const ReplyIcon = (p) => (
+  <svg {...base} {...p}>
+    <path d="M9 7L4 12l5 5" />
+    <path d="M4 12h9a6 6 0 0 1 6 6v1" />
+  </svg>
+)
+
+export const ForwardIcon = (p) => (
+  <svg {...base} {...p}>
+    <path d="M15 7l5 5-5 5" />
+    <path d="M20 12h-9a6 6 0 0 0-6 6v1" />
+  </svg>
+)
+
+export const SaveIcon = (p) => (
+  <svg {...base} {...p}>
+    <path d="M12 4v10" />
+    <path d="M8 10.5l4 4 4-4" />
+    <path d="M5 18.5h14" />
+  </svg>
+)
+
+export const PauseIcon = (p) => (
+  <svg {...base} {...p}>
+    <path d="M9.5 5.5v13M14.5 5.5v13" />
+  </svg>
+)
+
+export const ReplayIcon = (p) => (
+  <svg {...base} {...p}>
+    <path d="M20 12a8 8 0 1 1-2.5-5.8" />
+    <path d="M20 4v4h-4" />
+  </svg>
+)
