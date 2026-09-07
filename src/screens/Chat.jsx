@@ -126,7 +126,19 @@ export default function Chat({ friend, onBack }) {
   const requestRef = useRef(0)
   const eventRef = useRef(new Map())
   const seenRef = useRef(new Set())
-  const visitRef = useRef(crypto.randomUUID())
+  // Messages already on screen when the thread opened must not animate in —
+  // that would run an entrance for the whole first page at once. Only what
+  // arrives (or is sent) while you are looking is "fresh". Seeded by the first
+  // completed load(), not during render: an empty conversation has no first
+  // page, so a render-time snapshot silently absorbed the very first message
+  // that ever arrived, and React is free to throw a render away after it has
+  // already run.
+  const knownRef = useRef(null)
+  // useState's lazy initialiser, not useRef(crypto.randomUUID()) — the latter
+  // mints a UUID on EVERY render, and this component re-renders on every
+  // keystroke in the composer, every realtime row and every 30s tick.
+  const [visitId] = useState(() => crypto.randomUUID())
+  const visitRef = useRef(visitId)
   const seenWrites = useRef([])
   const [loadError, setLoadError] = useState(null)
   const fileRef = useRef(null)
@@ -211,6 +223,13 @@ export default function Chat({ friend, onBack }) {
     try {
       const { messages: rows, oldestCursor, hasMore: more } = await listMessages(me, friend.id)
       if (request !== requestRef.current) return
+      // The first page is history you are being shown, not traffic arriving at
+      // you: it must neither animate in nor be counted by the "N new messages"
+      // pill. Both sets are seeded here, once.
+      if (knownRef.current === null) {
+        knownRef.current = new Set(rows.map((r) => r.id))
+        seenAtBottom.current = new Set(rows.map((r) => r.id))
+      }
       const fresh = rows.filter(row => !eventRef.current.has(row.id) || eventRef.current.get(row.id) < after)
       setMessages(cur => mergeMessages(cur, fresh))
       if (!oldestRef.current) { oldestRef.current = oldestCursor; setHasMore(more) }
@@ -232,8 +251,13 @@ export default function Chat({ friend, onBack }) {
       if (oldestCursor) oldestRef.current = oldestCursor
       setHasMore(more)
       if (older.length) {
-        // Scrolled-back history is not an arrival, whatever order it mounts in.
-        for (const m of older) knownRef.current?.add(m.id)
+        // Scrolled-back history is not an arrival, whatever order it mounts in:
+        // it must not animate, and it must not be counted as unread. Paging in
+        // a 200-row page reported "200 new messages ↓" for exactly this reason.
+        for (const m of older) {
+          knownRef.current?.add(m.id)
+          seenAtBottom.current.add(m.id)
+        }
         setMessages((cur) => mergeMessages(older, cur))
         requestAnimationFrame(() => {
           if (el) el.scrollTop = prevTop + (el.scrollHeight - prevH)
@@ -306,6 +330,11 @@ export default function Chat({ friend, onBack }) {
     if (!didInitialScroll.current && messages.length > 0) {
       el.scrollTop = el.scrollHeight // instant jump to latest on open
       didInitialScroll.current = true
+      // Landing at the bottom IS being caught up. Returning without recording
+      // that left the set empty, so the first message to arrive after you
+      // scrolled up counted the whole loaded window with it — a chat you had
+      // just read announced "38 new messages ↓".
+      seenAtBottom.current = new Set(messages.map((m) => m.id))
       return
     }
     const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 120
@@ -407,14 +436,6 @@ export default function Chat({ friend, onBack }) {
     } finally {
       setAttaching(false)
     }
-  }
-
-  // Messages already on screen when the thread opened must not animate in —
-  // that would run an entrance for the whole first page at once. Only what
-  // arrives (or is sent) while you are looking is "fresh".
-  const knownRef = useRef(null)
-  if (knownRef.current === null && messages.length > 0) {
-    knownRef.current = new Set(messages.map((m) => m.id))
   }
 
   const visible = messages.filter((m) => isVisibleTo(m, me))

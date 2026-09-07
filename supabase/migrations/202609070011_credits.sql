@@ -323,3 +323,20 @@ select p.id,
 
 notify pgrst, 'reload schema';
 commit;
+
+-- ---------------------------------------------------------------------------
+-- Put existing users on the meter.
+--
+-- They were all `grandfathered`, which post_monthly_credits() skips — so the
+-- balance would have displayed and never moved. Moving them to `none` is what
+-- makes the meter real: `none` has no automatic entitlement, so access comes
+-- from the balance, and the monthly job charges them.
+--
+-- NOT `active`: that status means "has a paid subscription" and is allowed
+-- regardless of balance, which would make credits decorative.
+--
+-- Safe while billing_settings.enforced is false — nobody can be locked out
+-- either way, and everyone starts with years of runway.
+-- ---------------------------------------------------------------------------
+update public.subscriptions set status = 'none', updated_at = now()
+ where status = 'grandfathered';
