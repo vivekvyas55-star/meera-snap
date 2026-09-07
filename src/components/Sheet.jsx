@@ -10,6 +10,15 @@ import { useEffect, useRef } from 'react'
 const FOCUSABLE =
   'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
 
+// Open sheets, innermost last. Escape belongs to the topmost one only.
+// stopImmediatePropagation does NOT achieve that: listeners on the same node in
+// the same phase run in the order they were ADDED, so the OUTER sheet — mounted
+// first, listening first — was the one that stopped the others and closed
+// itself, taking the inner sheet (its own child) down with it. Exactly the bug
+// it was written to fix. An explicit stack is the only ordering that is
+// actually about nesting.
+const stack = []
+
 export default function Sheet({ onClose, label, className = 'sheet-body', children }) {
   const bodyRef = useRef(null)
   const restoreRef = useRef(null)
@@ -20,6 +29,9 @@ export default function Sheet({ onClose, label, className = 'sheet-body', childr
   const closeRef = useRef(onClose)
   closeRef.current = onClose
 
+  // Identity for this sheet's slot in the stack.
+  const tokenRef = useRef({})
+
   useEffect(() => {
     // Remember where focus came from so closing puts it back on the trigger
     // rather than dumping it at the top of the document.
@@ -27,10 +39,14 @@ export default function Sheet({ onClose, label, className = 'sheet-body', childr
     const first = bodyRef.current?.querySelector(FOCUSABLE)
     ;(first ?? bodyRef.current)?.focus?.()
 
+    const token = tokenRef.current
+    stack.push(token)
+
     const onKeyDown = (e) => {
+      // Only the topmost sheet responds — to Escape and to Tab. Trapping focus
+      // from underneath would fight the sheet actually on screen.
+      if (stack[stack.length - 1] !== token) return
       if (e.key === 'Escape') {
-        // stopPropagation does NOT stop other listeners on the same node, so a
-        // stacked sheet (Kept Together inside the friend sheet) closed both.
         e.stopImmediatePropagation()
         closeRef.current?.()
         return
@@ -48,6 +64,8 @@ export default function Sheet({ onClose, label, className = 'sheet-body', childr
     document.addEventListener('keydown', onKeyDown, true)
     return () => {
       document.removeEventListener('keydown', onKeyDown, true)
+      const at = stack.indexOf(token)
+      if (at !== -1) stack.splice(at, 1)
       restoreRef.current?.focus?.()
     }
   }, [])

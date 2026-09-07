@@ -45,7 +45,10 @@ function Shell() {
   // Horizontal swipe between the three panes. Vertical movement is ignored so
   // the gesture never fights the chat list's scrolling.
   const onTouchStart = (e) => {
-    if (openChat || showProfile || editing) return
+    // showMap belongs here with the rest: the pager is display:none'd and inert
+    // under an overlay so this rarely matters, but a guard that lists three of
+    // the four overlays is a trap for whoever adds the fifth.
+    if (openChat || showProfile || showMap || editing) return
     const t = e.touches[0]
     touch.current = { x: t.clientX, y: t.clientY, axis: null }
   }
@@ -105,6 +108,13 @@ function Shell() {
   // popstate instead — Back now means "out of this screen", as it should.
   const overlayOpen = Boolean(openChat || showProfile || showMap)
   const overlayDepth = useRef(0)
+  // Set while a history.back() WE asked for is still in flight. history.back()
+  // is asynchronous, so the popstate it produces can land after the user has
+  // already opened the next screen — and that popstate would close the screen
+  // they just opened. Tapping Back and then a chat row in quick succession made
+  // the chat flash open and shut. The overlay is already closed by the time the
+  // acknowledgement arrives, so consuming it costs nothing.
+  const selfPop = useRef(false)
   useEffect(() => {
     if (overlayOpen) {
       if (overlayDepth.current === 0) {
@@ -117,6 +127,7 @@ function Shell() {
     // the history stack doesn't grow one dead step per screen visited.
     if (overlayDepth.current === 1 && window.history.state?.meeraOverlay) {
       overlayDepth.current = 0
+      selfPop.current = true
       window.history.back()
     } else {
       overlayDepth.current = 0
@@ -130,12 +141,14 @@ function Shell() {
   useEffect(() => () => {
     if (overlayDepth.current === 1 && window.history.state?.meeraOverlay) {
       overlayDepth.current = 0
+      selfPop.current = true
       window.history.back()
     }
   }, [])
 
   useEffect(() => {
     const onPop = () => {
+      if (selfPop.current) { selfPop.current = false; return }
       overlayDepth.current = 0
       setOpenChat(null)
       setShowProfile(false)

@@ -77,3 +77,16 @@ export function currentAlias(profile, bucket = aliasBucket()) {
   const idx = (bucket + aliasPhase(profile?.id)) % list.length
   return list[idx]
 }
+
+// Whether a profile answers to a typed search. The chat list used to match the
+// CURRENT ALIAS only, so searching a friend by the name or handle you actually
+// know them by ("sneha") found nothing whenever their alias happened to be "S5"
+// — and which one that is changes every thirty minutes, so the same search
+// worked or failed depending on the time of day. Match the stable identifiers
+// (username, display name) as well as whatever alias is showing.
+export function matchesSearch(profile, query, alias) {
+  const q = String(query ?? '').trim().toLowerCase()
+  if (!q) return true
+  const haystacks = [alias, profile?.username, profile?.display_name]
+  return haystacks.some((h) => h && String(h).toLowerCase().includes(q))
+}

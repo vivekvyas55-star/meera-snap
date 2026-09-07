@@ -128,6 +128,20 @@ export function formatRunway(months) {
   return rest ? `${y} ${rest} month${rest === 1 ? '' : 's'}` : y
 }
 
+// What to put next to a balance. formatRunway only knows about months, and a
+// balance of 0 (or below — the monthly charge posts whether or not you can
+// afford it) is 0 months, which it reads as "Less than a month". That is a
+// confident wrong answer: it promises runway to someone who has none, and on
+// the Plans screen it sat directly above "Out of credit. Top up to keep going."
+// An unknown balance says nothing at all rather than guessing.
+export function runwayLabel(credits, perMonth = DEFAULT_CREDITS_PER_MONTH) {
+  if (credits === null || credits === undefined) return null
+  const n = Number(credits)
+  if (!Number.isFinite(n)) return null
+  if (n <= 0) return 'No credit left'
+  return `${formatRunway(creditsToMonths(n, perMonth))} left`
+}
+
 // Indian digit grouping, because the price beside it is in rupees.
 export function formatCredits(credits) {
   // null/undefined checked before Number(), which turns null into 0 — and "0

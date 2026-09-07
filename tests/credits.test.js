@@ -4,6 +4,7 @@ import {
   creditsToMonths,
   formatCredits,
   formatRunway,
+  runwayLabel,
 } from '../src/lib/billing'
 
 // Credit maths decides whether someone can open the app, so it is worth being
@@ -72,5 +73,28 @@ describe('formatCredits', () => {
     expect(formatCredits(0)).toBe('0')
     expect(formatCredits(null)).toBe('—')
     expect(formatCredits(undefined)).toBe('—')
+  })
+})
+
+describe('runwayLabel', () => {
+  it('never promises runway to a balance that has none', () => {
+    // formatRunway(0) reads "Less than a month", which on the Plans screen sat
+    // in a chip directly above "Out of credit. Top up to keep going."
+    expect(runwayLabel(0)).toBe('No credit left')
+    expect(runwayLabel(-4200)).toBe('No credit left')
+  })
+
+  it('says nothing at all when the balance is unknown', () => {
+    // credits is null when the migration is absent (billing.js fails open).
+    expect(runwayLabel(null)).toBe(null)
+    expect(runwayLabel(undefined)).toBe(null)
+    expect(runwayLabel(NaN)).toBe(null)
+  })
+
+  it('reads as runway once there is some', () => {
+    expect(runwayLabel(99)).toBe('1 month left')
+    expect(runwayLabel(10000)).toBe('8 years 5 months left')
+    expect(runwayLabel(98)).toBe('Less than a month left')
+    expect(runwayLabel(1000, 100)).toBe('10 months left')
   })
 })

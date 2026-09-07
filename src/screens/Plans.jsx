@@ -1,16 +1,16 @@
 import { useEffect, useState } from 'react'
 import {
-  creditsToMonths,
+  DEFAULT_CREDITS_PER_MONTH,
   daysLeft,
   formatCredits,
   formatPrice,
-  formatRunway,
   getBillingSettings,
   getEntitlement,
   listCreditHistory,
   listPlans,
   monthlyEquivalent,
   planCadence,
+  runwayLabel,
   startTrial,
 } from '../lib/billing'
 import { useToast } from '../hooks/useToast'
@@ -76,7 +76,11 @@ export default function Plans({ onBack }) {
   // null means the credits migration isn't applied yet (billing.js fails open
   // with credits: null). Show nothing rather than a confident zero.
   const credits = ent?.credits ?? null
-  const months = credits === null ? null : creditsToMonths(credits, rate ?? undefined)
+  // Fall back to the module's default rather than a literal 99 repeated inline:
+  // two places quoting the price of a month from two different constants is how
+  // they end up disagreeing.
+  const perMonth = rate ?? DEFAULT_CREDITS_PER_MONTH
+  const runway = runwayLabel(credits, perMonth)
   const runsOut = ent?.credits_until ? new Date(ent.credits_until) : null
 
   return (
@@ -97,10 +101,8 @@ export default function Plans({ onBack }) {
             </div>
             <div className="credit-hero-num">{formatCredits(credits)}</div>
             <div className="credit-hero-chips">
-              <span className="chip credit-chip">{rate ?? 99} credits a month</span>
-              {months !== null && (
-                <span className="chip credit-chip">{formatRunway(months)} left</span>
-              )}
+              <span className="chip credit-chip">{perMonth} credits a month</span>
+              {runway && <span className="chip credit-chip">{runway}</span>}
             </div>
             <div className="credit-hero-sub">
               {grandfathered
@@ -108,8 +110,8 @@ export default function Plans({ onBack }) {
                 : credits <= 0
                   ? 'Out of credit. Top up to keep going.'
                   : runsOut
-                    ? `At ${rate ?? 99} a month, that lasts until ${runsOut.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}.`
-                    : `At ${rate ?? 99} a month.`}
+                    ? `At ${perMonth} a month, that lasts until ${runsOut.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}.`
+                    : `At ${perMonth} a month.`}
             </div>
           </div>
         )}

@@ -16,7 +16,7 @@ import PlayTogether from './PlayTogether'
 import { useToast } from '../hooks/useToast'
 import Avatar from '../components/Avatar'
 import { BackIcon, BellIcon, CheckIcon, ChevronIcon, CoinIcon, FlameIcon, PowerIcon, UsersIcon } from '../components/Icons'
-import { creditsToMonths, formatCredits, formatRunway, getBillingSettings, getEntitlement } from '../lib/billing'
+import { formatCredits, getBillingSettings, getEntitlement, runwayLabel } from '../lib/billing'
 import { lockApp } from '../lib/appLock'
 import Memories from './Memories'
 import { SECURITY_QUESTIONS } from '../lib/securityQuestions'
@@ -227,7 +227,7 @@ export default function Profile({ onBack }) {
               <div className="credit-tile-main">
                 <div className="credit-tile-num">{formatCredits(ent.credits)}</div>
                 <div className="credit-tile-label">
-                  Credits · {formatRunway(creditsToMonths(ent.credits, rate ?? undefined))} left
+                  Credits · {runwayLabel(ent.credits, rate ?? undefined)}
                 </div>
               </div>
               <ChevronIcon width={18} height={18} className="chev" />
@@ -366,6 +366,16 @@ export default function Profile({ onBack }) {
           className="pill-btn"
         >
           Memories
+        </button>
+
+        {/* Play shipped with its screen wired up but nothing anywhere calling
+            setShowPlay — the whole feature was unreachable from the running
+            app. This is that entry point. */}
+        <button
+          onClick={() => setShowPlay(true)}
+          className="pill-btn"
+        >
+          Play
         </button>
 
         <div className="section">Lock</div>

@@ -1062,15 +1062,36 @@ function MessageRow({
     const t = e.touches?.[0] ?? e
     if (typeof t?.clientX === 'number') tapPoint.current = { x: t.clientX, y: t.clientY }
   }
+  // Set by the scrambled bubble's own pointerdown. Pointer events are dispatched
+  // BEFORE their compatibility touch/mouse events, so this is reliably true by
+  // the time startPress runs — calling endPress() from pointerdown was not,
+  // because the touchstart that follows it re-arms the timer it just cleared.
+  // That is why the action menu still opened over the text you were holding to
+  // read, despite the fix that was supposed to stop it.
+  const suppressPress = useRef(false)
+  const claimPress = () => {
+    suppressPress.current = true
+    clearTimeout(pressTimer.current) // a mouse press arms before pointerup lands
+  }
+  const releasePress = () => {
+    suppressPress.current = false
+  }
   const startPress = () => {
     if (message.kind === 'call') return // call logs are not actionable
+    // Cleared for every new press, including one we then decline to arm: a
+    // swipe sets this to guard its trailing click, and leaving it set would
+    // make the next tap on the bubble do nothing.
     longPressed.current = false
+    if (suppressPress.current) return   // hold-to-reveal owns this press
     pressTimer.current = setTimeout(() => {
       longPressed.current = true
       onLongPress()
     }, 420)
   }
-  const endPress = () => clearTimeout(pressTimer.current)
+  // Belt and braces: whatever ends the press also gives the claim back, so a
+  // pointerup swallowed by the browser can't leave the row permanently
+  // un-long-pressable.
+  const endPress = () => { clearTimeout(pressTimer.current); releasePress() }
 
   // Swipe LEFT on a message to reply to it (WhatsApp/Snapchat gesture). The
   // bubble follows your finger; releasing past the threshold triggers the reply.
@@ -1189,12 +1210,15 @@ function MessageRow({
           tabIndex={0}
           onKeyDown={onKeyDown}
           onClick={handleClick}
-          // Holding to unscramble must not also arm the action menu — the
-          // menu fired at 420ms and covered the text you were trying to read.
-          onPointerDown={scrambled ? () => { endPress(); setRevealed(true) } : undefined}
-          onPointerUp={scrambled ? () => setRevealed(false) : undefined}
-          onPointerLeave={scrambled ? () => setRevealed(false) : undefined}
-          onPointerCancel={scrambled ? () => setRevealed(false) : undefined}
+          // Holding to unscramble must not also arm the action menu — the menu
+          // fired at 420ms and covered the text you were trying to read. Only
+          // the bubble itself is claimed: the name, timestamp and padding around
+          // it still long-press to the menu, and swipe-left still replies, so
+          // Unsend and the rest stay reachable on your own older messages.
+          onPointerDown={scrambled ? () => { claimPress(); setRevealed(true) } : undefined}
+          onPointerUp={scrambled ? () => { releasePress(); setRevealed(false) } : undefined}
+          onPointerLeave={scrambled ? () => { releasePress(); setRevealed(false) } : undefined}
+          onPointerCancel={scrambled ? () => { releasePress(); setRevealed(false) } : undefined}
           title={scrambled ? 'Hold to read' : undefined}
         >
           {privacyBody(message, me, revealed)}

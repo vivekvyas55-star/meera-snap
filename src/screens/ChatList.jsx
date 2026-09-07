@@ -14,6 +14,7 @@ import {
   sendFriendRequest,
   streakState,
 } from '../lib/db'
+import { matchesSearch } from '../lib/alias'
 import { statusFor } from '../lib/status'
 import { useAuth } from '../hooks/useAuth'
 import { useAlias } from '../hooks/useAliasClock'
@@ -130,6 +131,13 @@ export default function ChatList({ active = true, onOpenChat, onOpenProfile, onO
     return bestId
   }, [accepted, streakFor])
 
+  // Searching matches the handle and display name too, not just the alias
+  // showing right now — see matchesSearch.
+  const matching = useMemo(
+    () => accepted.filter((f) => matchesSearch(f.profile, query, alias(f.profile))),
+    [accepted, query, alias]
+  )
+
   // The greeting mentions a friend whose birthday is today. Birthdays are
   // already loaded for the row markers, so this costs nothing extra.
   const birthdayFriend = useMemo(
@@ -223,8 +231,8 @@ export default function ChatList({ active = true, onOpenChat, onOpenProfile, onO
           </div>
         )}
 
-        {!loading && accepted.length > 0 && !accepted.some(f => alias(f.profile).toLowerCase().includes(query.trim().toLowerCase())) && <div className="empty" role="status"><h2>No chats found</h2><p>Try another name.</p><button className="chip" onClick={() => setQuery('')}>Clear search</button></div>}
-        {accepted.filter(f => alias(f.profile).toLowerCase().includes(query.trim().toLowerCase())).map((f) => {
+        {!loading && accepted.length > 0 && matching.length === 0 && <div className="empty" role="status"><h2>No chats found</h2><p>Try another name.</p><button className="chip" onClick={() => setQuery('')}>Clear search</button></div>}
+        {matching.map((f) => {
           const last = lastByFriend[f.profile.id]
           const st = last ? statusFor(last, me) : null
           const streak = streakFor(f.profile.id)

@@ -327,6 +327,15 @@ statements have aborted batched transactions on some projects).
   confident zero. Plans shows the balance as the hero card and the rupee prices
   as context; Profile carries a lime credit tile that is also the only route
   into Plans. Credit maths is tested in `tests/credits.test.js`.
+- **Never put `formatRunway()` in front of a user directly** — it only knows
+  months, and a zero or negative balance is zero months, which it renders as
+  "Less than a month". Both screens said that to someone with nothing, and on
+  Plans the chip sat directly above "Out of credit. Top up to keep going."
+  `runwayLabel(credits, perMonth)` is the one to call: 'No credit left' at or
+  below zero, `null` (render nothing) when the balance is unknown. Likewise the
+  price of a month falls back to `DEFAULT_CREDITS_PER_MONTH`, never to a `99`
+  typed inline — two places quoting money from two constants is how they end up
+  disagreeing.
 
 ## Question of the day, status notes, birthdays (`together.sql`)
 
@@ -508,6 +517,59 @@ grants missing — the root cause behind several "bug" reports (including the
 missing stories INSERT grant). After a big migration, verify the specific
 objects it was meant to create.
 
+## Gestures in the thread — which one wins
+
+Six gestures share one bubble: tap, double-tap (❤️ tapback), long-press (action
+menu, 420ms), swipe-left (reply), hold-to-reveal (scrambled own messages), and
+the thread's own scroll. Three rules keep them apart, and all three have been
+broken at least once:
+
+- **Pointer events fire BEFORE their compatibility touch/mouse events**
+  (`pointerdown` → `touchstart` → later `mousedown`). So a `pointerdown` handler
+  cannot cancel a long-press by calling the press's clear function: the
+  `touchstart` that follows re-arms the very timer it just cleared. That is
+  exactly how the hold-to-reveal fix silently failed and the action menu kept
+  opening over the text. `MessageRow` now *claims* the press in `pointerdown`
+  (`suppressPress` ref) and `startPress` declines to arm — the only ordering that
+  works. The claim is scoped to `.msg-body`, so long-pressing the name, the
+  timestamp or the padding around the bubble still opens the menu; Unsend stays
+  reachable on your own older messages.
+- **Any movement over ~8px cancels the long-press**, horizontal or vertical —
+  cancelling only on the swipe gate let a slow scroll pop the menu mid-drag.
+- **A swipe that fires a reply sets `longPressed`** so the trailing click can't
+  also open (consume) a snap; `startPress` clears it again on the next press.
+
+## The thread's two "already seen this" sets
+
+`Chat.jsx` keeps two id sets, and BOTH have to be seeded from the same three
+places — the first completed `load()`, every `loadOlder()` page, and reaching
+the bottom. Seeding one and not the other is the bug class here.
+
+- `knownRef` — what must NOT play the `.msg-in` entrance animation. Seeded in
+  `load()`, not during render: a render-time snapshot (`if (ref.current === null
+  && messages.length) …`) absorbed the very first message in an empty
+  conversation into "history", so it never animated, and React is free to throw
+  away a render it has already run.
+- `seenAtBottom` — what must NOT be counted by the "N new messages ↓" pill. The
+  initial jump-to-bottom used to `return` without recording that it had caught
+  you up, and paged-in history was never recorded at all, so one arriving message
+  reported the whole loaded window: "38 new messages" on a chat you had just
+  read, and "200 new messages" merely for scrolling back.
+
+Regression tests for both, and for the gesture rules above, are in
+`tests/chat.test.jsx` (jsdom has no layout, so the test gives `.thread` a real
+`scrollHeight`/`clientHeight` via prototype getters — without that, "am I at the
+bottom?" answers yes forever and none of it is testable).
+
+## Stacked sheets: Escape belongs to the top one
+
+`components/Sheet.jsx` keeps a module-level stack and only the topmost sheet
+answers Escape and traps Tab. `stopImmediatePropagation` does NOT achieve this:
+listeners on the same node in the same phase run in the order they were **added**,
+so the OUTER sheet — mounted first — answered first and closed itself, taking its
+own child sheet down with it. Sheets really do stack (Kept Together inside the
+friend sheet, `Confirm` inside both).
+
 ## Overlays MUST be portaled
 
 Any fullscreen overlay (`.sheet`, `.viewer`) rendered from a screen inside the
@@ -560,7 +622,12 @@ Rotating aliases (`lib/alias.js`, `hooks/AliasClockProvider.jsx` +
 derived from their name (VIVEK → V, 5, V5, KEVIV, KE), advancing every 30 min.
 Deterministic on a global time bucket + per-user phase, so every viewer sees the
 same alias at the same time with no backend. `@username` stays visible in the
-send/add sheets as the stable handle.
+send/add sheets as the stable handle. **Anything that SEARCHES people must go
+through `matchesSearch(profile, query, alias)`, never the alias alone** — the
+chat list's search box filtered on the current alias only, so looking for a
+friend by the name or handle you actually know them by found nothing whenever
+their alias happened to be "S5", and the same search worked or failed depending
+on the time of day.
 
 Live presence (`hooks/OnlinePresenceProvider.jsx` + `useOnlinePresence.js`): a
 per-user private presence topic `online:<id>`, readable by accepted friends; the
