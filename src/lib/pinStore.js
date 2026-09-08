@@ -90,16 +90,43 @@ export function usingDefaultPin() {
   return read(DEFAULT_FLAG) === '1'
 }
 
-// Seed the default on a device that has never had a passcode. Safe to call on
-// every boot: it does nothing once a hash exists, so it can never overwrite a
-// code somebody chose.
+// Defaults this app has shipped, newest first. A device seeded with an older
+// one keeps asking for it forever, because `ensurePin` will not overwrite a
+// hash that already exists — so changing DEFAULT_PIN without this list locks
+// people out of their own phones with a code that is no longer written down
+// anywhere. `9943` shipped briefly before `9934`.
+const RETIRED_DEFAULTS = ['9943']
+
+// Seed the default on a device that has never had a passcode, and quietly move
+// a device still holding a retired default onto the current one.
+//
+// Safe to call on every boot. It never touches a passcode somebody CHOSE: the
+// migration runs only while the default flag is set, which any call to setPin
+// clears. And it deliberately does NOT clear an active lockout — that would be
+// a bypass, and a fifteen-minute lockout you can reload your way out of is not
+// a lockout.
 export async function ensurePin() {
-  if (hasPin() || !canHashPin()) return
-  await setPin(DEFAULT_PIN)
-  try {
-    localStorage.setItem(DEFAULT_FLAG, '1')
-  } catch {
-    /* the passcode still works; we just cannot nag about it */
+  if (!canHashPin()) return
+  if (!hasPin()) {
+    await setPin(DEFAULT_PIN)
+    try {
+      localStorage.setItem(DEFAULT_FLAG, '1')
+    } catch {
+      /* the passcode still works; we just cannot nag about it */
+    }
+    return
+  }
+  if (!usingDefaultPin()) return
+  for (const retired of RETIRED_DEFAULTS) {
+    if (await verifyPin(retired)) {
+      await setPin(DEFAULT_PIN)
+      try {
+        localStorage.setItem(DEFAULT_FLAG, '1')
+      } catch {
+        /* still on a default, just unable to say so */
+      }
+      return
+    }
   }
 }
 

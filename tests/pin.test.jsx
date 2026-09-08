@@ -152,3 +152,34 @@ test('the lock screen never hints that the code is a default', async () => {
   expect(shown.toLowerCase()).not.toContain('default')
   expect(shown).not.toContain(DEFAULT_PIN)
 })
+
+test('a device seeded with a retired default is moved to the current one', async () => {
+  // 9943 shipped briefly before 9934. ensurePin() will not overwrite an
+  // existing hash, so without this migration those devices would keep asking
+  // for a code that is no longer written down anywhere — locking people out of
+  // their own phones.
+  await setPin('9943')
+  localStorage.setItem('meera:pindefault', '1') // as the seeding path left it
+  await ensurePin()
+  expect(await verifyPin(DEFAULT_PIN)).toBe(true)
+  expect(await verifyPin('9943')).toBe(false)
+  expect(usingDefaultPin()).toBe(true)
+})
+
+test('a passcode the user chose is never migrated, even if it equals a retired default', async () => {
+  await setPin('9943')
+  // setPin clears the default flag, so this is a deliberate choice, not a seed.
+  expect(usingDefaultPin()).toBe(false)
+  await ensurePin()
+  expect(await verifyPin('9943')).toBe(true)
+})
+
+test('the migration does not clear an active lockout', async () => {
+  // A fifteen-minute lockout you can reload your way out of is not a lockout.
+  await setPin('9943')
+  localStorage.setItem('meera:pindefault', '1')
+  const until = String(Date.now() + 900000)
+  localStorage.setItem('meera:pinlockeduntil', until)
+  await ensurePin()
+  expect(localStorage.getItem('meera:pinlockeduntil')).toBe(until)
+})
