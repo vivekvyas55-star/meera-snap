@@ -1,13 +1,18 @@
-import { BackspaceIcon } from './Icons'
-import { useCallback, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import MarketDecoy from './MarketDecoy'
-
-// App-open passcode. NOTE: this is a convenience lock, not real security — the
-// code ships in the bundle and a technical user can bypass it. Real protection
-// is the account login + row-level security. It gates the UI on each cold open
-// (unlock persists for the tab session only).
-const PIN = '9934'
+import PinPad from './PinPad'
 import { UNLOCK_KEY as KEY } from '../lib/appLock'
+import { PIN_LENGTH, canHashPin, clearPin, verifyPin } from '../lib/pinStore'
+import { supabase } from '../lib/supabase'
+
+// App-open passcode. NOTE: this is a convenience lock, not real security. Real
+// protection is the account login + row-level security. It gates the UI on each
+// cold open (unlock persists for the tab session only).
+//
+// The code itself is the user's, hashed on this device (lib/pinStore.js). It
+// used to be a constant right here, which meant every user shared four digits
+// that anyone could read out of the bundle. App.jsx only mounts this screen
+// once a passcode actually exists, so the lock is opt-in from Profile.
 
 // After this many wrong entries the app locks for LOCKOUT_MS and shows a decoy
 // markets screen instead of the passcode pad. Showing "locked out" would tell a
@@ -63,84 +68,83 @@ export default function PinLock({ onUnlock }) {
     return () => clearTimeout(t)
   }, [locked, lockedUntil])
 
-  const press = useCallback((d) => {
-    setEntry((e) => e.length >= PIN.length ? e : e + d)
-  }, [])
-  const back = useCallback(() => setEntry((e) => e.slice(0, -1)), [])
-
-  // The on-screen pad is the primary affordance on a phone, but a lock screen
-  // should not strand someone using a hardware keyboard or switch access.
+  // Verifying is a ~200ms key derivation, not the old synchronous string
+  // compare, so an attempt can still be in flight when the entry changes under
+  // it — a backspace, or the auto-clear after a wrong code. `live` discards the
+  // result of an attempt the user has already abandoned, which is what stops a
+  // cancelled entry counting as a wrong try. A guard ref would deadlock the pad
+  // instead: backspacing and retyping inside the derivation window would find
+  // it still set, and nothing would ever run the check again.
   useEffect(() => {
-    if (locked) return
-    const onKeyDown = (e) => {
-      if (/^\d$/.test(e.key)) {
-        e.preventDefault()
-        press(e.key)
-      } else if (e.key === 'Backspace') {
-        e.preventDefault()
-        back()
+    if (locked || entry.length < PIN_LENGTH) return
+    let live = true
+    verifyPin(entry).then((ok) => {
+      if (!live) return
+      if (ok) {
+        clearKeys()
+        try {
+          sessionStorage.setItem(KEY, '1')
+        } catch {
+          /* private mode — just unlock for this render */
+        }
+        onUnlock()
+        return
       }
-    }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [locked, press, back])
-
-  useEffect(() => {
-    if (locked || entry.length < PIN.length) return
-    if (entry === PIN) {
-      clearKeys()
-      try {
-        sessionStorage.setItem(KEY, '1')
-      } catch {
-        /* private mode — just unlock for this render */
+      const fails = readNum(FAIL_KEY) + 1
+      if (fails >= MAX_FAILS) {
+        const until = Date.now() + LOCKOUT_MS
+        writeNum(UNTIL_KEY, until)
+        writeNum(FAIL_KEY, 0)
+        setLockedUntil(until)
+        setEntry('')
+        return
       }
-      onUnlock()
-      return
-    }
-    const fails = readNum(FAIL_KEY) + 1
-    if (fails >= MAX_FAILS) {
-      const until = Date.now() + LOCKOUT_MS
-      writeNum(UNTIL_KEY, until)
-      writeNum(FAIL_KEY, 0)
-      setLockedUntil(until)
-      setEntry('')
-      return
-    }
-    writeNum(FAIL_KEY, fails)
-    setShake(true)
-    setTimeout(() => {
-      setShake(false)
-      setEntry('')
-    }, 400)
+      writeNum(FAIL_KEY, fails)
+      setShake(true)
+      setTimeout(() => {
+        setShake(false)
+        setEntry('')
+      }, 400)
+    })
+    return () => { live = false }
   }, [entry, onUnlock, locked])
+
+  // Signing out is the honest way past a forgotten passcode: it drops the
+  // session, so whoever taps it lands on the login screen — the boundary that
+  // actually protects anything. Without it a forgotten code would strand the
+  // owner on their own phone, since the hash only lives on this device.
+  // Local scope, so it still works with no network.
+  const forgot = async () => {
+    try { await supabase.auth.signOut({ scope: 'local' }) } catch { /* clearing locally is what matters */ }
+    clearPin()
+    clearKeys()
+    window.location.reload()
+  }
 
   // No countdown, no "try again in 15 minutes", no hint that a passcode exists —
   // any of those would give the game away.
   if (locked) return <MarketDecoy />
 
+  // Web Crypto is missing, so the passcode cannot be checked. Saying so and
+  // staying shut is the only correct answer; letting someone through because
+  // verification is unavailable would make the lock a suggestion.
+  if (!canHashPin()) {
+    return (
+      <div className="pinlock">
+        <div className="pin-title">Meera</div>
+        <div className="pin-sub">Open Meera over https to unlock</div>
+      </div>
+    )
+  }
+
   return (
     <div className="pinlock">
       <div className="pin-title">Meera</div>
       <div className="pin-sub">Enter passcode</div>
-      <div className={`pin-dots${shake ? ' shake' : ''}`} aria-hidden="true">
-        {[0, 1, 2, 3].map((i) => (
-          <span key={i} className={`pin-dot${i < entry.length ? ' filled' : ''}`} />
-        ))}
-      </div>
-      <div className="pin-pad">
-        {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((d) => (
-          <button key={d} className="pin-key" type="button" aria-label={`Passcode digit ${d}`} onClick={() => press(d)}>
-            {d}
-          </button>
-        ))}
-        <span />
-        <button className="pin-key" type="button" aria-label="Passcode digit 0" onClick={() => press('0')}>
-          0
-        </button>
-        <button className="pin-key pin-back" type="button" onClick={back} aria-label="Delete last passcode digit">
-          <BackspaceIcon width={24} height={24} />
-        </button>
-      </div>
+      <PinPad entry={entry} setEntry={setEntry} shake={shake} enabled={!locked} />
+      <button className="pin-forgot" type="button" onClick={forgot}>
+        Forgot passcode?
+      </button>
     </div>
   )
 }

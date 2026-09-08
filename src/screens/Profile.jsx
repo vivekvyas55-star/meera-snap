@@ -18,6 +18,8 @@ import Avatar from '../components/Avatar'
 import { BackIcon, BellIcon, CheckIcon, ChevronIcon, CoinIcon, FlameIcon, PowerIcon, UsersIcon } from '../components/Icons'
 import { formatCredits, getBillingSettings, getEntitlement, runwayLabel } from '../lib/billing'
 import { lockApp } from '../lib/appLock'
+import { clearPin, hasPin } from '../lib/pinStore'
+import PinSetup from '../components/PinSetup'
 import Memories from './Memories'
 import { SECURITY_QUESTIONS } from '../lib/securityQuestions'
 import { blockedReason, disablePush, enablePush, isEnabled } from '../lib/push'
@@ -44,6 +46,9 @@ export default function Profile({ onBack, openPlay = false, onPlayOpened }) {
   const [saving, setSaving] = useState(false)
   const [showMemories, setShowMemories] = useState(false)
   const [confirmLock, setConfirmLock] = useState(false)
+  const [pinSetup, setPinSetup] = useState(false)
+  const [confirmRemovePin, setConfirmRemovePin] = useState(false)
+  const [pinSet, setPinSet] = useState(hasPin)
   const [showPlans, setShowPlans] = useState(false)
   const [ent, setEnt] = useState(null)
   const [rate, setRate] = useState(null)
@@ -389,23 +394,48 @@ export default function Profile({ onBack, openPlay = false, onPlayOpened }) {
         {/* This used to be a bare pill with no explanation. It swaps the whole
             app for a passcode pad, and three wrong entries hide it for fifteen
             minutes with deliberately no hint that a passcode exists — a curious
-            tap bricked the app for a quarter of an hour. */}
+            tap bricked the app for a quarter of an hour.
+
+            The passcode used to be the same four digits for everyone, written
+            into the bundle. It is now yours, chosen here and hashed on this
+            phone — so this section has to be able to say whether one exists at
+            all, or "Lock app" would shut you behind a code you never set. */}
         <div className="field-hint">
-          Hides Meera behind your 4-digit passcode until you enter it again.
-          Make sure you know it — there is no way to reset it, and three wrong
-          tries lock the app for 15 minutes.
+          {pinSet
+            ? 'Meera asks for your 4-digit passcode on every cold open. Three wrong tries hide the app for 15 minutes behind a decoy screen. The code is stored only on this phone, so setting it again on another device is a separate passcode.'
+            : 'No passcode yet. Setting one hides Meera behind a 4-digit pad on every cold open, with a decoy screen after three wrong tries. It is kept only on this phone — if you forget it, the only way back is to sign out and sign in again.'}
         </div>
-        <button onClick={() => setConfirmLock(true)} className="pill-btn">
-          Lock app
+        <button onClick={() => setPinSetup(true)} className="pill-btn">
+          {pinSet ? 'Change passcode' : 'Set a passcode'}
         </button>
+        {pinSet && (
+          <>
+            <button onClick={() => setConfirmLock(true)} className="pill-btn">
+              Lock app
+            </button>
+            <button onClick={() => setConfirmRemovePin(true)} className="pill-btn">
+              Remove passcode
+            </button>
+          </>
+        )}
+        {pinSetup && <PinSetup onClose={() => setPinSetup(false)} onDone={() => setPinSet(true)} />}
         {confirmLock && (
           <Confirm
             title="Lock Meera?"
-            body="You'll need your 4-digit passcode to get back in. Three wrong tries lock the app for 15 minutes, and there's no reset."
+            body="You'll need your 4-digit passcode to get back in. Three wrong tries lock the app for 15 minutes."
             confirmLabel="Lock"
             danger={false}
             onCancel={() => setConfirmLock(false)}
             onConfirm={lockApp}
+          />
+        )}
+        {confirmRemovePin && (
+          <Confirm
+            title="Remove the passcode?"
+            body="Meera will open straight into your account on this phone, with no pad and no decoy screen."
+            confirmLabel="Remove"
+            onCancel={() => setConfirmRemovePin(false)}
+            onConfirm={() => { clearPin(); setPinSet(false); setConfirmRemovePin(false) }}
           />
         )}
       </div>

@@ -24,6 +24,7 @@ import InstallPrompt from './components/InstallPrompt'
 import OutboxDelivery from './components/OutboxDelivery'
 import PinLock from './components/PinLock'
 import { isUnlocked } from './lib/appLock'
+import { hasPin } from './lib/pinStore'
 import { signalReceiver } from './lib/privateRealtime'
 
 const PANES = [
@@ -379,13 +380,18 @@ export default function App() {
     return () => vv.removeEventListener('resize', onResize)
   }, [])
 
-  const [unlocked, setUnlocked] = useState(isUnlocked())
+  // The lock is opt-in: with no passcode chosen there is nothing to check, so
+  // the pad must not appear. Both halves matter — the initialiser keeps this
+  // true for someone who sets a passcode later in the same session (they have
+  // just proved they know it), and the render guard makes it impossible to be
+  // shut out by a lock with no code behind it.
+  const [unlocked, setUnlocked] = useState(() => isUnlocked() || !hasPin())
   useEffect(() => {
     const relock = () => setUnlocked(false)
     window.addEventListener('meera:lock', relock)
     return () => window.removeEventListener('meera:lock', relock)
   }, [])
-  if (!unlocked) return <PinLock onUnlock={() => setUnlocked(true)} />
+  if (!unlocked && hasPin()) return <PinLock onUnlock={() => setUnlocked(true)} />
 
   return (
     <ErrorBoundary>

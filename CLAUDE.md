@@ -405,6 +405,35 @@ generic markets/portfolio screen. A "locked out" message would confirm to whoeve
 is holding the phone that there is something here worth getting into; a dull
 stocks app tells them they opened the wrong thing.
 
+**The passcode is the user's, and the lock is opt-in.** It used to be
+`const PIN = '9934'` in PinLock.jsx — the same four digits for every user, in
+plain text in a bundle anyone can read. `lib/pinStore.js` now keeps a PBKDF2
+hash (210k iterations, 16-byte random salt per device) in localStorage; it is
+set, changed and removed from Profile, and `App.jsx` mounts PinLock **only when
+`hasPin()`** so nobody can be shut behind a lock with no code behind it.
+
+- **Device-local is deliberate.** PinLock renders before `AuthProvider`, so
+  there is no session to check a server-side hash against, and a lock screen
+  that needs the network is a lock screen that fails on a train.
+- PBKDF2 is not what makes this hard to break — four digits is 10,000 wide and
+  the three-try lockout is the real defence. It is there so that lifting
+  localStorage off the device still costs compute. The comparison is constant
+  time; a timing leak is the one attack a 4-digit code cannot survive.
+- **Verification is now async** (~200ms), where it used to be a string compare.
+  An attempt can still be in flight when the entry changes under it, so `live`
+  discards an abandoned attempt rather than counting it as a wrong try. Do NOT
+  add a guard ref for this: backspacing and retyping inside the derivation
+  window finds it still set and the pad never checks again.
+- **"Forgot passcode?" signs out locally** (`scope: 'local'`, so it works
+  offline) and clears the hash. The hash exists only on that device, so without
+  it a forgotten code strands the owner on their own phone. It gives nothing
+  away — whoever taps it lands on the login screen, which is the boundary that
+  actually protects the data.
+- Where Web Crypto is missing (an insecure context) the pad says so and stays
+  shut. Letting someone through because verification is unavailable would make
+  the lock a suggestion.
+- `PinPad.jsx` is shared by the lock screen and the set/change sheet, so the two
+  cannot drift about how many digits a code has.
 - Counters live in **localStorage, not sessionStorage** — a lockout a reload or a
   fresh tab clears is not a lockout.
 - The decoy shows **no countdown and no hint that a passcode exists**; the pad
@@ -424,9 +453,9 @@ stocks app tells them they opened the wrong thing.
 **What it does NOT hide** (don't oversell this): the home-screen icon and its
 label, the manifest name, the URL, and browser history all still say Meera. The
 decoy covers the *screen* on a lockout, nothing more. Like the passcode itself it
-is deterrence against a casual snoop, **not security** — the PIN is in the bundle
-and anyone technical reads straight past it. Real protection is the account login
-plus RLS.
+is deterrence against a casual snoop, **not security** — four digits with a
+"forgot" escape hatch is not a boundary anyone determined would respect. Real
+protection is the account login plus RLS.
 
 ## Web Push — the only way to reach a CLOSED app
 

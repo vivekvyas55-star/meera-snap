@@ -767,6 +767,17 @@ input, textarea { font: inherit; }
 .pin-sub { color: var(--muted); font-size: 14.5px; margin-top: 10px; }
 
 .pin-dots { display: flex; gap: 18px; margin: 30px 0 40px; }
+/* A forgotten passcode would otherwise strand the owner on their own phone —
+   the hash lives only on this device. Quiet, because it is a way out, not an
+   invitation. */
+.pin-forgot {
+  margin-top: var(--sp-5); background: none; border: 0; color: var(--muted);
+  font-size: var(--fs-meta); text-decoration: underline; text-underline-offset: 3px;
+}
+/* The pad is centred by .pinlock on the lock screen; a sheet is a plain column. */
+.pin-setup { display: flex; flex-direction: column; align-items: center; }
+.pin-setup .pin-dots { margin: var(--sp-4) 0 var(--sp-5); }
+.field-error { font-size: var(--fs-meta); color: var(--coral); margin-top: var(--sp-3); text-align: center; }
 .pin-dots.shake { animation: shake 0.4s; }
 .pin-dot {
   width: 14px; height: 14px; border-radius: 50%;
