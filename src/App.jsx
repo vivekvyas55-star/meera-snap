@@ -29,6 +29,7 @@ import OutboxDelivery from './components/OutboxDelivery'
 import PinLock from './components/PinLock'
 import { isUnlocked } from './lib/appLock'
 import { hasPin } from './lib/pinStore'
+import { trackDeviceSessions } from './lib/devices'
 import { useBackLayer } from './hooks/useBackLayer'
 import { signalReceiver } from './lib/privateRealtime'
 
@@ -344,6 +345,11 @@ function SessionShell() {
   const { user } = useAuth()
   return <Suspense fallback={<div className="app"><div className="empty">Loading…</div></div>}><Shell key={user?.id || 'guest'} /></Suspense>
 }
+
+// Devices are recorded from the auth event, not from the screen that lists
+// them: Profile is lazy-imported, so waiting for it would mean a device only
+// counts once its owner happens to open Settings.
+trackDeviceSessions()
 
 export default function App() {
   // Keep the focused composer above the on-screen keyboard. Rather than resize

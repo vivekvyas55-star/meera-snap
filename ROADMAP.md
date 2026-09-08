@@ -31,7 +31,15 @@ Everything discussed, so nothing is lost. Status as of **8 Sep 2026**.
 - [x] **Egress measured daily** — `ops_metrics`, with a projection that multiplies each
       story by the audience it actually has. Warns into the Postgres log.
 
+### Privacy
+- [x] **Privacy Centre** — Profile grouped into the six sections, plus a device list
+      (honest about what it can and cannot revoke), blocking enforced in RLS, location
+      sharing with an expiry, storage usage, export and delete, and saved-state
+      feedback on every control that writes.
+
 ### UI
+- [x] **Game scoreboard** — a running series score, written by the same statement
+      that decides the result.
 - [x] **Chat rows carry one signal** — nine competing signals down to name, unread
       state, presence dot and one, chosen by what you lose by ignoring it. The
       precedence is a pure tested function; the rest moved to the friend sheet.
@@ -50,11 +58,7 @@ Everything discussed, so nothing is lost. Status as of **8 Sep 2026**.
 
 ## In flight
 
-- [ ] **Privacy Centre** — Profile regrouped into Identity / Shared moments / Play /
-      Notifications / Privacy and lock / Account and data, plus active sessions and
-      device logout, blocked contacts, location sharing duration, storage usage,
-      export and delete, and saved-state feedback.
-(Stories/Camera/Map and chat-list clutter landed — see Done.)
+(All three parallel workstreams landed — see Done.)
 
 ---
 
@@ -71,7 +75,8 @@ Everything discussed, so nothing is lost. Status as of **8 Sep 2026**.
       it is for debugging: short retention, aggregates only.
 
 ### 2. Privacy Centre (remainder)
-- [ ] Block, mute and report controls enforced in the database, not the client.
+- [x] ~~Block controls enforced in the database~~ — done. **Mute and report are still
+      to do**, and blocking does not retroactively scrub history.
 - [ ] Per-snap controls before sending: audience, expiry, replay limit, save policy.
       Mostly exposing machinery that already exists (`SNAP_MAX_OPENS`, `view_seconds`,
       `saved_by`, `screenshot_at`).

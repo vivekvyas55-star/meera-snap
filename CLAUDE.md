@@ -400,6 +400,56 @@ statements have aborted batched transactions on some projects).
   typed inline — two places quoting money from two constants is how they end up
   disagreeing.
 
+## Blocking, device list, location expiry (`202609080018_privacy.sql`)
+
+**A block is a database boundary, not a filter.** `blocked_between()` is added
+to `messages_insert` and `friendships_insert`, so a blocked sender's write is
+refused by RLS. It is SECURITY DEFINER on purpose: `blocks_read` shows a caller
+only their OWN rows, so an inline `exists()` would be blind in exactly the
+direction that matters — it answers only for pairs the caller is part of, so it
+is not a general "is A blocking B?" oracle.
+
+`block_user()` also **deletes the friendship**, and it has to: stories,
+presence, call signaling and the push relay all gate on an accepted friendship.
+A block that left that row would stop the texts and let the phone keep ringing.
+`list_my_blocks()` exists because `profiles_read` needs a friendships row — once
+blocked, the list would otherwise be a column of uuids.
+
+Blocking does **not** retroactively hide delivered messages or scrub history.
+
+**`FOR ALL` includes SELECT.** `locations_write` was `FOR ALL`, which made it a
+second, expiry-free path to your own row — the new `expires_at is null or
+expires_at > now()` in the read policy would have been bypassed by it. It is
+split now. If you write a policy for writes, write `for insert` / `for update` /
+`for delete`, never `for all`.
+
+A `clear_spent_location_expiry` trigger resets a stale `expires_at` on any
+sharing write: Snap Map's Share upserts lat/lng/sharing and never touches
+`expires_at`, so an old timestamp would have left someone invisible with the
+switch apparently on. `operations/schedule_location_expiry.sql` deletes expired
+rows every 15 min — data minimisation, not enforcement, since the policy already
+hides them.
+
+**Per-device revocation does not exist and is not faked.** Supabase gives a
+browser client no session list and no per-session revoke. `user_devices` records
+browsers that have signed in (keyed by a stable `device_key`, or one phone
+becomes forty rows in a week); "Forget" removes the row and says plainly that it
+does not end that session. The only real action is
+`signOut({ scope: 'global' })`, and the copy says it includes this phone.
+`trackDeviceSessions()` is installed at module scope in `App.jsx` — Profile is
+lazy-imported, so recording from the screen that lists devices would only ever
+notice one after somebody opened Settings.
+
+**The data export excludes messages other people sent you.** They are the
+sender's, and ephemerality is a promise made on their behalf; turning them into
+a permanent file would quietly undo it. Deletion takes the conversation from the
+other person too — messages are pair-keyed with ON DELETE CASCADE on both halves
+— and the UI says so first, not last.
+
+`export_my_data()` / `delete_my_account()` use `to_regclass` guards and dynamic
+SQL deliberately, so they can be CREATED on a database that is behind on later
+migrations.
+
 ## Question of the day, status notes, birthdays (`together.sql`)
 
 **Day boundaries are IST** (`public.ist_date()`), like `friendship_charms`.

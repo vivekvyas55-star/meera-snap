@@ -1,0 +1,257 @@
+/* ==========================================================================
+   Privacy Centre — Profile.jsx
+   Follows the ABC language already codified in index.css: vibrant cards used
+   as full backgrounds, oversized light-weight headings, pill chips for
+   metadata, dark circular/pill actions. Everything here is built from the
+   existing custom properties so a token change still reaches this screen.
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   Groups. The screen is six sections now, and a section label the same size
+   and weight as everything around it does not group anything — it just adds
+   another line. An eyebrow over a light display heading is what the reference
+   does, and it survives being read at arm's length on a phone.
+   -------------------------------------------------------------------------- */
+.pc-group {
+  margin: var(--sp-6) var(--sp-4) var(--sp-3);
+}
+.pc-group:first-of-type {
+  margin-top: var(--sp-4);
+}
+.pc-group-eyebrow {
+  font-size: var(--fs-eyebrow);
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.pc-group-title {
+  font-size: var(--fs-h2);
+  font-weight: 300;
+  letter-spacing: -0.03em;
+  margin: var(--sp-1) 0 0;
+  line-height: 1.15;
+}
+.pc-group-hint {
+  font-size: var(--fs-meta);
+  color: var(--muted);
+  line-height: 1.5;
+  margin-top: var(--sp-2);
+}
+
+/* A quieter label for the individual controls inside a group. */
+.pc-label {
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin: var(--sp-5) 0 var(--sp-2);
+}
+.pc-label:first-child {
+  margin-top: 0;
+}
+
+/* --------------------------------------------------------------------------
+   Cards
+   -------------------------------------------------------------------------- */
+.pc-card {
+  border-radius: var(--r-card);
+  padding: var(--sp-4);
+  margin-bottom: var(--sp-3);
+  background: var(--card);
+  color: var(--ink);
+}
+.pc-card.lavender { background: var(--lavender); }
+.pc-card.lime { background: var(--lime); }
+.pc-card.coral { background: var(--coral); }
+.pc-card.indigo { background: var(--indigo); color: #fff; }
+
+.pc-card-title {
+  font-size: var(--fs-lead);
+  font-weight: 500;
+  letter-spacing: -0.02em;
+}
+.pc-card-num {
+  font-size: 34px;
+  font-weight: 300;
+  letter-spacing: -0.03em;
+  line-height: 1;
+  overflow-wrap: anywhere;
+}
+.pc-card-sub {
+  font-size: var(--fs-meta);
+  margin-top: var(--sp-2);
+  opacity: 0.78;
+  line-height: 1.5;
+}
+
+/* Metadata pills — the reference's "45s" / "Pre-intermediate" chips. */
+.pc-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  margin-top: var(--sp-3);
+}
+.pc-chip {
+  font-size: var(--fs-micro);
+  font-weight: 500;
+  padding: 5px 11px;
+  border-radius: var(--r-pill);
+  background: rgba(22, 22, 26, 0.1);
+  color: inherit;
+  white-space: nowrap;
+}
+.pc-card.indigo .pc-chip {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+/* --------------------------------------------------------------------------
+   Rows — devices, blocked contacts. Same light-grey rounded card as .row in
+   index.css, with a trailing action that is a real touch target.
+   -------------------------------------------------------------------------- */
+.pc-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3);
+  margin-bottom: var(--sp-2);
+  background: var(--card);
+  border-radius: var(--r-row);
+}
+.pc-row-main {
+  flex: 1;
+  min-width: 0;
+}
+.pc-row-name {
+  font-size: var(--fs-body);
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pc-row-meta {
+  font-size: var(--fs-micro);
+  color: var(--muted);
+  margin-top: 3px;
+}
+.pc-row-action {
+  flex: 0 0 auto;
+  min-height: 36px;
+  padding: 8px 14px;
+  border-radius: var(--r-pill);
+  background: #fff;
+  font-size: var(--fs-micro);
+  font-weight: 600;
+  color: var(--ink);
+}
+.pc-row-action:active { opacity: 0.7; }
+.pc-row-action:disabled { opacity: 0.4; }
+
+/* "This device" earns a marker; without it the list is a set of near-identical
+   labels and no way to tell which one you are holding. */
+.pc-row-here {
+  font-size: var(--fs-micro);
+  font-weight: 600;
+  color: var(--indigo);
+  margin-left: var(--sp-2);
+}
+
+.pc-empty {
+  font-size: var(--fs-sm);
+  color: var(--muted);
+  line-height: 1.5;
+  padding: var(--sp-3) 0 var(--sp-1);
+}
+
+/* --------------------------------------------------------------------------
+   Segmented choice — the location duration picker.
+   -------------------------------------------------------------------------- */
+.pc-choices {
+  display: flex;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+}
+.pc-choice {
+  flex: 1 1 0;
+  min-width: 92px;
+  min-height: 46px;
+  padding: 12px 10px;
+  border-radius: var(--r-pill);
+  background: var(--card);
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  color: var(--ink);
+}
+.pc-choice.on {
+  background: var(--ink);
+  color: #fff;
+}
+.pc-choice:disabled { opacity: 0.4; }
+
+/* --------------------------------------------------------------------------
+   Saved-state feedback. Reserves its own line so a control does not jump when
+   the message appears — the layout shift was itself a small lie about what
+   just happened.
+   -------------------------------------------------------------------------- */
+.pc-save {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 20px;
+  margin-top: var(--sp-2);
+  font-size: var(--fs-micro);
+  font-weight: 500;
+  color: var(--muted);
+}
+.pc-save.saved { color: var(--ink); }
+.pc-save.error { color: var(--coral); }
+.pc-save-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+  background: var(--muted);
+}
+.pc-save.saved .pc-save-dot { background: var(--lime); }
+.pc-save.error .pc-save-dot { background: var(--coral); }
+
+/* --------------------------------------------------------------------------
+   Danger. Deletion is the one irreversible control on the screen and it should
+   not look like the others.
+   -------------------------------------------------------------------------- */
+.pc-danger {
+  width: 100%;
+  margin-top: var(--sp-3);
+  min-height: 48px;
+  padding: 14px;
+  border-radius: var(--r-pill);
+  background: transparent;
+  border: 1.5px solid var(--coral);
+  color: var(--coral);
+  font-weight: 600;
+  font-size: var(--fs-body);
+}
+.pc-danger:disabled { opacity: 0.45; }
+
+.pc-loses {
+  margin: var(--sp-2) 0 var(--sp-4);
+  padding-left: 18px;
+  font-size: var(--fs-meta);
+  color: var(--muted);
+  line-height: 1.6;
+}
+.pc-loses li { margin-bottom: 6px; }
+
+/* Sheet bodies for picking someone to block and for confirming deletion. */
+.pc-sheet-title {
+  margin: 0 0 var(--sp-2);
+  font-size: var(--fs-h2);
+  font-weight: 300;
+  letter-spacing: -0.03em;
+}
+.pc-picker {
+  max-height: 46vh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  margin-top: var(--sp-2);
+}
