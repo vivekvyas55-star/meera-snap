@@ -557,6 +557,18 @@ the repo. That is said plainly in Profile — and **only** in Profile:
   the lock a suggestion.
 - `PinPad.jsx` is shared by the lock screen and the set/change sheet, so the two
   cannot drift about how many digits a code has.
+- **The app re-locks when it is backgrounded** (`RELOCK_GRACE_MS`, 30s). Without
+  this the lock only ever applied to a cold start, which is no lock at all
+  against the threat it exists for: a phone handed over with Meera already open,
+  or merely sitting in the app switcher, walked straight into the conversations.
+  Locking fires on `hidden` rather than on `visible` **on purpose** — that is
+  before the platform snapshots the app for its switcher, so the thumbnail shows
+  the pad and not an open chat. Returning inside the grace window lifts it
+  silently, because the app loses visibility constantly (media picker, camera
+  roll, an incoming call) and charging a passcode every time trains people to
+  type it without looking. `hiddenTooLong()` treats a missing or unreadable
+  timestamp as "too long": the failure mode must be asking for a code that was
+  not needed, never skipping one that was.
 - Counters live in **localStorage, not sessionStorage** — a lockout a reload or a
   fresh tab clears is not a lockout.
 - The decoy shows **no countdown and no hint that a passcode exists**; the pad

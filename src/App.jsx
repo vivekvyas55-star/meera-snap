@@ -27,7 +27,7 @@ import { CameraIcon, ChatIcon, StoriesIcon } from './components/Icons'
 import InstallPrompt from './components/InstallPrompt'
 import OutboxDelivery from './components/OutboxDelivery'
 import PinLock from './components/PinLock'
-import { isUnlocked } from './lib/appLock'
+import { clearHidden, hiddenTooLong, isUnlocked, markHidden } from './lib/appLock'
 import { trackDeviceSessions } from './lib/devices'
 import { useBackLayer } from './hooks/useBackLayer'
 import { signalReceiver } from './lib/privateRealtime'
@@ -388,7 +388,31 @@ export default function App() {
   useEffect(() => {
     const relock = () => setUnlocked(false)
     window.addEventListener('meera:lock', relock)
-    return () => window.removeEventListener('meera:lock', relock)
+
+    // The lock has to survive the app being backgrounded, not just a cold
+    // start. Locking on `hidden` rather than on `visible` is deliberate: it
+    // happens BEFORE the platform snapshots the app for its switcher, so the
+    // thumbnail shows the pad instead of an open conversation.
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') {
+        markHidden()
+        setUnlocked(false)
+        return
+      }
+      // Back within the grace window — a task switch, not a handover. Lift it
+      // again silently; anything longer costs the passcode.
+      if (!hiddenTooLong() && isUnlocked()) setUnlocked(true)
+      clearHidden()
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+    // pagehide fires where visibilitychange does not on some iOS paths.
+    window.addEventListener('pagehide', markHidden)
+
+    return () => {
+      window.removeEventListener('meera:lock', relock)
+      document.removeEventListener('visibilitychange', onVisibility)
+      window.removeEventListener('pagehide', markHidden)
+    }
   }, [])
   if (!unlocked) return <PinLock onUnlock={() => setUnlocked(true)} />
 
