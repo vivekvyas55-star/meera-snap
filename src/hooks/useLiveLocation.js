@@ -22,13 +22,54 @@ const PERMISSION_DENIED = 1
  * on opening the map, and a denial stops the watch for good rather than retrying.
  */
 export async function watchAllowed() {
+  const state = await locationPermission()
+  // Only these two. 'denied' must NOT pass — calling anyway just re-shows the
+  // blocked bubble — and 'prompt-blocked' must not either, or we prompt someone
+  // who never tapped anything.
+  return state === 'granted' || state === 'unknown'
+}
+
+/**
+ * 'granted'        — the grant exists and PERSISTS. This is the closest thing
+ *                    the web has to "permanent access": once given, the browser
+ *                    stops asking. It is NOT background access — no browser
+ *                    grants a web page location while it is closed.
+ * 'prompt-blocked' — never asked. We must not ask here; it has to come from a
+ *                    tap, which is what the "Turn on live updates" button is for.
+ * 'denied'         — refused. Asking again only re-shows the blocked bubble, so
+ *                    the UI has to send them to browser settings instead.
+ * 'unknown'        — Safari has no geolocation descriptor, so we cannot tell.
+ *                    Treated as allowed: the user turned sharing on themselves,
+ *                    it is at most ONE prompt, and a denial stops the watch for
+ *                    good rather than retrying at a bubble they dismissed.
+ */
+export async function locationPermission() {
   try {
     const status = await navigator.permissions?.query({ name: 'geolocation' })
-    if (status) return status.state === 'granted'
+    if (status) {
+      if (status.state === 'granted') return 'granted'
+      return status.state === 'denied' ? 'denied' : 'prompt-blocked'
+    }
   } catch {
     // Permissions API present but without the geolocation descriptor.
   }
-  return true
+  return 'unknown'
+}
+
+/**
+ * Ask for the grant, from a user gesture only. Resolves true once it exists —
+ * and once it does the browser remembers it, so this is asked once and never
+ * again.
+ */
+export function requestLocationAccess() {
+  return new Promise((resolve) => {
+    if (!navigator.geolocation) return resolve(false)
+    navigator.geolocation.getCurrentPosition(() => resolve(true), () => resolve(false), {
+      enableHighAccuracy: false,
+      maximumAge: 60000,
+      timeout: 15000,
+    })
+  })
 }
 
 /**
@@ -47,7 +88,7 @@ export async function watchAllowed() {
  * @param onBlocked called once if we may not watch under the existing grant
  * @param onError  called for geolocation errors (denial included)
  */
-export default function useLiveLocation({ active, seed = null, onFix, onBlocked, onError, options = WATCH_OPTIONS }) {
+export default function useLiveLocation({ active, seed = null, onFix, onBlocked, onError, retryToken = 0, options = WATCH_OPTIONS }) {
   const lastRef = useRef(null)
   // Callbacks change identity every render (they close over map state). Holding
   // them in a ref is what keeps the watch itself depending on `active` alone —
@@ -128,5 +169,5 @@ export default function useLiveLocation({ active, seed = null, onFix, onBlocked,
       document.removeEventListener('visibilitychange', onVisibility)
       stop()
     }
-  }, [active, options])
+  }, [active, options, retryToken])
 }

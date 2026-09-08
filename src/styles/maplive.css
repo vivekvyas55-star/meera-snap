@@ -1,0 +1,11 @@
+/* "Turn on live updates" sits inside a sentence, so it reads as a link rather
+   than competing with Share / Go Ghost for the eye.
+
+   Its own file on purpose: capture.css is being consolidated by the design pass
+   as this ships, and appending there would have put two agents in one file. */
+.map-enable-live {
+  background: none; border: 0; padding: 0; font: inherit;
+  color: var(--indigo); font-weight: 600;
+  text-decoration: underline; text-underline-offset: 3px;
+  min-height: 44px;
+}

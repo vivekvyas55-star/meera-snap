@@ -6,7 +6,8 @@ import { useAuth } from '../hooks/useAuth'
 import { useAlias } from '../hooks/useAliasClock'
 import { isSecureContext } from '../hooks/useCamera'
 import { useToast } from '../hooks/useToast'
-import useLiveLocation from '../hooks/useLiveLocation'
+import useLiveLocation, { locationPermission, requestLocationAccess } from '../hooks/useLiveLocation'
+import '../styles/maplive.css'
 // Great-circle distance in km. Both coordinates are already on the map, so the
 // nicest thing to say about them costs nothing extra. It lives in lib/geo with
 // the publish throttle, which measures in the same units.
@@ -206,11 +207,25 @@ export default function SnapMap({ onBack }) {
   }, [myLoc])
 
   const onBlocked = useCallback(() => setLiveBlocked(true), [])
+  // Bumping this re-runs the watch's permission check, so granting access
+  // starts live updates immediately instead of after a Ghost/Share round trip.
+  const [liveRetry, setLiveRetry] = useState(0)
+  const [permission, setPermission] = useState('unknown')
+  useEffect(() => { locationPermission().then(setPermission) }, [liveBlocked, liveRetry])
+
+  // The grant has to come from a tap — a prompt nobody asked for is the exact
+  // complaint the camera work went to some trouble to kill. Once given, the
+  // browser remembers it: this is asked once, not every session.
+  const enableLive = useCallback(async () => {
+    const ok = await requestLocationAccess()
+    setPermission(await locationPermission())
+    if (ok) { setLiveBlocked(false); setLiveRetry((n) => n + 1) }
+  }, [])
 
   // The fix for the reported bug: while — and only while — sharing is on, the
   // position refreshes itself. Ghost Mode is still the default and still deletes
   // the row, and nothing here asks the device for a position when sharing is off.
-  useLiveLocation({ active: sharing === true, seed, onFix: publishFix, onBlocked })
+  useLiveLocation({ active: sharing === true, seed, onFix: publishFix, onBlocked, retryToken: liveRetry })
 
   const goGhost = async () => {
     publishOk.current = false
@@ -354,7 +369,24 @@ export default function SnapMap({ onBack }) {
                     the dot is frozen rather than to let it quietly go stale. */}
                 {liveBlocked && (
                   <div className="map-updated">
-                    Live updates need location permission — Go Ghost, then Share again.
+                    {permission === 'denied' ? (
+                      <>
+                        Live updates are blocked for this site. Turn location back on
+                        in your browser&rsquo;s site settings — Meera cannot re-ask once
+                        it has been refused.
+                      </>
+                    ) : (
+                      <>
+                        Your pin will not move on its own yet.
+                        {' '}
+                        <button type="button" className="map-enable-live" onClick={enableLive}>
+                          Turn on live updates
+                        </button>
+                        {' '}
+                        Granted once, your browser remembers it — Meera will not ask again.
+                        It still only ever checks while sharing is on and the map is open.
+                      </>
+                    )}
                   </div>
                 )}
               </>
