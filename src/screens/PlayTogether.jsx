@@ -6,6 +6,7 @@ import { useAuth } from '../hooks/useAuth'
 import { listFriendsWithProfiles, createGameInvite, resolveGameInvite, syncGameRoom, playGameMove, endGameRoom, listActiveGameRooms, isVisibleTo, clearViewedChats, listMessages, sendChat, pairKey, markChatsOpened } from '../lib/db'
 import { useToast } from '../hooks/useToast'
 import { sendSignal, signalReceiver } from '../lib/privateRealtime'
+import { peerPresence } from '../lib/gameState'
 import { notify } from '../lib/push'
 import { supabase } from '../lib/supabase'
 import { mergeMessages } from '../lib/messageState'
@@ -162,12 +163,31 @@ export function TicTacToe({ me, friend, incoming, inviteId, room, mark, onClose 
   const terminal = state?.ended_at || state?.status === 'dismissed' || expired
   const turn = (state?.revision || 0) % 2 === 0 ? 'X' : 'O'
   const ready = state?.status === 'accepted' && !terminal && !result
-  const lastSeen = mark === 'X' ? state?.recipient_present_at : state?.sender_present_at
-  const here = lastSeen && now - Date.parse(lastSeen) < 15000
+  // One definition of "away", shared with the chip in the conversation. These
+  // were 15s here and 45s there, so the same moment could read "Friend is away"
+  // in the chat and "they are in the room" on the board.
+  const here = state ? peerPresence(state, me, now) === 'here' : false
   const status = !state ? 'Connecting to your room…' : expired ? 'This game has expired' :
     state.ended_at ? 'This game has ended' : state.status === 'dismissed' ? 'Invitation dismissed' :
     result ? (result === 'draw' ? 'A perfect match — draw!' : result === mark ? 'You won! Nicely played.' : friendName + ' wins this round') :
     state.status === 'pending' ? 'Waiting for them to accept…' : turn === mark ? 'Your turn' : friendName + "'s turn"
+  // Coming back is a transition, not a level, so it has to be watched for. The
+  // other three states are readable from the row at any moment; "returned" only
+  // exists in the change, and without it a friend rejoining a quiet board is
+  // completely silent.
+  const wasHere = useRef(here)
+  const [returned, setReturned] = useState(false)
+  useEffect(() => {
+    if (here && !wasHere.current) {
+      setReturned(true)
+      const t = setTimeout(() => setReturned(false), 4000)
+      wasHere.current = here
+      return () => clearTimeout(t)
+    }
+    wasHere.current = here
+    return undefined
+  }, [here])
+
   const play = async (index) => {
     if (moving.current || !ready || board[index] || turn !== mark || error) return
     moving.current = true; setBusy(true)
@@ -191,7 +211,7 @@ export function TicTacToe({ me, friend, incoming, inviteId, room, mark, onClose 
     <div className="game-room-head"><div><span className="eyebrow">Private to you both</span><h2>Tic-Tac-Toe</h2></div><button type="button" className="pill-btn" onClick={onClose}>Save & leave</button></div>
     <div className={`game-status ${ready && turn === mark ? 'your-turn' : ''}`} role="status">
       <strong>{busy ? 'Saving your move…' : status}</strong>
-      <span>{state?.status === 'pending' ? 'They can accept later. You can leave and resume from Play.' : ready ? here ? friendName + ' is in the room' : friendName + ' is away. Your moves will wait here.' : 'Rooms are available for 24 hours from the invitation.'}</span>
+      <span>{state?.status === 'pending' ? 'They can accept later. You can leave and resume from Play.' : ready ? returned ? friendName + ' is back' : here ? friendName + ' is in the room' : friendName + ' is away. Your moves will wait here.' : 'Rooms are available for 24 hours from the invitation.'}</span>
     </div>
     {error && <div className="game-connection" role="alert">{error}<button type="button" className="pill-btn" onClick={() => syncRef.current()}>Sync board</button></div>}
     <div className="game-legend"><span className={mark === 'X' ? 'mark-x' : 'mark-o'}>You · {mark}</span><span>{friendName} · {mark === 'X' ? 'O' : 'X'}</span></div>

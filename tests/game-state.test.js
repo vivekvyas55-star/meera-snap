@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { AWAY_MS, isMyTurn, playState, roomWith } from '../src/lib/gameState'
+import { AWAY_MS, isMyTurn, peerPresence, playState, roomWith } from '../src/lib/gameState'
 
 const ME = 'me', FRIEND = 'friend'
 const now = Date.now()
@@ -62,4 +62,17 @@ test('the room for this conversation is found from either side', () => {
   expect(roomWith([room({ sender_id: FRIEND, recipient_id: ME })], FRIEND)?.id).toBe('g')
   expect(roomWith([room()], 'someone-else')).toBe(null)
   expect(roomWith(null, FRIEND)).toBe(null)
+})
+
+test('every surface asks the same question about presence', () => {
+  // The game screen used to call "away" at 15s while the chip called it at 45s,
+  // so the same moment read "Friend is away" in the conversation and "they are
+  // in the room" on the board. One function, one threshold.
+  const fresh = new Date(now - 1000).toISOString()
+  const stale = new Date(now - AWAY_MS - 1).toISOString()
+  expect(peerPresence(room({ recipient_present_at: fresh }), ME, now)).toBe('here')
+  expect(peerPresence(room({ recipient_present_at: stale }), ME, now)).toBe('away')
+  // Asked from the other side it reads the other stamp, not the same one.
+  expect(peerPresence(room({ sender_present_at: stale, recipient_present_at: fresh }), FRIEND, now)).toBe('away')
+  expect(peerPresence(null, ME, now)).toBe('away')
 })
