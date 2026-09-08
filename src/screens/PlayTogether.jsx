@@ -6,7 +6,7 @@ import { useAuth } from '../hooks/useAuth'
 import { rematchGame, listFriendsWithProfiles, createGameInvite, resolveGameInvite, syncGameRoom, playGameMove, endGameRoom, listActiveGameRooms, isVisibleTo, clearViewedChats, listMessages, sendChat, pairKey, markChatsOpened } from '../lib/db'
 import { useToast } from '../hooks/useToast'
 import { sendSignal, signalReceiver } from '../lib/privateRealtime'
-import { peerPresence, pieceToMove } from '../lib/gameState'
+import { peerPresence, pieceToMove, scoreboard } from '../lib/gameState'
 import { notify } from '../lib/push'
 import { supabase } from '../lib/supabase'
 import { mergeMessages } from '../lib/messageState'
@@ -243,6 +243,18 @@ export function TicTacToe({ me, friend, incoming, inviteId, room, mark, onClose 
       </div>
     )}
     {error && <div className="game-connection" role="alert">{error}<button type="button" className="pill-btn" onClick={() => syncRef.current()}>Sync board</button></div>}
+    {(() => {
+      const score = scoreboard(state, me)
+      if (!score) return null
+      return (
+        <div className="game-score" role="status" aria-label={`Series score: you ${score.mine}, ${friendName} ${score.theirs}${score.drawn ? `, ${score.drawn} drawn` : ''}`}>
+          <span><strong>{score.mine}</strong> You</span>
+          <span className="game-score-sep">·</span>
+          <span><strong>{score.theirs}</strong> {friendName}</span>
+          {score.drawn > 0 && <><span className="game-score-sep">·</span><span><strong>{score.drawn}</strong> drawn</span></>}
+        </div>
+      )
+    })()}
     <div className="game-legend"><span className={mark === 'X' ? 'mark-x' : 'mark-o'}>You · {mark}</span><span>{friendName} · {mark === 'X' ? 'O' : 'X'}</span></div>
     <div className="ttt-board" aria-label="Tic-Tac-Toe board">{board.map((value, i) => <button type="button" key={i} className={`ttt-cell ${value ? 'mark-' + value.toLowerCase() : ''}`} onClick={() => play(i)} aria-label={value ? `${value}, square ${i + 1}` : `Empty square ${i + 1}`} disabled={!ready || busy || !!error || !!value || turn !== mark}>{value}</button>)}</div>
     <GameChat me={me} friend={friend} />

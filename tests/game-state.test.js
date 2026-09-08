@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { AWAY_MS, isMyTurn, peerPresence, pieceToMove, playState, roomWith } from '../src/lib/gameState'
+import { AWAY_MS, isMyTurn, peerPresence, pieceToMove, playState, roomWith, scoreboard } from '../src/lib/gameState'
 
 const ME = 'me', FRIEND = 'friend'
 const now = Date.now()
@@ -112,4 +112,21 @@ test('the turn is read against the right player in a later round', () => {
   expect(isMyTurn(second, FRIEND)).toBe(true)
   expect(playState(second, ME, now).label).toBe('Accepted — Resume')
   expect(playState(second, FRIEND, now).label).toBe('Your turn')
+})
+
+test('the series score is read from the viewer’s side', () => {
+  const played = room({ sender_wins: 2, recipient_wins: 1, draws: 1 })
+  // ME invited, so ME is X, so sender_wins are mine.
+  expect(scoreboard(played, ME)).toEqual({ mine: 2, theirs: 1, drawn: 1 })
+  // The same row read by the other player must not flip the result of the
+  // series — it flips whose column is whose.
+  expect(scoreboard(played, FRIEND)).toEqual({ mine: 1, theirs: 2, drawn: 1 })
+})
+
+test('nothing played and nothing known both show no score', () => {
+  // "0 - 0" before a single game is noise, and on a database without the score
+  // migration it would be a claim rather than an absence.
+  expect(scoreboard(room({ sender_wins: 0, recipient_wins: 0, draws: 0 }), ME)).toBe(null)
+  expect(scoreboard(room({ sender_wins: undefined, recipient_wins: undefined }), ME)).toBe(null)
+  expect(scoreboard(null, ME)).toBe(null)
 })

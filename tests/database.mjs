@@ -249,6 +249,13 @@ await asUser(B,async()=>{
   assert.equal(untouched.round,1)
   assert.equal(untouched.board[0],'O')
 })
+// The score has to survive the rematch — carrying it across rounds is the only
+// reason to keep one — and must move exactly once per round however many times
+// a move is retried.
+await asUser(A,async()=>{
+ const row=(await query('select * from game_invites where id=$1',[game.id]))[0]
+ assert.equal(row.sender_wins,1); assert.equal(row.recipient_wins,0); assert.equal(row.draws,0)
+})
 console.log('PASS rematch resets the board, alternates who starts, and is idempotent')
 await asUser(B,async()=>{
   await query('select end_game_room($1)',[game.id])

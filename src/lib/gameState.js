@@ -83,3 +83,17 @@ export function peerPresence(room, me, now = Date.now()) {
 export function roomWith(rooms, friendId) {
   return (rooms ?? []).find((r) => r.sender_id === friendId || r.recipient_id === friendId) ?? null
 }
+
+// The running score for a room, from the viewer's side. X is always the
+// inviter, so the pieces map onto people the same way they do everywhere else.
+export function scoreboard(room, me) {
+  if (!room) return null
+  const mine = myPiece(room, me) === 'X' ? room.sender_wins : room.recipient_wins
+  const theirs = myPiece(room, me) === 'X' ? room.recipient_wins : room.sender_wins
+  const drawn = room.draws ?? 0
+  // A database without the score migration has no counters at all, and showing
+  // "0 - 0" there would be a claim rather than an absence.
+  if (mine == null || theirs == null) return null
+  if (!mine && !theirs && !drawn) return null
+  return { mine, theirs, drawn }
+}

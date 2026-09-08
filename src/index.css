@@ -1799,6 +1799,11 @@ button:disabled { cursor: not-allowed; }
 /* The rematch action sits with the result, which is where someone is standing
    when they decide whether to play another round. */
 .game-again { display: flex; align-items: center; gap: 12px; margin: 12px 0; }
+/* The running score for the series. Sits above the legend so it reads as
+   context for the board rather than another control. */
+.game-score { display: flex; align-items: center; gap: 8px; margin: 10px 0 2px; font-size: var(--fs-meta); color: var(--muted); }
+.game-score strong { color: var(--ink); font-weight: 650; margin-right: 3px; }
+.game-score-sep { opacity: 0.5; }
 .game-again .btn-dark { min-height: 44px; padding: 0 20px; }
 .game-room-head { display: flex; align-items: center; justify-content: space-between; }
 .game-room-head h2 { margin: 4px 0 0; font-size: 25px; font-weight: 450; letter-spacing: -.035em; }
