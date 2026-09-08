@@ -128,8 +128,13 @@ export default function SnapMap({ onBack }) {
           setSharingState(!!loc?.sharing)
         })
         .catch(() => {
+          // Leave sharing UNKNOWN. The screen already has an honest third
+          // state for this ("Checking your map settings…", button disabled);
+          // asserting false would tell someone they are hidden when we simply
+          // could not find out, and would hide the Go Ghost button that turns
+          // it off for real.
           setMyLoc(null)
-          setSharingState(false)
+          setSharingState(null)
         }),
     [me]
   )

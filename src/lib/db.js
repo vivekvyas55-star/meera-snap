@@ -549,8 +549,14 @@ export async function getCharms(otherId) {
   return data ?? null
 }
 
+// Throws on failure, deliberately. This used to discard `error` and return
+// null — and null is what Snap Map reads as Ghost Mode, so a flaky connection
+// made the screen say "Nobody can see you, and nothing of yours is stored"
+// while the row was untouched and every friend could still see the pin. A
+// privacy screen must never assert a state it failed to read.
 export async function getMyLocation(me) {
-  const { data } = await supabase.from('locations').select('*').eq('user_id', me).maybeSingle()
+  const { data, error } = await supabase.from('locations').select('*').eq('user_id', me).maybeSingle()
+  if (error) throw error
   return data ?? null
 }
 

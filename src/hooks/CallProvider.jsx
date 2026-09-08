@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { setCallActive } from '../lib/callState'
 import { sendSignal, signalReceiver } from '../lib/privateRealtime'
 import { ICE_SERVERS, rtcSupported } from '../lib/rtc'
 import { useAuth } from './useAuth'
@@ -395,8 +396,28 @@ export function CallProvider({ children }) {
     setCall((c) => (c ? { ...c, camOff: !track.enabled } : c))
   }, [])
 
-  // Release camera/mic + channels if the provider unmounts mid-call, and on logout.
-  useEffect(() => () => teardown(), [teardown])
+  // Anything above this provider needs to know a call is live — App locks the
+  // app on `hidden`, which would unmount us mid-call.
+  useEffect(() => { setCallActive(Boolean(call)); return () => setCallActive(false) }, [call])
+
+  // Release camera/mic + channels if the provider unmounts mid-call, and on
+  // logout. Tearing down silently left the peer watching a connected call that
+  // was already gone until ICE noticed, and wrote no call log at all — so a
+  // five-minute conversation left no trace in the thread.
+  // Held in a ref so this stays an unmount-ONLY cleanup. In the dependency
+  // array these would re-run it on every identity change, saying goodbye to a
+  // call that is still going.
+  const goodbye = useRef(null)
+  goodbye.current = () => {
+    const c = callRef.current
+    if (!c) return
+    try { signalInbox(c.peer.id, 'hangup', { room: c.room }) } catch { /* going away regardless */ }
+    logEnd(c, c.state === 'connected' ? 'ended' : 'missed')
+  }
+  useEffect(() => () => {
+    goodbye.current?.()
+    teardown()
+  }, [teardown])
   useEffect(() => {
     if (!me && callRef.current) teardown()
   }, [me, teardown])

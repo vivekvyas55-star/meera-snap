@@ -29,6 +29,7 @@ import InstallPrompt from './components/InstallPrompt'
 import OutboxDelivery from './components/OutboxDelivery'
 import PinLock from './components/PinLock'
 import { clearHidden, hiddenTooLong, isUnlocked, markHidden } from './lib/appLock'
+import { isCallActive } from './lib/callState'
 import { trackDeviceSessions } from './lib/devices'
 import { useBackLayer } from './hooks/useBackLayer'
 import { signalReceiver } from './lib/privateRealtime'
@@ -408,7 +409,12 @@ export default function App() {
     const onVisibility = () => {
       if (document.visibilityState === 'hidden') {
         markHidden()
-        setUnlocked(false)
+        // Not while a call is live. PinLock is an early return above the whole
+        // provider tree, so locking here unmounts CallProvider — and WebRTC
+        // takes no wake lock, so on a voice call the screen timing out is
+        // guaranteed. The call died mid-sentence. `markHidden` still ran, so a
+        // long absence still costs the passcode once the call ends.
+        if (!isCallActive()) setUnlocked(false)
         return
       }
       // Back within the grace window — a task switch, not a handover. Lift it

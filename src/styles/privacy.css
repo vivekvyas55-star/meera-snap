@@ -625,3 +625,35 @@
   .pc-nav { gap: var(--sp-2); }
   .pc-group { gap: var(--sp-2); }
 }
+
+
+/* ==========================================================================
+   Avatar drawer
+   ==========================================================================
+   The emoji grid plus the colour slider is the tallest block in Profile and is
+   touched about once. Collapsed, it reads as one row that states the current
+   choice; open, it is exactly what it was. <details> rather than a div with a
+   click handler, so keyboard and assistive tech work without being rebuilt. */
+.pc-drawer { border-radius: var(--r-row); background: var(--card); }
+.pc-drawer > summary {
+  display: flex; align-items: center; gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4); min-height: 56px;
+  cursor: pointer; list-style: none; border-radius: var(--r-row);
+}
+.pc-drawer > summary::-webkit-details-marker { display: none; }
+.pc-drawer > summary:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+.pc-drawer-face {
+  width: 38px; height: 38px; border-radius: 50%; flex: 0 0 auto;
+  display: grid; place-items: center; font-size: 19px;
+  background: var(--bg); color: var(--ink);
+}
+.pc-drawer-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; flex: 1; }
+.pc-drawer-hint { font-size: var(--fs-meta); color: var(--muted); }
+.pc-drawer-chev { flex: 0 0 auto; color: var(--muted); transition: transform 160ms ease; }
+.pc-drawer[open] .pc-drawer-chev { transform: rotate(90deg); }
+.pc-drawer[open] > summary { border-bottom: 1px solid var(--hairline); border-radius: var(--r-row) var(--r-row) 0 0; }
+.pc-drawer .emoji-grid { padding: var(--sp-4) var(--sp-4) var(--sp-3); }
+.pc-drawer > .pc-label,
+.pc-drawer > label.pc-label { padding: 0 var(--sp-4); }
+.pc-drawer > input[type="range"] { width: calc(100% - var(--sp-5)) !important; margin: 0 var(--sp-4) var(--sp-4); }
+@media (prefers-reduced-motion: reduce) { .pc-drawer-chev { transition: none; } }

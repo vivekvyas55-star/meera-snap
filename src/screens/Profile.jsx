@@ -360,7 +360,24 @@ export default function Profile({ onBack, openPlay = false, onPlayOpened }) {
             className="field"
           />
 
-          <div className="pc-label" id="pc-avatar-label">Avatar</div>
+          {/* A drawer, because the emoji grid plus the colour slider is the
+              tallest thing on this screen and it is touched roughly once. The
+              summary carries the current choice, so it says what is set without
+              being opened, and <details> keeps keyboard and screen-reader
+              behaviour for free — a div with a click handler would not. */}
+          <details className="pc-drawer">
+            <summary>
+              <span className="pc-drawer-face" aria-hidden="true">
+                {emoji ?? (profile.username || '?').charAt(0).toUpperCase()}
+              </span>
+              <span className="pc-drawer-text">
+                <span className="pc-label" id="pc-avatar-label">Avatar</span>
+                <span className="pc-drawer-hint">
+                  {emoji ? 'Emoji' : `Letter · colour ${hue}°`}
+                </span>
+              </span>
+              <ChevronIcon className="pc-drawer-chev" width={20} height={20} />
+            </summary>
           <div className="emoji-grid" role="group" aria-labelledby="pc-avatar-label">
             <button
               onClick={() => setEmoji(null)}
@@ -397,6 +414,7 @@ export default function Profile({ onBack, openPlay = false, onPlayOpened }) {
               />
             </>
           )}
+          </details>
 
           <button className="btn-dark" disabled={!dirty || profileSave.busy} onClick={save}>
             <CheckIcon width={17} height={17} /> {profileSave.busy ? 'Saving…' : 'Save profile'}
