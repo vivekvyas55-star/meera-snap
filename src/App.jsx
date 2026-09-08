@@ -1,5 +1,6 @@
 import ErrorBoundary from './components/ErrorBoundary'
 import OfflineBar from './components/OfflineBar'
+import SchemaDriftBar from './components/SchemaDriftBar'
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { AuthProvider } from './hooks/AuthProvider'
 import { useAuth } from './hooks/useAuth'
@@ -357,6 +358,7 @@ export default function App() {
             <CallProvider>
               <OutboxDelivery />
               <OfflineBar />
+              <SchemaDriftBar />
               <SessionShell />
               <CallOverlay />
             </CallProvider>

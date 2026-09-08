@@ -206,6 +206,30 @@ current):** `snap_reopen.sql` (said 3 reopens/4 views; live `SNAP_MAX_OPENS`=6 =
 counter).
 Apply new migrations via the Supabase SQL editor; they're written idempotently.
 
+**The frontend and the database cannot silently drift**
+(`202609080017_schema_version.sql`, `lib/schemaVersion.js`). `schema_migrations`
+records every applied migration; `schema_version()` returns the newest id and is
+the one thing there granted to authenticated. `vite.config.js` stamps the
+newest migration in the repo into the bundle as `__SCHEMA_EXPECTED__`, and
+`SchemaDriftBar` compares them once after sign-in.
+
+- Ids sort **lexically**, which works because every migration is
+  datestamped-then-named — the same order the SQL editor applies them in and the
+  same one `tests/database.mjs` enumerates.
+- Only **`database-behind`** is announced. A migration applied while the deploy
+  is still in flight is the normal state for a few minutes.
+- It **fails open in every direction** — no RPC, no session, no network, all
+  report `unknown` and say nothing. A drift check that can stop the app from
+  starting is a worse trade than the drift it watches for.
+- **Every migration after 0017 must end by registering itself**
+  (`insert into public.schema_migrations(id) values ('<its own id>') on conflict
+  do nothing;`). `tests/schema-contract.test.js` fails the build if one does
+  not. Earlier files cannot: the table does not exist when they run, so 0017
+  backfills them.
+
+This is the half `tests/schema-contract.test.js` structurally cannot cover — it
+checks the repo against itself and never talks to production.
+
 **The client/schema contract is a test** (`tests/schema-contract.test.js`).
 Three features shipped in halves — a client calling an RPC no applied migration
 defined, or a migration applied with no client to use it — and each time it

@@ -307,4 +307,13 @@ assert.equal(Number(wider.projected_daily_egress)-Number(wider.snap_bytes),10000
 assert.equal((await query('select count(*)::int n from ops_metrics'))[0].n,1)
 await asUser(B,()=>assert.rejects(query('select * from ops_metrics'),/permission denied/))
 console.log('PASS egress projection counts a story once per friend, and is idempotent per day')
+// The drift check is only worth having if the version it reports is the real
+// newest one and a client can actually ask for it.
+const newest=fs.readdirSync('supabase/migrations').filter((f)=>f.endsWith('.sql')).sort().at(-1).replace(/\.sql$/,'')
+await asUser(A,async()=>{
+ assert.equal((await query('select public.schema_version() v'))[0].v,newest)
+ // The list of what is applied is operator data; only the newest id is public.
+ await assert.rejects(query('select * from schema_migrations'),/permission denied/)
+})
+console.log('PASS schema_version reports the newest applied migration to a signed-in client')
 await db.close()

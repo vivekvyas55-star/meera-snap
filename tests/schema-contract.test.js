@@ -68,3 +68,23 @@ test('every migration is exercised by the PGlite harness', () => {
   const unexercised = enumerates ? [] : files.filter((f) => !harness.includes(f))
   expect(unexercised, `migrations never run by tests/database.mjs: ${unexercised.join(', ')}`).toEqual([])
 })
+
+test('every migration records itself in schema_migrations', () => {
+  // schema_migrations is what lets a running client tell whether the database
+  // has caught up with the bundle. A migration that does not register leaves
+  // the version stuck at the last one that did, so the check silently reports
+  // drift that is not there — or worse, misses drift that is.
+  //
+  // 202609080017 introduces the table and backfills everything up to itself, so
+  // the convention starts with the migration after it. Earlier files cannot
+  // register: the table does not exist when they run.
+  const START = '202609080017_schema_version.sql'
+  const later = readdirSync(MIGRATIONS)
+    .filter((f) => f.endsWith('.sql') && f > START)
+    .sort()
+  const missing = later.filter((f) => {
+    const sql = readFileSync(join(MIGRATIONS, f), 'utf8')
+    return !sql.includes(`schema_migrations(id) values ('${f.replace(/\.sql$/, '')}')`)
+  })
+  expect(missing, `migrations that never register themselves: ${missing.join(', ')}`).toEqual([])
+})
