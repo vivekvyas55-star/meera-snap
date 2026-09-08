@@ -1,161 +1,138 @@
 # Meera — the working list
 
-Everything discussed, so nothing is lost. Status as of **8 Sep 2026**.
-`CLAUDE.md` stays the reference for how things work; this is what is left to do.
+Status as of **9 Sep 2026**. `CLAUDE.md` says how things work; this says what is done.
+**LIVE** = applied to production AND present in the served bundle — verified, not assumed.
 
 ---
 
-## Done
+## Live
 
-### Reliability foundation
-- [x] **Client/schema contract as a test** — `tests/schema-contract.test.js`. Fails the
-      build when an `.rpc()` has no `create function`, a `.from()` has no `create table`,
-      or the SQL harness stops enumerating migrations.
-- [x] **Every migration runs against real Postgres** — `tests/database.mjs` enumerates
-      the directory. Four migrations had never once executed before this.
-- [x] **Every client write executed as a real user** — grants gate writes before RLS, so
-      the only way to catch a missing grant is to perform the write. Mutation-checked.
-- [x] **Migration version checks** — `schema_migrations` + a build-time stamp; the app
-      says so when the database is behind the bundle. Fails open in every direction.
-- [x] **Game-room migration** — was already applied and live; the client shipped in
-      `76b4ccf`. Closed as done, not built.
+### Reliability
+- [x] Client/schema contract as a test — an `.rpc()` with no `create function`, a
+      `.from()` with no `create table`, or a harness that stops enumerating, fails the build.
+- [x] Every migration runs against real Postgres (four had never once executed).
+- [x] Every client write executed as a real authenticated user — grants gate writes
+      before RLS, so only performing the write catches a missing grant. Mutation-checked.
+- [x] Migration version checks — the app says so when the database is behind the bundle.
+- [x] Play RPCs verified live by probing PostgREST.
+- [x] Realtime listener isolation — one throwing listener could silence an incoming call.
+- [x] Dead-end pagination guard — a fully-hidden page left Chat with nothing to scroll.
+- [x] Stable realtime deps — depending on the profile object tore listeners down constantly.
 
-### Security and platform
-- [x] **User-settable passcode** — was `9934` in the bundle for every user. Now chosen in
-      Profile, PBKDF2 with a per-device salt, constant-time compare, opt-in lock.
-- [x] **Android Back closes one layer at a time** — Memories, Plans, Play and every sheet
-      were invisible to Back. Fixed a latent bug on the way: two synchronous
-      `history.back()` calls only go back one step.
+### Security and privacy
+- [x] Passcode mandatory. Default `9943`, stored as a hash, changeable, not removable.
+- [x] Re-lock on background — was cold-start only, so a handed-over phone with the app
+      open walked straight in. Locks on `hidden`, before the app-switcher snapshot.
+- [x] Default-passcode warning in Profile only; "Forgot passcode?" hidden until the
+      code is the user's own.
+- [x] Blocking enforced in RLS, and it deletes the friendship (stories, presence, calls
+      and push all gate on one).
+- [x] Device list + sign out everywhere, honest about what it cannot revoke.
+- [x] Location sharing expiry, and the `FOR ALL` policy hole that bypassed it.
+- [x] Export / delete account data. Storage usage.
+- [x] Android Back closes one layer at a time.
 
 ### Cost
-- [x] **Egress measured daily** — `ops_metrics`, with a projection that multiplies each
-      story by the audience it actually has. Warns into the Postgres log.
+- [x] Egress measured daily, projecting each story against its actual audience.
 
-### Privacy
-- [x] **Privacy Centre** — Profile grouped into the six sections, plus a device list
-      (honest about what it can and cannot revoke), blocking enforced in RLS, location
-      sharing with an expiry, storage usage, export and delete, and saved-state
-      feedback on every control that writes.
-
-### UI
-- [x] **Game scoreboard** — a running series score, written by the same statement
-      that decides the result.
-- [x] **Chat rows carry one signal** — nine competing signals down to name, unread
-      state, presence dot and one, chosen by what you lose by ignoring it. The
-      precedence is a pure tested function; the rest moved to the friend sheet.
-- [x] **Stories / Camera / Map** — story row tiles and worded seen states, a one-shot
-      tap/hold hint, camera Retry that distinguishes "dismissed once" from "blocked
-      forever", and a map that says what it is sharing and until when.
-- [x] **One notification strip** — install, game banner and toast each picked their own
-      offset and overlapped. Now one container ordered by priority.
-- [x] **Rematch** — a finished game starts the next round in the same room, with the
-      starter alternating. Was a dead end.
-- [x] **Play reachable from the conversation** — state chip in the relationship strip:
-      Waiting for acceptance / Wants to play / Your turn / Friend is away /
-      Accepted — Resume.
+### Features and fixes
+- [x] Question of the Day could be asked but never answered (`"body" is ambiguous`).
+- [x] Snap Map froze at wherever you stood when you tapped Share.
+- [x] Play discoverable — Waiting for acceptance / Wants to play / Your turn /
+      Friend is away / Accepted — Resume.
+- [x] Rematch, with the starter alternating. Series scoreboard.
+- [x] One notification stack (install/game/toast overlapped and covered the tab bar).
+- [x] Chat rows carry one signal, not nine.
+- [x] Stories / Camera / Map polish.
+- [x] Privacy Centre — Profile grouped into six sections.
 
 ---
 
 ## In flight
-
-(All three parallel workstreams landed — see Done.)
+- [ ] Profile UI/UX design pass — structure is right, visual pass is not done.
+- [ ] Market decoy depth — India/US, Watchlist/Orders/Funds/Research, market-hours clock.
 
 ---
 
-## Queued
+## Pending — never built
 
-### 1. Foundation (finish first)
-- [ ] Reconnect handling — Realtime resubscribe and state resync after a drop.
-- [ ] Offline queues beyond text — today only chats queue; snaps, reactions, question
-      answers and profile saves fail with a raw toast.
-- [ ] **Two-device smoke tests.** The highest-leverage item on this whole list: calls
-      and Realtime have never once been validated with two real devices.
-- [ ] Push-delivery logs — **needs a decision first.** A record of who was notified
-      when is exactly the metadata the push function deliberately keeps none of. If
-      it is for debugging: short retention, aggregates only.
+**Foundation**
+- [ ] Realtime reconnect handling (failed channels wait for the poll).
+- [ ] Offline queues beyond text — snaps, reactions, answers, profile saves still toast.
+- [ ] Two-device smoke tests. Calls and Realtime have never been validated on two
+      real devices. Needs hardware.
+- [ ] Game chat unread badge counts only realtime inserts.
+- [ ] Game resume from sessionStorage is not validated.
+- [ ] Push that deep-links into the pending game.
+- [ ] Push-delivery logs — **needs a decision**; it is exactly the metadata push keeps none of.
 
-### 2. Privacy Centre (remainder)
-- [x] ~~Block controls enforced in the database~~ — done. **Mute and report are still
-      to do**, and blocking does not retroactively scrub history.
+**Privacy**
+- [ ] Mute and report (blocking is done).
 - [ ] Per-snap controls before sending: audience, expiry, replay limit, save policy.
-      Mostly exposing machinery that already exists (`SNAP_MAX_OPENS`, `view_seconds`,
-      `saved_by`, `screenshot_at`).
-- [ ] WebAuthn / device biometric unlock. Worth having for how it feels — it is a
-      nicer front door on the same device-bound lock, not a stronger one.
+- [ ] WebAuthn / biometric unlock.
+- [ ] Lock screen still exposed to assistive tech.
+- [ ] **End-to-end encryption** — see below.
 
-### 3. Together layer
-- [ ] First-class pair surface: timeline, milestones, shared scrapbook, pinned voice
-      notes, anniversary cards, "On this day".
-- [ ] A consistent **"Private to you both"** badge across all of it.
-- [ ] Scheduled surprise messages — **needs a decision first.** A scheduled message is
-      a message sitting in plaintext for days, in an app where chats clear after three
-      visits. Where it lives has to be answered before it is built.
+**Together layer**
+- [ ] Timeline, milestones, scrapbook, pinned voice notes, anniversary cards,
+      "On this day", a consistent "Private to you both" badge.
+- [ ] Scheduled messages — **needs a decision**; plaintext for days in an app that
+      clears chats after three visits.
 
-### 4. Play Together
-- [ ] **Connect Four** — drops almost unchanged onto the existing `board text[]` +
-      `revision` pattern. Do this one first; it proves the pattern generalises.
-- [ ] Checkers — same pattern, larger board.
-- [ ] Word Duel — different animal: needs a dictionary in the bundle or an RPC.
-- [ ] Would You Rather — not really a game; a content table, closer to the question
-      of the day.
-- [ ] Shared game presence: waiting / away / returned / your turn. (The chip already
-      reads these; the game screen itself does not show them yet.)
-- [ ] Game chat, reactions, rematches, scheduled playtime.
-- [ ] Push that deep-links straight into the pending game.
-- [ ] Ludo — needs a `game:` branch in `realtime_allowed`, added in the same change.
+**Play**
+- [ ] Connect Four (first — proves the pattern generalises), Checkers, Word Duel,
+      Would You Rather. Game chat/reactions/scheduled playtime. Ludo (needs a `game:`
+      branch in `realtime_allowed`). Emoji chrome still mixed with line icons.
 
-### 5. Chat and Snap controls
-- [ ] On narrow phones, group stickers / voice / media / game / prompts into one
-      action sheet. Message field and Send stay primary.
+**Chat and Snap**
+- [ ] One action sheet at 320px. Show audience/expiry/replay/save policy before sending.
 
-### 6. Design system
-- [ ] Consolidate `src/index.css` — duplicate token and component overrides, and many
-      screens still use inline styles. **This pass also folds in the per-feature
-      stylesheets** (`src/styles/*.css`) that the parallel agents are writing now.
-- [ ] **Dark / low-light mode.** The app forces light. A private messaging app used at
-      night, next to fullscreen-black camera and viewers, should have a quiet dark
-      theme. Do this after the consolidation, not before.
+**Design system**
+- [ ] Consolidate `index.css`, fold in `src/styles/*.css`. Then dark mode.
+- [ ] Skeletons instead of "Loading…". Sheet titles/handle/close. Captions sit at 50%
+      and can cover the subject.
 
-### 7. Privacy-preserving intelligence
-- [ ] Local-only mood and status suggestions — **as heuristics over metadata** (time of
-      day, streak state, who wrote first). There is no on-device model here, and
-      shipping weights into a 490 KB PWA fights the egress budget. Call it heuristics.
-- [ ] Gentle reminders from timing and activity metadata.
-- [ ] On-device memory grouping and prompts.
-- [ ] No message-content analysis unless both people explicitly opt in. Stay well
-      clear of the in-app AI assistant line already drawn.
+**Intelligence** (heuristics over metadata only — there is no on-device model here)
+- [ ] Mood/status suggestions, gentle reminders, memory grouping. No content analysis
+      unless both people opt in.
 
-### 8. Daily polish
-- [ ] **`stories.thumb_path`** — drafted in the capture pass, not applied. Without it
-      an unseen story can never have a real preview; with it, `postStory` uploads a
-      400px thumb and `deleteStory` must queue BOTH paths or every deletion orphans
-      a file.
-- [ ] Loading, retry, empty and offline states throughout.
-- [ ] Faster chat list via server-filtered previews.
-- [ ] Safer thumbnail and media access.
+**Other**
+- [ ] `stories.thumb_path` — drafted, not applied; without it an unseen story can
+      never have a real preview.
 - [ ] Deep links for notifications.
-- [ ] Reduced-motion and privacy-friendly lock-screen presentation.
 
 ---
 
 ## Blocked on you
-
-- [ ] **Razorpay** — account, live key, webhook secret, written UPI Autopay rate card.
-      Until then Plans says "Payment not connected yet", which is honest and terminal.
-- [ ] **Move off Vercel Hobby** — its terms forbid commercial use. You cannot charge on
-      the current host. Cloudflare Pages, where your DNS already is.
-- [ ] **Two-device call test, password recovery on a fresh account, Android hardware
-      Back on a real phone** — need hardware.
-- [ ] **`billing_settings.enforced`** is still `false`. Flipping it is a deliberate act
-      and nothing in the repo does it.
+- [ ] Razorpay — account, live key, webhook secret, UPI Autopay rate card.
+- [ ] Move off Vercel Hobby — its terms forbid commercial use.
+- [ ] Two-device call test, password recovery on a fresh account, Android hardware Back.
+- [ ] `billing_settings.enforced` is still `false`.
+- [ ] **Rotate the Supabase management token** shared in this session.
 
 ---
 
-## Known and deliberate
+## What "super safe" actually means today
 
-- The passcode and the decoy are deterrence, not security. Real protection is the
-  account login plus RLS.
-- Ephemerality is a UI contract, not a security property.
-- Reverse-privacy is display-only. Bodies are stored in plaintext.
-- Screenshot detection is a heuristic and cannot be made reliable.
-- No in-app AI assistant. Explicitly not wanted.
+The goal is that nobody but the two users can reach the content. The honest gap:
+
+**Solid.** RLS is the real boundary and it holds — every table has policies, every
+write is exercised as a real user in the harness, blocking is enforced there too.
+Realtime is private-only with exactly one authorised writer per topic. The lock now
+survives backgrounding, which was the biggest hole for a phone in someone else's hands.
+
+**Not what it sounds like.**
+- **Message bodies are stored in plaintext in Postgres.** Meera is not end-to-end
+  encrypted. Anyone with database access — the host, anyone holding the service key,
+  anyone who compromises the project — can read every message. This is the largest
+  gap between "super safe" and what is true.
+- The passcode and decoy are deterrence, not security. The default is public and four
+  digits with a sign-out escape is not a boundary a determined person respects.
+- Ephemerality is a UI contract. Bodies exist server-side until purged, and a backup
+  copy lives three days.
+- Reverse-privacy is display-only; screenshot detection is a heuristic.
+
+**What would close it:** end-to-end encryption — keys on device, ciphertext on the
+server. The costs are real and belong in the decision: no server-side search, no
+content in push (already true), and messages unrecoverable if a device is lost
+without a backed-up key. Substantial work, not a setting.
