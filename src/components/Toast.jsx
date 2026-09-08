@@ -1,4 +1,6 @@
 import { useCallback, useRef, useState } from 'react'
+import { StackSlot } from './NotificationStack'
+import { PRIORITY } from '../lib/notifications'
 
 import { ToastContext } from '../hooks/useToast'
 
@@ -16,9 +18,11 @@ export function ToastProvider({ children }) {
     <ToastContext.Provider value={toast}>
       {children}
       {message && (
-        <div className="toast" role="status">
-          {message}
-        </div>
+        <StackSlot priority={PRIORITY.toast}>
+          <div className="toast" role="status">
+            {message}
+          </div>
+        </StackSlot>
       )}
     </ToastContext.Provider>
   )

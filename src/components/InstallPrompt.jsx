@@ -1,4 +1,6 @@
 import { CloseIcon } from './Icons'
+import { StackSlot } from './NotificationStack'
+import { PRIORITY } from '../lib/notifications'
 import { useEffect, useState } from 'react'
 import { isIOS, isIOSSafari, isStandalone } from '../lib/pwa'
 
@@ -47,6 +49,7 @@ export default function InstallPrompt() {
   const iosOther = isIOS() && !iosSafari
 
   return (
+    <StackSlot priority={PRIORITY.install}>
     <div className="install">
       <div className="install-body">
         <img src="/icons/icon-192.png" alt="" width="44" height="44" className="install-icon" />
@@ -80,5 +83,6 @@ export default function InstallPrompt() {
         </button>
       </div>
     </div>
+    </StackSlot>
   )
 }

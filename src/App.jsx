@@ -1,6 +1,9 @@
 import ErrorBoundary from './components/ErrorBoundary'
 import OfflineBar from './components/OfflineBar'
 import SchemaDriftBar from './components/SchemaDriftBar'
+import NotificationStack from './components/NotificationStack'
+import { StackSlot } from './components/NotificationStack'
+import { PRIORITY } from './lib/notifications'
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { AuthProvider } from './hooks/AuthProvider'
 import { useAuth } from './hooks/useAuth'
@@ -224,7 +227,33 @@ function Shell() {
   ) : openChat ? (
     // key per friend → a fresh Chat instance when switching, so no message/ref
     // state from one conversation ever bleeds into another.
-    <Chat key={openChat.id} friend={openChat} onBack={() => setOpenChat(null)} />
+    <Chat
+      key={openChat.id}
+      friend={openChat}
+      onBack={() => setOpenChat(null)}
+      // Play lives under Profile, so opening it from a conversation hands the
+      // room (or just the friend) across in sessionStorage rather than adding
+      // another piece of state that has to be kept in step with the pager.
+      onOpenPlay={(room) => {
+        try {
+          if (room) {
+            sessionStorage.setItem(`meera:resume-game:${profile.id}`, JSON.stringify({
+              id: room.id,
+              room: room.room,
+              peer: openChat,
+              // The inviter is X. Resuming as the wrong piece would let you try
+              // to move on your opponent's turn and get rejected by the server.
+              mark: room.sender_id === profile.id ? 'X' : 'O',
+            }))
+          } else {
+            sessionStorage.setItem(`meera:play-with:${profile.id}`, openChat.id)
+          }
+        } catch { /* the screen still opens, just without the handoff */ }
+        setOpenChat(null)
+        setShowProfile(true)
+        setOpenPlay(true)
+      }}
+    />
   ) : null
 
   const offset = -pane * (100 / PANES.length)
@@ -284,6 +313,7 @@ function Shell() {
       </Suspense>
     )}
     {gameInvite && !playVisible && (
+      <StackSlot priority={PRIORITY.game}>
       <div className="game-banner" role="status">
         <div className="game-banner-copy"><strong>{gameInvite.peer?.display_name || gameInvite.peer?.username || 'A friend'}</strong> {gameInvite.response === 'accepted' ? 'accepted your invitation' : 'invited you to play'}<span>Private to you both · Tic-Tac-Toe</span></div>
         <button type="button" className="game-banner-open" onClick={() => {
@@ -304,6 +334,7 @@ function Shell() {
           } catch { toast('Could not dismiss the invitation. Try again.') }
         }}>×</button>
       </div>
+      </StackSlot>
     )}
     </>
   )
@@ -357,6 +388,7 @@ export default function App() {
           <AliasClockProvider>
             <CallProvider>
               <OutboxDelivery />
+              <NotificationStack />
               <OfflineBar />
               <SchemaDriftBar />
               <SessionShell />

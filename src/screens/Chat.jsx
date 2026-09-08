@@ -33,6 +33,7 @@ import { useToast } from '../hooks/useToast'
 import Avatar from '../components/Avatar'
 import StatusIcon from '../components/StatusIcon'
 import SnapViewer from '../components/SnapViewer'
+import PlayChip from '../components/PlayChip'
 import Portal from '../components/Portal'
 import Sheet from '../components/Sheet'
 import KeptTogether from '../components/KeptTogether'
@@ -96,7 +97,7 @@ function togetherStats(startedOn) {
   return { days, years, months, isAnniversary, start }
 }
 
-export default function Chat({ friend, onBack }) {
+export default function Chat({ friend, onBack, onOpenPlay }) {
   const { profile } = useAuth()
   const me = profile.id
   const toast = useToast()
@@ -487,6 +488,12 @@ export default function Chat({ friend, onBack }) {
           </button>
         </div>
       </div>
+
+      {onOpenPlay && (
+        <div className="hero-strip">
+          <PlayChip me={me} friendId={friend.id} onOpenPlay={onOpenPlay} />
+        </div>
+      )}
 
       {anniv && (() => {
         // Only surface on a day that is actually one: the anniversary, or a

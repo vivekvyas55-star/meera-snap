@@ -247,7 +247,10 @@ export default function PlayTogether({ onBack }) {
   }, [me])
   useEffect(() => { const receiver = signalReceiver(me).on('broadcast', { event: 'game_invite' }, ({ payload, peer }) => { if (payload?.room && payload.game === 'ttt') { const next = { ...payload, id: payload.invite_id, peer }; setInvite(next); try { sessionStorage.setItem(`meera:pending-game:${me}`, JSON.stringify(next)) } catch {} } }).subscribe(); return () => receiver.close() }, [me])
   useEffect(() => { try { const raw = sessionStorage.getItem(`meera:pending-game:${me}`); if (raw) setInvite(JSON.parse(raw)) } catch {} }, [me])
-  useEffect(() => { try { const raw = sessionStorage.getItem(`meera:resume-game:${me}`); if (!raw) return; const saved = JSON.parse(raw); if (!saved?.room || !saved?.peer?.id) return; setSelected(saved.peer.id); setRoom(saved.room); setInviteId(saved.id || null); setMark('X'); setAccepted(true); setOpen('ttt'); sessionStorage.removeItem(`meera:resume-game:${me}`) } catch {} }, [me])
+  useEffect(() => { try { const raw = sessionStorage.getItem(`meera:resume-game:${me}`); if (!raw) return; const saved = JSON.parse(raw); if (!saved?.room || !saved?.peer?.id) return; setSelected(saved.peer.id); setRoom(saved.room); setInviteId(saved.id || null); setMark(saved.mark === 'O' ? 'O' : 'X'); setAccepted(true); setOpen('ttt'); sessionStorage.removeItem(`meera:resume-game:${me}`) } catch {} }, [me])
+  // Opened from a conversation with no game running yet: preselect that friend
+  // so the screen is one tap from an invitation rather than a dropdown.
+  useEffect(() => { try { const withId = sessionStorage.getItem(`meera:play-with:${me}`); if (!withId) return; setSelected(withId); sessionStorage.removeItem(`meera:play-with:${me}`) } catch {} }, [me])
   const record = (score) => { if (score <= best) return; setBest(score); try { localStorage.setItem(BEST_KEY, String(score)) } catch {} }
   const chosen = useMemo(() => friends.find((f) => f.id === selected), [friends, selected])
   const inviteGame = async () => {

@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { checkSchemaVersion, driftMessage } from '../lib/schemaVersion'
 import { useAuth } from '../hooks/useAuth'
+import { StackSlot } from './NotificationStack'
+import { PRIORITY } from '../lib/notifications'
 
 // Says out loud when the frontend is running ahead of the database, instead of
 // leaving a half-deployed feature to present as an unexplained failure.
@@ -25,8 +27,10 @@ export default function SchemaDriftBar() {
 
   if (!message) return null
   return (
-    <div className="offline-bar" role="status">
-      {message}
-    </div>
+    <StackSlot priority={PRIORITY.drift}>
+      <div className="notif-bar" role="status">
+        {message}
+      </div>
+    </StackSlot>
   )
 }

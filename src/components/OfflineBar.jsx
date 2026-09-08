@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react'
+import { StackSlot } from './NotificationStack'
+import { PRIORITY } from '../lib/notifications'
 
 // Only text chats queue offline (lib/outbox.js). Snaps, voice notes, stickers,
 // reactions, question answers, friend adds and profile saves all fail with a
@@ -20,8 +22,10 @@ export default function OfflineBar() {
 
   if (!offline) return null
   return (
-    <div className="offline-bar" role="status">
-      No connection — messages will send when you’re back.
-    </div>
+    <StackSlot priority={PRIORITY.offline}>
+      <div className="notif-bar" role="status">
+        No connection — messages will send when you’re back.
+      </div>
+    </StackSlot>
   )
 }

@@ -899,12 +899,41 @@ input, textarea { font: inherit; }
   border-radius: var(--r-pill); background: var(--coral); color: #fff;
   font-size: 11px; font-weight: 600; display: grid; place-items: center;
 }
-.toast {
-  position: fixed; left: 50%; transform: translateX(-50%);
+/* ==========================================================================
+   The notification strip — ONE reserved area above the tab bar
+   ==========================================================================
+   Install, the game banner and the toast each used to pick their own bottom
+   offset (safe+84, safe+88, safe+96), so any two on screen at once overlapped
+   and a two-line install banner grew down into the tab bar. Offsets chosen
+   independently cannot be made to agree. Everything now sits in this strip and
+   is ordered by `order` (see lib/notifications.js).
+
+   column-reverse puts priority 1 nearest the tab bar and grows the rest UPWARD,
+   which is what keeps the strip out of the bar no matter how much is in it. */
+.notif-stack {
+  position: fixed; z-index: 100;
+  left: 12px; right: 12px;
   bottom: calc(var(--safe-bottom) + 96px);
+  display: flex; flex-direction: column-reverse; align-items: center;
+  gap: 8px;
+  /* The strip covers the screen width but must not swallow taps meant for what
+     is behind it; each notification takes its own events back. */
+  pointer-events: none;
+}
+.notif-stack > * { pointer-events: auto; max-width: 100%; }
+
+.toast {
   background: var(--ink); color: #fff;
   padding: 12px 19px; border-radius: var(--r-pill); font-size: 14px;
-  z-index: 100; max-width: 88vw; text-align: center;
+  max-width: 88vw; text-align: center;
+}
+/* Offline and schema drift: statements about the app rather than about a thing
+   you did, so they read as a bar rather than a toast — but they live in the
+   same strip and obey the same ordering. */
+.notif-bar {
+  background: var(--ink); color: #fff;
+  padding: 10px 16px; border-radius: var(--r-pill);
+  font-size: 12.5px; font-weight: 500; text-align: center;
 }
 
 .sheet {
@@ -926,11 +955,7 @@ input, textarea { font: inherit; }
 /* ==========================================================================
    Install banner
    ========================================================================== */
-.install {
-  position: fixed; z-index: 90;
-  left: 12px; right: 12px;
-  bottom: calc(var(--safe-bottom) + 84px);
-}
+.install { width: 100%; }
 .install-body {
   display: flex; align-items: center; gap: 12px;
   background: var(--ink); color: #fff;
@@ -1630,12 +1655,7 @@ button:disabled { cursor: not-allowed; }
 
 /* Offline: every action other than a text chat fails with a raw toast, so the
    app should at least say why. */
-.offline-bar {
-  position: fixed; left: 0; right: 0; top: 0; z-index: 60;
-  padding: calc(var(--safe-top) + 7px) 16px 7px;
-  background: var(--ink); color: #fff;
-  font-size: 12.5px; font-weight: 500; text-align: center;
-}
+
 
 /* Own-story actions sit together at the bottom of the viewer. */
 .viewer-mine-actions { position: absolute; left: 16px; bottom: calc(var(--safe-bottom) + 18px); display: flex; gap: 8px; }
@@ -1743,7 +1763,28 @@ button:disabled { cursor: not-allowed; }
 .play-card-game select { flex: 1 1 140px; min-height: 42px; padding: 0 12px; border: 1px solid rgba(22,22,26,.14); border-radius: 12px; background: rgba(255,255,255,.52); color: var(--ink); }
 .play-card-game .btn-dark { min-height: 42px; padding: 0 15px; }
 .play-empty { flex: 1 1 100%; margin-top: 2px; }
-.game-banner { position: fixed; z-index: 80; left: 14px; right: 14px; bottom: calc(var(--safe-bottom) + 88px); display: flex; align-items: center; gap: 10px; padding: 12px 12px 12px 15px; border-radius: 18px; background: var(--ink); color: #fff; box-shadow: 0 12px 30px rgba(22,22,26,.24); }
+/* The relationship strip under the chat header. Play sits here rather than in
+   the header, which at 320px has no width to give (see the header note in
+   CLAUDE.md). The state is carried by the dot's colour and the label together —
+   never colour alone. */
+.hero-strip { display: flex; gap: 8px; padding: 0 14px 8px; }
+.play-chip {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 7px 13px; border-radius: var(--r-pill);
+  background: var(--card); color: var(--ink);
+  font-size: var(--fs-meta); font-weight: 500;
+}
+.play-chip-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); flex: 0 0 auto; }
+/* Something is waiting for you. The one state that gets the loud colour. */
+.play-your-turn { background: var(--lime); font-weight: 650; }
+.play-your-turn .play-chip-dot { background: var(--ink); animation: pulse-dot 1.6s ease-in-out infinite; }
+.play-invited { background: var(--lavender); font-weight: 650; }
+.play-invited .play-chip-dot { background: var(--ink); }
+.play-resume .play-chip-dot { background: var(--indigo); }
+.play-waiting .play-chip-dot, .play-away .play-chip-dot { background: var(--muted); }
+@keyframes pulse-dot { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+
+.game-banner { width: 100%; display: flex; align-items: center; gap: 10px; padding: 12px 12px 12px 15px; border-radius: 18px; background: var(--ink); color: #fff; box-shadow: 0 12px 30px rgba(22,22,26,.24); }
 .game-banner-copy { min-width: 0; flex: 1; font-size: 13px; line-height: 1.25; }
 .game-banner-copy strong { margin-right: 4px; }
 .game-banner-copy span { display: block; margin-top: 3px; color: #c2c0cd; font-size: 11px; }
@@ -1937,7 +1978,7 @@ button:disabled { cursor: not-allowed; }
    is part of the toast's own centring, so the keyframe has to carry it. */
 .toast { animation: toast-in 200ms ease-out; }
 @keyframes toast-in { from { opacity: 0; transform: translateX(-50%) translateY(10px); } }
-.offline-bar { animation: bar-down 240ms ease-out; }
+.notif-stack > * { animation: bar-down 240ms ease-out; }
 @keyframes bar-down { from { transform: translateY(-100%); } }
 .game-status { display: grid; gap: 6px; padding: 16px; margin: 18px 0; border-radius: 18px; background: var(--card); }
 .game-status.your-turn { background: var(--lavender); }

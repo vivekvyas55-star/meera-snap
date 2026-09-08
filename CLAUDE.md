@@ -701,6 +701,55 @@ so the OUTER sheet — mounted first — answered first and closed itself, takin
 own child sheet down with it. Sheets really do stack (Kept Together inside the
 friend sheet, `Confirm` inside both).
 
+## One notification strip, ordered by priority
+
+`components/NotificationStack.jsx` + `lib/notifications.js`. Install, the game
+banner and the toast each used to pick their own bottom offset (safe+84,
+safe+88, safe+96), so **any two on screen at once overlapped** and a two-line
+install banner grew straight down into the tab bar. Offsets chosen
+independently cannot be made to agree.
+
+Everything now portals into one fixed strip and is sorted by CSS `order`, so no
+notifier has to know what else is on screen. The strip is `column-reverse`:
+priority 1 sits nearest the tab bar where the thumb and the eye are, and the
+rest grow **upward, away from the bar**, which is what keeps the strip out of it
+however much is in it. Priorities live in `lib/notifications.js` (offline 1,
+game 2, toast 3, drift 4, install 5) — a value module, because a file that
+exports both components and constants breaks fast refresh.
+
+Add a notifier by wrapping it in `<StackSlot priority={PRIORITY.x}>` and giving
+it **no positioning of its own**. The offline bar moved off the top of the
+screen into the strip in the same change.
+
+## Play is reachable from the conversation it is about
+
+`components/PlayChip.jsx` + `lib/gameState.js`. Play used to exist only at
+Profile → Play — three taps from the conversation, with nothing anywhere saying
+a game was waiting. The chip sits in the relationship strip under the chat
+header, **not in the header**, which at 320px has no width to give.
+
+`playState(room, me, now)` is pure and tested because the states combine three
+things that are easy to get backwards: who sent the invitation, whose turn the
+revision implies, and whether the other person is still in the room.
+
+- Turn order is derived **the same way `play_game_move` derives it** — the
+  inviter is X and moves on even revisions. Any other rule eventually
+  contradicts the server.
+- **"Your turn" outranks "Friend is away."** You can play your move whether or
+  not they are sitting there, so burying the actionable state behind news about
+  them is the wrong trade.
+- "Away" means *not in the game room* (presence stamped by `game_room()` on each
+  3s sync, stale after `AWAY_MS`), which is a different question from the
+  presence channel's online/offline.
+- A finished, abandoned or expired room falls back to "Play" rather than
+  offering to resume a board somebody already won.
+
+Opening Play from a chat hands the room across in `sessionStorage`
+(`meera:resume-game:<me>` with the peer AND the mark, or `meera:play-with:<me>`
+when there is no room yet). **The mark must be carried:** the resume path used
+to hardcode `X`, which would have let the recipient try to move on the inviter's
+turn and be rejected by the server.
+
 ## Overlays MUST be portaled
 
 Any fullscreen overlay (`.sheet`, `.viewer`) rendered from a screen inside the
