@@ -3,15 +3,16 @@
 > transactional recovery setup, and separate provider/hook modules. Historical
 > notes below describe earlier versions; do not replay their SQL instructions.
 >
-> **Live as of 7 Sep 2026.** The audit upgrade is applied to production
+> **Live as of 8 Sep 2026.** The audit upgrade is applied to production
 > (`mqxfggwncoazgmcswedi`), the `cleanup` worker is deployed and scheduled every
 > 15 min, the frontend is deployed, and **Realtime public channel access is
-> disabled** — every channel is now private. Migrations through
-> `202609070010_billing.sql` are applied; `202609070011_credits.sql` (the
-> credit meter) is written but deliberately **not applied yet**. Smoke tested on a real device on
-> 7 Sep 2026 — everything passed except a two-device call, password recovery,
-> and Android hardware Back, which still need the hardware. See the checklist
-> at the end of AUDIT-FIXES.md.
+> disabled** — every channel is now private. **Every migration in
+> `supabase/migrations/` is applied**, through `202609080015_game_rooms.sql`;
+> the credit meter's monthly charge is scheduled (pg_cron job 5, 01:00 UTC), and
+> `billing_settings.enforced` is still **false** — nothing is gated on credit
+> yet. Smoke tested on a real device on 7 Sep 2026 — everything passed except a
+> two-device call, password recovery, and Android hardware Back, which still
+> need the hardware. See the checklist at the end of AUDIT-FIXES.md.
 
 # CLAUDE.md
 
@@ -778,6 +779,48 @@ the login screen runs username → question → answer + new password → auto l
 **Not yet built**: video draw/text. Infeasible in a web PWA and deliberately
 skipped: AR lenses, native Bitmoji, reliable screenshot detection, My AI (the
 user explicitly does NOT want an in-app AI assistant).
+
+## Play Together — the board is in the database
+
+`screens/PlayTogether.jsx`, reached from Profile. Two things: a solo dino runner
+and a real-time 1:1 Tic-Tac-Toe. Migrations `202609070013_game_invites.sql`,
+`202609080014_game_invite_responses.sql`, `202609080015_game_rooms.sql`.
+
+**Realtime is a nudge, never the state.** The board lives in
+`game_invites.board` (a `text[9]`) and every change goes through
+`play_game_move(invite, square, expected_revision)` — SECURITY DEFINER,
+re-checks the accepted friendship, derives whose turn it is from `revision % 2`
+rather than trusting the caller, and detects the win itself. The `game_changed`
+broadcast that follows carries no board; it only tells the peer to re-`sync`.
+Broadcast is lossy and unauthenticated as to content, so a game played over it
+would desync the first time a packet dropped and would let either side write the
+other's move.
+
+`revision` is optimistic concurrency: a move at a stale revision raises "Board
+changed. Sync and try again", and a **replayed** move (same square, same piece,
+revision already advanced by one) returns the row instead of raising — a retried
+send after a flaky network must not read as an error.
+
+**Signaling rides `signal:<recipient>:<sender>`, not a topic of its own.**
+There is no `game:` branch in `realtime_allowed`, which is why Ludo is not built:
+it would need one, added in the same change (see the Realtime table above).
+
+**The invite poll must MERGE, never overwrite.** `active_game_rooms()` is polled
+every six seconds, and the invitation broadcast arrives *before* that RPC can
+see the row. Clearing `invite` from the poll made the invite card appear and then
+vanish on its own — the entire "Play doesn't work" report. The poll now only
+drops an invitation it can prove has expired.
+
+An invitation is also mirrored into `sessionStorage` (`meera:pending-game:<me>`)
+so a reload during the ring doesn't lose it, and a failed `resolveGameInvite`
+leaves the card in place rather than entering a room that does not exist —
+`tests/play-invitation.test.jsx` covers both.
+
+**The runner physics live in `src/lib/runner.js`**, not in the component:
+`createRun` / `step(run, dt, width, rand)` / `jump` / `scoreOf`, pure, with an
+injectable `rand` so obstacle spawning is deterministic under test. A canvas
+game is otherwise untestable, and the jump arc and collision box are exactly the
+kind of thing that breaks silently.
 
 ## Design language — ABC (Behance) is the identity; follow it for ALL new UI
 
