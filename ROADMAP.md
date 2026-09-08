@@ -32,6 +32,12 @@ Everything discussed, so nothing is lost. Status as of **8 Sep 2026**.
       story by the audience it actually has. Warns into the Postgres log.
 
 ### UI
+- [x] **Chat rows carry one signal** — nine competing signals down to name, unread
+      state, presence dot and one, chosen by what you lose by ignoring it. The
+      precedence is a pure tested function; the rest moved to the friend sheet.
+- [x] **Stories / Camera / Map** — story row tiles and worded seen states, a one-shot
+      tap/hold hint, camera Retry that distinguishes "dismissed once" from "blocked
+      forever", and a map that says what it is sharing and until when.
 - [x] **One notification strip** — install, game banner and toast each picked their own
       offset and overlapped. Now one container ordered by priority.
 - [x] **Rematch** — a finished game starts the next round in the same room, with the
@@ -48,11 +54,7 @@ Everything discussed, so nothing is lost. Status as of **8 Sep 2026**.
       Notifications / Privacy and lock / Account and data, plus active sessions and
       device logout, blocked contacts, location sharing duration, storage usage,
       export and delete, and saved-state feedback.
-- [ ] **Stories / Camera / Map polish** — story row thumbnails and seen states, a
-      first-use tap/hold hint, a real Retry when camera permission fails, and
-      "Sharing until…" with last-updated on the map.
-- [ ] **Chat list clutter** — keep name, unread state and one primary relationship
-      signal; move the rest into the friend sheet.
+(Stories/Camera/Map and chat-list clutter landed — see Done.)
 
 ---
 
@@ -119,6 +121,10 @@ Everything discussed, so nothing is lost. Status as of **8 Sep 2026**.
       clear of the in-app AI assistant line already drawn.
 
 ### 8. Daily polish
+- [ ] **`stories.thumb_path`** — drafted in the capture pass, not applied. Without it
+      an unseen story can never have a real preview; with it, `postStory` uploads a
+      400px thumb and `deleteStory` must queue BOTH paths or every deletion orphans
+      a file.
 - [ ] Loading, retry, empty and offline states throughout.
 - [ ] Faster chat list via server-filtered previews.
 - [ ] Safer thumbnail and media access.

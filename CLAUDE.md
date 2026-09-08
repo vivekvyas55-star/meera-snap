@@ -138,6 +138,18 @@ and never from the payload. A peer cannot claim to be someone else. Adding a new
 channel means adding a branch to `realtime_allowed` in the same change, or it is
 unreachable.
 
+**A denied camera is two different situations and must be told apart.**
+`getUserMedia` reports "the user dismissed the prompt this once" and "this
+origin is blocked forever" identically as `NotAllowedError`. `useCamera` probes
+`navigator.permissions.query({ name: 'camera' })` to separate them and exposes
+`errorKind` (`insecure` / `unsupported` / `denied` / `notfound` / `other`) plus
+`blocked` (`true` / `false` / `null` when unknown). A **Try again** button is
+offered only where trying again can work; a hard block, an insecure context and
+an unsupported browser get instructions instead, because a button that will
+fail identically forever is worse than no button. `retry()` must stay reachable
+**only from a tap** — no effect, timer or automatic re-request — or it
+reintroduces the repeated permission prompts that acquire-once was built to fix.
+
 **The camera needs a secure context.** `getUserMedia` fails on plain http off
 localhost, which is the most common reason a deploy looks broken. `useCamera`
 checks this and surfaces a specific error rather than failing silently.
@@ -560,6 +572,24 @@ app). It is best-effort: any decode/encode failure returns the ORIGINAL blob, so
 an optimisation can never turn into a failed send. Video can't be transcoded in
 the browser and goes up as-is; the 50 MB picker cap in `Chat.jsx` is the only
 guard there.
+
+**Story row previews are derived from bytes already downloaded**
+(`lib/storyThumbs.js`). `stories` has **no `thumb_path` column**, so the only
+object in storage is the 1440px original. Pointing a 46px row tile at it would
+re-download every friend's story on every visit to the pane. Instead the viewer
+hands its decoded `<img>` to `rememberStoryThumb()` at `onLoad` — the egress is
+already spent at that moment — and the ~96px frame is cached in localStorage.
+The deliberate consequence: **an unseen story shows a flat tile, not a preview**,
+because a preview of something you have never opened cannot be free. Fixing that
+properly needs a `stories.thumb_path` migration (drafted, not applied — it must
+also restate the column-scoped INSERT grant and teach `claim_media_cleanup`
+about the new path, or thumbs get swept out from under live stories).
+
+The viewer's `<img>` carries `crossOrigin="anonymous"` for this: a plain `<img>`
+taints the canvas and `toDataURL()` throws. If a signed URL ever came back
+without the CORS header the image would fail to load, so `onError` re-keys the
+element and retries **once** without it, remembering that for the session.
+Watching the story always beats having a thumbnail of it.
 
 **Never render an original into a thumbnail.** `saveToMemory` writes a ~400px
 JPEG to `thumb_path` next to the original, and the grid uses it (falling back to
