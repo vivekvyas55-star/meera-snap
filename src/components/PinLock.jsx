@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import MarketDecoy from './MarketDecoy'
 import PinPad from './PinPad'
 import { UNLOCK_KEY as KEY } from '../lib/appLock'
-import { PIN_LENGTH, canHashPin, clearPin, verifyPin } from '../lib/pinStore'
+import { PIN_LENGTH, canHashPin, clearPin, ensurePin, usingDefaultPin, verifyPin } from '../lib/pinStore'
 import { supabase } from '../lib/supabase'
 
 // App-open passcode. NOTE: this is a convenience lock, not real security. Real
@@ -51,6 +51,16 @@ const clearKeys = () => {
 
 export default function PinLock({ onUnlock }) {
   const [entry, setEntry] = useState('')
+  // A device that has never had a passcode gets the shipped default seeded
+  // here, before any guess can be checked against nothing. Deriving it takes a
+  // moment, which is invisible: the pad is already on screen and four digits
+  // take longer to type than the derivation takes to finish.
+  const [ready, setReady] = useState(false)
+  useEffect(() => {
+    let live = true
+    ensurePin().catch(() => {}).then(() => { if (live) setReady(true) })
+    return () => { live = false }
+  }, [])
   const [shake, setShake] = useState(false)
   const [lockedUntil, setLockedUntil] = useState(() => readNum(UNTIL_KEY))
 
@@ -76,7 +86,7 @@ export default function PinLock({ onUnlock }) {
   // instead: backspacing and retyping inside the derivation window would find
   // it still set, and nothing would ever run the check again.
   useEffect(() => {
-    if (locked || entry.length < PIN_LENGTH) return
+    if (locked || !ready || entry.length < PIN_LENGTH) return
     let live = true
     verifyPin(entry).then((ok) => {
       if (!live) return
@@ -107,7 +117,7 @@ export default function PinLock({ onUnlock }) {
       }, 400)
     })
     return () => { live = false }
-  }, [entry, onUnlock, locked])
+  }, [entry, onUnlock, locked, ready])
 
   // Signing out is the honest way past a forgotten passcode: it drops the
   // session, so whoever taps it lands on the login screen — the boundary that
@@ -142,9 +152,16 @@ export default function PinLock({ onUnlock }) {
       <div className="pin-title">Meera</div>
       <div className="pin-sub">Enter passcode</div>
       <PinPad entry={entry} setEntry={setEntry} shake={shake} enabled={!locked} />
-      <button className="pin-forgot" type="button" onClick={forgot}>
-        Forgot passcode?
-      </button>
+      {/* Only once the passcode is the user's own. While the shipped default is
+          still in force there is nothing to have forgotten, and offering a way
+          out would be handing whoever is holding the phone a route past the pad
+          — to a signed-out app, but a route all the same. It appears the moment
+          somebody sets their own code, which is the moment it can be needed. */}
+      {!usingDefaultPin() && (
+        <button className="pin-forgot" type="button" onClick={forgot}>
+          Forgot passcode?
+        </button>
+      )}
     </div>
   )
 }

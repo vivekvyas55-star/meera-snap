@@ -132,7 +132,7 @@ test('nothing that already existed was lost in the restructure', async () => {
   expect(screen.getByText('Open Memories')).toBeTruthy()
   expect(screen.getByRole('button', { name: 'Play' })).toBeTruthy()
   expect(screen.getByText('Turn on notifications')).toBeTruthy()
-  expect(screen.getByText('Set a passcode')).toBeTruthy()
+  expect(screen.getByText('Change passcode')).toBeTruthy()
   expect(screen.getByText('Save security question')).toBeTruthy()
 })
 

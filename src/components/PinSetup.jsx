@@ -5,10 +5,13 @@ import PinPad from './PinPad'
 import { UNLOCK_KEY } from '../lib/appLock'
 import { PIN_LENGTH, canHashPin, hasPin, setPin, verifyPin } from '../lib/pinStore'
 
-// Choosing or changing the app passcode. This lives in Profile rather than on
-// the lock screen because the lock is opt-in: a brand-new user has nothing to
-// protect yet and should not be asked to invent a code before they have even
-// signed in.
+// Choosing or changing the app passcode.
+//
+// A passcode is REQUIRED — the app cannot be opened without one. It is still
+// asked for after sign-in rather than before it, because before sign-in there
+// is nothing on the device to protect and no account to attach the code to.
+// In `mandatory` mode the sheet has no way out: no backdrop dismiss, no Escape,
+// no close button. A gate you can tap past is not a gate.
 //
 // Three stages, and which ones run depends on whether a code already exists:
 // confirming the current one, choosing a new one, repeating it. The repeat is
@@ -21,7 +24,7 @@ const STAGES = { current: 'Enter your current passcode', next: 'Choose a passcod
 // gives an attacker exactly enough attempts to walk this list.
 const OBVIOUS = new Set(['0000', '1111', '1234', '2222', '3333', '4444', '5555', '6666', '7777', '8888', '9999', '4321'])
 
-export default function PinSetup({ onClose, onDone }) {
+export default function PinSetup({ onClose, onDone, mandatory = false }) {
   const changing = hasPin()
   const [stage, setStage] = useState(changing ? 'current' : 'next')
   const [entry, setEntry] = useState('')
@@ -99,8 +102,14 @@ export default function PinSetup({ onClose, onDone }) {
 
   return (
     <Portal>
-      <Sheet onClose={onClose} label={changing ? 'Change passcode' : 'Set a passcode'}>
+      <Sheet onClose={mandatory ? () => {} : onClose} label={changing ? 'Change passcode' : 'Set a passcode'}>
         <h2>{changing ? 'Change passcode' : 'Set a passcode'}</h2>
+        {mandatory && (
+          <div className="field-hint">
+            Meera is locked with a passcode. Choose one to continue — you can change
+            it later in Profile.
+          </div>
+        )}
         <div className="field-hint">
           {canHashPin()
             ? 'Four digits. It is stored only on this phone, and only as a hash — nobody, including us, can read it back.'

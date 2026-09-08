@@ -252,8 +252,11 @@ export async function listMessages(me, otherId, before = null) {
 
   return {
     messages: collected.slice().reverse(),
-    oldestCursor: cursor,
-    hasMore,
+    // Null when nothing came back at all. Returning the cursor we were HANDED
+    // would tell Chat there is more history behind a page that was empty, and
+    // loadOlder would ask for the same window again forever.
+    oldestCursor: collected.length ? cursor : null,
+    hasMore: collected.length ? hasMore : false,
   }
 }
 

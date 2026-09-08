@@ -18,7 +18,7 @@ import Avatar from '../components/Avatar'
 import { BackIcon, BellIcon, CheckIcon, ChevronIcon, CoinIcon, FlameIcon, PowerIcon, UsersIcon } from '../components/Icons'
 import { formatCredits, getBillingSettings, getEntitlement, runwayLabel } from '../lib/billing'
 import { lockApp } from '../lib/appLock'
-import { clearPin, hasPin } from '../lib/pinStore'
+import { usingDefaultPin } from '../lib/pinStore'
 import { useBackLayer } from '../hooks/useBackLayer'
 import PinSetup from '../components/PinSetup'
 import Memories from './Memories'
@@ -73,8 +73,9 @@ export default function Profile({ onBack, openPlay = false, onPlayOpened }) {
   const [showMemories, setShowMemories] = useState(false)
   const [confirmLock, setConfirmLock] = useState(false)
   const [pinSetup, setPinSetup] = useState(false)
-  const [confirmRemovePin, setConfirmRemovePin] = useState(false)
-  const [pinSet, setPinSet] = useState(hasPin)
+  // Shown here and NOWHERE else. On the lock screen it would tell whoever is
+  // holding the phone that the code is one they can look up.
+  const [usingDefault, setUsingDefault] = useState(usingDefaultPin)
   const [showPlans, setShowPlans] = useState(false)
   const [ent, setEnt] = useState(null)
   const [rate, setRate] = useState(null)
@@ -455,32 +456,35 @@ export default function Profile({ onBack, openPlay = false, onPlayOpened }) {
               minutes with deliberately no hint that a passcode exists — a curious
               tap bricked the app for a quarter of an hour.
 
-              The passcode used to be the same four digits for everyone, written
-              into the bundle. It is now yours, chosen here and hashed on this
-              phone — so this section has to be able to say whether one exists at
-              all, or "Lock app" would shut you behind a code you never set. */}
+              The lock is MANDATORY: Meera does not open without a passcode, and
+              a device that has never had one is seeded with the shipped default.
+              So there is no "no passcode" state to describe and no way to remove
+              one — only to change it. */}
+          {usingDefault && (
+            <div className="pin-default-warn" role="status">
+              <strong>You are still using the default passcode.</strong>
+              <span>
+                It ships with the app, so anyone who knows Meera knows it. Change it
+                and it becomes yours — stored only on this phone, and only as a hash.
+              </span>
+            </div>
+          )}
           <div className="field-hint">
-            {pinSet
-              ? 'Meera asks for your 4-digit passcode on every cold open. Three wrong tries hide the app for 15 minutes behind a decoy screen. The code is stored only on this phone, so setting it again on another device is a separate passcode.'
-              : 'No passcode yet. Setting one hides Meera behind a 4-digit pad on every cold open, with a decoy screen after three wrong tries. It is kept only on this phone — if you forget it, the only way back is to sign out and sign in again.'}
+            Meera asks for your 4-digit passcode on every cold open. Three wrong
+            tries hide the app for 15 minutes behind a decoy screen. The code is
+            stored only on this phone, as a hash — nobody, including us, can read
+            it back, and setting it on another device is a separate passcode.
           </div>
           <button onClick={() => setPinSetup(true)} className="pill-btn">
-            {pinSet ? 'Change passcode' : 'Set a passcode'}
+            Change passcode
           </button>
-          {pinSet && (
-            <>
-              <button onClick={() => setConfirmLock(true)} className="pill-btn">
-                Lock app
-              </button>
-              <button onClick={() => setConfirmRemovePin(true)} className="pill-btn">
-                Remove passcode
-              </button>
-            </>
-          )}
+          <button onClick={() => setConfirmLock(true)} className="pill-btn">
+            Lock app
+          </button>
           <SaveState
             state={pinSave.state}
             error={pinSave.error}
-            savedLabel={pinSet ? 'Passcode set on this device' : 'Passcode removed from this device'}
+            savedLabel="Passcode changed on this device"
           />
 
           <BlockedContacts me={me} />
@@ -545,7 +549,8 @@ export default function Profile({ onBack, openPlay = false, onPlayOpened }) {
           <PinSetup
             onClose={() => setPinSetup(false)}
             onDone={() => {
-              setPinSet(true)
+              // The passcode is now the user's own, so the default warning goes.
+              setUsingDefault(false)
               pinSave.run(async () => true)
             }}
           />
@@ -558,20 +563,6 @@ export default function Profile({ onBack, openPlay = false, onPlayOpened }) {
             danger={false}
             onCancel={() => setConfirmLock(false)}
             onConfirm={lockApp}
-          />
-        )}
-        {confirmRemovePin && (
-          <Confirm
-            title="Remove the passcode?"
-            body="Meera will open straight into your account on this phone, with no pad and no decoy screen."
-            confirmLabel="Remove"
-            onCancel={() => setConfirmRemovePin(false)}
-            onConfirm={() => {
-              clearPin()
-              setPinSet(false)
-              setConfirmRemovePin(false)
-              pinSave.run(async () => true)
-            }}
           />
         )}
       </div>

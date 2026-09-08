@@ -18,8 +18,15 @@
 
 const SALT_KEY = 'meera:pinsalt'
 const HASH_KEY = 'meera:pinhash'
+const DEFAULT_FLAG = 'meera:pindefault'
 const ITERATIONS = 210000
 export const PIN_LENGTH = 4
+
+// The passcode Meera ships with. Every device starts locked, so the app can
+// never be opened without one — but a default that lives in the source is
+// public knowledge, and until the owner changes it the lock stops a stranger
+// picking up the phone, not anyone who has read this file. Profile says so.
+export const DEFAULT_PIN = '9943'
 
 const encode = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf)))
 const decode = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0))
@@ -52,6 +59,9 @@ export async function setPin(pin) {
   const bits = await derive(pin, salt)
   localStorage.setItem(SALT_KEY, encode(salt))
   localStorage.setItem(HASH_KEY, encode(bits))
+  // Anything set through here is the user's own choice, including — deliberately
+  // — retyping the default, which is a decision rather than an oversight.
+  try { localStorage.removeItem(DEFAULT_FLAG) } catch { /* nothing to clear */ }
 }
 
 export async function verifyPin(pin) {
@@ -73,10 +83,31 @@ export async function verifyPin(pin) {
   return diff === 0
 }
 
+// True while the shipped default is still in force. Stored as a flag rather
+// than by comparing against DEFAULT_PIN, so nothing has to hold the plaintext
+// to answer the question.
+export function usingDefaultPin() {
+  return read(DEFAULT_FLAG) === '1'
+}
+
+// Seed the default on a device that has never had a passcode. Safe to call on
+// every boot: it does nothing once a hash exists, so it can never overwrite a
+// code somebody chose.
+export async function ensurePin() {
+  if (hasPin() || !canHashPin()) return
+  await setPin(DEFAULT_PIN)
+  try {
+    localStorage.setItem(DEFAULT_FLAG, '1')
+  } catch {
+    /* the passcode still works; we just cannot nag about it */
+  }
+}
+
 export function clearPin() {
   try {
     localStorage.removeItem(SALT_KEY)
     localStorage.removeItem(HASH_KEY)
+    localStorage.removeItem(DEFAULT_FLAG)
   } catch {
     /* nothing stored means nothing to clear */
   }

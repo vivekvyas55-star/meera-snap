@@ -511,12 +511,29 @@ generic markets/portfolio screen. A "locked out" message would confirm to whoeve
 is holding the phone that there is something here worth getting into; a dull
 stocks app tells them they opened the wrong thing.
 
-**The passcode is the user's, and the lock is opt-in.** It used to be
-`const PIN = '9934'` in PinLock.jsx — the same four digits for every user, in
-plain text in a bundle anyone can read. `lib/pinStore.js` now keeps a PBKDF2
-hash (210k iterations, 16-byte random salt per device) in localStorage; it is
-set, changed and removed from Profile, and `App.jsx` mounts PinLock **only when
-`hasPin()`** so nobody can be shut behind a lock with no code behind it.
+**The lock is MANDATORY and the passcode is changeable.** Meera does not open
+without one. A device that has never had a passcode is seeded by `ensurePin()`
+with `DEFAULT_PIN` (`9943`), so there is no state in which the pad can be
+skipped and nothing to "set up" before first use. `lib/pinStore.js` keeps a
+PBKDF2 hash (210k iterations, 16-byte random salt per device) in localStorage —
+**the default is stored as a hash too**, never as plaintext. It can be changed
+from Profile; it cannot be removed.
+
+**A default that ships in the source is public knowledge.** Until the owner
+changes it, the lock stops someone picking up the phone, not anyone who has read
+the repo. That is said plainly in Profile — and **only** in Profile:
+
+- The "you are still using the default" warning appears **behind** the lock,
+  never on it. On the pad it would tell whoever is holding the phone exactly
+  what to type.
+- **"Forgot passcode?" is hidden while the default is in force.** There is
+  nothing to have forgotten, and the link is a route past the pad (to a
+  signed-out app, but a route). It appears the moment somebody sets their own
+  code, which is the moment it can be needed.
+- `usingDefaultPin()` reads a stored FLAG, not a comparison against
+  `DEFAULT_PIN`, so nothing has to hold the plaintext to answer the question.
+  Any call to `setPin()` clears it — including deliberately retyping the
+  default, which is a decision rather than an oversight.
 
 - **Device-local is deliberate.** PinLock renders before `AuthProvider`, so
   there is no session to check a server-side hash against, and a lock screen

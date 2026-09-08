@@ -776,6 +776,15 @@ input, textarea { font: inherit; }
 }
 /* The pad is centred by .pinlock on the lock screen; a sheet is a plain column. */
 .pin-setup { display: flex; flex-direction: column; align-items: center; }
+/* Behind the lock, never on it: on the pad this would tell whoever is holding
+   the phone that the code is one they can look up. */
+.pin-default-warn {
+  display: flex; flex-direction: column; gap: 4px;
+  background: var(--coral); color: var(--ink);
+  border-radius: var(--r-card); padding: var(--sp-4);
+  margin-bottom: var(--sp-3); font-size: var(--fs-meta); line-height: 1.45;
+}
+.pin-default-warn strong { font-weight: 650; }
 .pin-setup .pin-dots { margin: var(--sp-4) 0 var(--sp-5); }
 .field-error { font-size: var(--fs-meta); color: var(--coral); margin-top: var(--sp-3); text-align: center; }
 .pin-dots.shake { animation: shake 0.4s; }

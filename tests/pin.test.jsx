@@ -11,7 +11,7 @@ if (!globalThis.crypto?.subtle) globalThis.crypto = webcrypto
 const { signOut } = vi.hoisted(() => ({ signOut: vi.fn(async () => {}) }))
 vi.mock('../src/lib/supabase', () => ({ supabase: { auth: { signOut } } }))
 
-const { clearPin, hasPin, setPin, verifyPin } = await import('../src/lib/pinStore')
+const { DEFAULT_PIN, clearPin, ensurePin, hasPin, setPin, usingDefaultPin, verifyPin } = await import('../src/lib/pinStore')
 const { default: PinLock } = await import('../src/components/PinLock')
 
 const type = (code) => {
@@ -91,6 +91,18 @@ test('a backspace mid-check does not leave the pad dead', async () => {
   await waitFor(() => expect(onUnlock).toHaveBeenCalled())
 })
 
+test('the way out appears only once the passcode is the user\u2019s own', async () => {
+  await ensurePin()
+  const { unmount } = render(<PinLock onUnlock={vi.fn()} />)
+  // On the shipped default there is nothing to have forgotten, and the link
+  // would be a route past the pad for whoever is holding the phone.
+  expect(screen.queryByRole('button', { name: 'Forgot passcode?' })).toBeNull()
+  unmount()
+  await setPin('8261')
+  render(<PinLock onUnlock={vi.fn()} />)
+  expect(screen.getByRole('button', { name: 'Forgot passcode?' })).toBeTruthy()
+})
+
 test('forgotten passcode signs out locally rather than stranding the owner', async () => {
   await setPin('8261')
   const reload = vi.fn()
@@ -102,4 +114,41 @@ test('forgotten passcode signs out locally rather than stranding the owner', asy
   // otherwise the next open would ask for a code nobody knows.
   expect(signOut).toHaveBeenCalledWith({ scope: 'local' })
   expect(hasPin()).toBe(false)
+})
+
+test('a device with no passcode is seeded with the shipped default', async () => {
+  expect(hasPin()).toBe(false)
+  await ensurePin()
+  // Mandatory: there is no state in which the pad can be skipped.
+  expect(hasPin()).toBe(true)
+  expect(await verifyPin(DEFAULT_PIN)).toBe(true)
+  expect(usingDefaultPin()).toBe(true)
+  // Even the default is stored only as a hash.
+  const stored = Object.entries(localStorage).map(([, v]) => String(v)).join('|')
+  expect(stored).not.toContain(DEFAULT_PIN)
+})
+
+test('seeding never overwrites a passcode somebody chose', async () => {
+  await setPin('8261')
+  await ensurePin()
+  expect(await verifyPin('8261')).toBe(true)
+  expect(await verifyPin(DEFAULT_PIN)).toBe(false)
+  expect(usingDefaultPin()).toBe(false)
+})
+
+test('choosing a passcode retires the default warning', async () => {
+  await ensurePin()
+  expect(usingDefaultPin()).toBe(true)
+  await setPin('8261')
+  // Retyping the default counts too — that is a decision, not an oversight.
+  expect(usingDefaultPin()).toBe(false)
+})
+
+test('the lock screen never hints that the code is a default', async () => {
+  await ensurePin()
+  render(<PinLock onUnlock={vi.fn()} />)
+  const shown = document.body.textContent || ''
+  // Saying so here would tell whoever is holding the phone what to type.
+  expect(shown.toLowerCase()).not.toContain('default')
+  expect(shown).not.toContain(DEFAULT_PIN)
 })

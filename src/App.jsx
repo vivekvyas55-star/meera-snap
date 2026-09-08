@@ -28,7 +28,6 @@ import InstallPrompt from './components/InstallPrompt'
 import OutboxDelivery from './components/OutboxDelivery'
 import PinLock from './components/PinLock'
 import { isUnlocked } from './lib/appLock'
-import { hasPin } from './lib/pinStore'
 import { trackDeviceSessions } from './lib/devices'
 import { useBackLayer } from './hooks/useBackLayer'
 import { signalReceiver } from './lib/privateRealtime'
@@ -348,7 +347,11 @@ function Shell() {
 
 function SessionShell() {
   const { user } = useAuth()
-  return <Suspense fallback={<div className="app"><div className="empty">Loading…</div></div>}><Shell key={user?.id || 'guest'} /></Suspense>
+  return (
+    <Suspense fallback={<div className="app"><div className="empty">Loading…</div></div>}>
+      <Shell key={user?.id || 'guest'} />
+    </Suspense>
+  )
 }
 
 // Devices are recorded from the auth event, not from the screen that lists
@@ -378,18 +381,16 @@ export default function App() {
     return () => vv.removeEventListener('resize', onResize)
   }, [])
 
-  // The lock is opt-in: with no passcode chosen there is nothing to check, so
-  // the pad must not appear. Both halves matter — the initialiser keeps this
-  // true for someone who sets a passcode later in the same session (they have
-  // just proved they know it), and the render guard makes it impossible to be
-  // shut out by a lock with no code behind it.
-  const [unlocked, setUnlocked] = useState(() => isUnlocked() || !hasPin())
+  // The lock is MANDATORY: Meera does not open without a passcode. A device
+  // that has never had one is seeded with the shipped default by PinLock
+  // itself, so there is no state in which the pad can be skipped.
+  const [unlocked, setUnlocked] = useState(isUnlocked)
   useEffect(() => {
     const relock = () => setUnlocked(false)
     window.addEventListener('meera:lock', relock)
     return () => window.removeEventListener('meera:lock', relock)
   }, [])
-  if (!unlocked && hasPin()) return <PinLock onUnlock={() => setUnlocked(true)} />
+  if (!unlocked) return <PinLock onUnlock={() => setUnlocked(true)} />
 
   return (
     <ErrorBoundary>
