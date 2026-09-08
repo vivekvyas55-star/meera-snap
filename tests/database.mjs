@@ -356,9 +356,24 @@ await clientWrite('saveToMemory / deleteMemory',[
  {sql:`insert into storage.objects(bucket_id,name) values('media',$1)`,args:[memoryPath]},{as:A},
  {sql:`insert into memories(user_id,media_path,thumb_path,media_type,caption) values($1,$2,null,'image',null)`,args:[A,memoryPath],rows:1},
  {sql:`delete from memories where user_id=$1`,args:[A],rows:1}])
+// The endpoint host is constrained now (a user-writable URL that the push
+// function fetches is an SSRF), so the fixture has to be a real push service.
 await clientWrite('saveSubscription / disablePush',[{as:A},
- {sql:`insert into push_subscriptions(user_id,endpoint,p256dh,auth,user_agent) values($1,'https://push.example/x','p','a','ua') on conflict (endpoint) do update set user_id=excluded.user_id,endpoint=excluded.endpoint,p256dh=excluded.p256dh,auth=excluded.auth,user_agent=excluded.user_agent`,args:[A],rows:1},
- {sql:`delete from push_subscriptions where endpoint='https://push.example/x'`,args:[],rows:1}])
+ {sql:`insert into push_subscriptions(user_id,endpoint,p256dh,auth,user_agent) values($1,'https://fcm.googleapis.com/fcm/send/abc123','p','a','ua') on conflict (endpoint) do update set user_id=excluded.user_id,endpoint=excluded.endpoint,p256dh=excluded.p256dh,auth=excluded.auth,user_agent=excluded.user_agent`,args:[A],rows:1},
+ {sql:`delete from push_subscriptions where endpoint='https://fcm.googleapis.com/fcm/send/abc123'`,args:[],rows:1}])
+// --- Audit follow-up: the edges the boundary did not cover ----------------
+await asUser(A,async()=>{
+ // H1: the push endpoint is a URL this project's Edge Function will FETCH, and
+ // the column is user-writable with the anon key in the bundle.
+ await assert.rejects(query("insert into push_subscriptions(user_id,endpoint,p256dh,auth) values($1,'http://169.254.169.254/latest/meta-data','p','a')",[A]),/push_endpoint_host/)
+ await assert.rejects(query("insert into push_subscriptions(user_id,endpoint,p256dh,auth) values($1,'https://evil.example/hook','p','a')",[A]),/push_endpoint_host/)
+ // M3: the display name lands on a lock screen under Meera's own name.
+ await assert.rejects(query('update profiles set display_name=$2 where id=$1',[A,'x'.repeat(41)]),/display_name_len/)
+ // M2: block_user() also deletes the friendship, and that half is what stops
+ // calls and push. Writing the row directly skipped it.
+ await assert.rejects(query('insert into blocks(blocker,blocked) values($1,$2)',[A,C]),/permission denied/)
+})
+console.log('PASS push endpoints, display names and blocks cannot be written around')
 console.log('PASS every client write succeeds for a legitimate user')
 
 // Egress accounting. The projection is the only part worth testing — the raw

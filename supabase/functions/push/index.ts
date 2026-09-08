@@ -180,7 +180,15 @@ Deno.serve(async (req) => {
     .select('display_name, username')
     .eq('id', user.id)
     .maybeSingle()
-  const who = sender?.display_name?.trim() || sender?.username || 'Someone'
+  // M3: the VERB is composed server-side from KINDS, but the SUBJECT is the
+  // sender's own display_name, which has no length or content limit in SQL —
+  // the 40-char cap was only a React prop. Without this a friend can put
+  // "Meera Security — verify at evil.tld" on your lock screen under Meera's
+  // own name and icon. Collapse whitespace (newlines split a notification into
+  // fake lines) and cut it short.
+  const who = ((sender?.display_name?.trim() || sender?.username || 'Someone')
+    .replace(/\s+/g, ' ')
+    .slice(0, 32)) || 'Someone'
 
   const spec = KINDS[kind]
   const urgent = spec.urgent
@@ -192,15 +200,34 @@ Deno.serve(async (req) => {
     urgent, // the SW keys ring behaviour off this, not off the tag string
   })
 
+  // H1: `endpoint` is a user-writable column and the anon key is in the bundle,
+  // so without this the function is an outbound HTTP client pointed wherever a
+  // signed-in user likes — and worse, `vapidHeader(origin)` would mint a JWT
+  // signed with VAPID_PRIVATE_KEY whose audience is the attacker's own host and
+  // hand it straight to them. A database CHECK enforces the same list; this is
+  // the second half, because a constraint added today does not clean rows
+  // written yesterday.
+  const PUSH_HOSTS = /^([a-z0-9-]+\.)*(googleapis\.com|push\.apple\.com|push\.services\.mozilla\.com|notify\.windows\.com)$/
+
   let sent = 0
   const dead: string[] = []
-  await Promise.all(subs.map(async (s) => {
+  // Bounded. One user's device list should never be able to turn one send into
+  // thousands of concurrent outbound requests.
+  await Promise.all(subs.slice(0, 20).map(async (s) => {
     try {
+      let origin: string
+      try {
+        const url = new URL(s.endpoint)
+        if (url.protocol !== 'https:' || !PUSH_HOSTS.test(url.hostname)) return
+        origin = url.origin
+      } catch {
+        return
+      }
       const encrypted = await encryptPayload(payload, s.p256dh, s.auth)
       const res = await fetch(s.endpoint, {
         method: 'POST',
         headers: {
-          'Authorization': await vapidHeader(new URL(s.endpoint).origin),
+          'Authorization': await vapidHeader(origin),
           'Content-Encoding': 'aes128gcm',
           'Content-Type': 'application/octet-stream',
           // A call ring is worthless if it arrives late; a chat can wait.
