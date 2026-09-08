@@ -179,6 +179,27 @@ await db.query("update public.subscriptions set status='none', current_period_en
 await db.query("insert into public.credit_ledger(user_id,delta,reason) values($1,98,'test_grant')",[C])
 await query("select post_monthly_credits('2099-01')")
 assert.equal((await query("select count(*)::int n from public.credit_ledger where user_id=$1 and period='2099-01'",[C]))[0].n,0)
+// Founders keep permanent access. This is silent until billing_settings.enforced
+// is flipped — which is the worst possible moment to discover it — so it is
+// pinned here rather than trusted.
+// The harness creates its users after the migrations run, so the founding
+// backfill never saw them and there is no row to update.
+await db.query("insert into public.subscriptions(user_id,status) values($1,'grandfathered') on conflict (user_id) do update set status='grandfathered'",[A])
+await db.query("update public.billing_settings set enforced=true")
+await asUser(A,async()=>{
+ const e=(await query('select * from entitlement()'))[0]
+ assert.equal(e.allowed,true)
+ assert.equal(e.status,'grandfathered')
+})
+// ...and the monthly charge must skip them, or "permanent access" quietly
+// becomes "access until the balance runs out".
+const before=(await query('select count(*)::int n from credit_ledger where user_id=$1 and period is not null',[A]))[0].n
+await db.exec('select public.post_monthly_credits()')
+const after=(await query('select count(*)::int n from credit_ledger where user_id=$1 and period is not null',[A]))[0].n
+assert.equal(after,before)
+await db.query("update public.billing_settings set enforced=false")
+await db.query("delete from public.subscriptions where user_id=$1",[A])
+console.log('PASS a grandfathered founder is allowed and never charged')
 console.log('PASS prepaid credits and subscription expiry')
 // Recovery lockout is enforced in SQL and a successful reset revokes sessions.
 await db.query("insert into auth.sessions(id,user_id) values(gen_random_uuid(),$1)",[A])

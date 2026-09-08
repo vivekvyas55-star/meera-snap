@@ -157,7 +157,11 @@ export default function Plans({ onBack }) {
           </div>
         ))}
 
-        {ent?.status === 'none' && (
+        {/* Not to a grandfathered founder, who needs no trial, and not while
+              enforcement is off — the trial is one-shot and start_trial() can
+              never re-arm it, so offering it before it buys anything spends it
+              for nothing. That is exactly what happened to one account. */}
+          {ent?.status === 'none' && ent?.enforced && (
           <button className="pill-btn" onClick={trial} disabled={busy}>
             {busy ? 'Starting…' : 'Start 3-day trial'}
           </button>

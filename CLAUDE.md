@@ -332,6 +332,18 @@ Two migrations, both **inert until `billing_settings.enforced` is flipped to
 true**. Turning that flag on is a deliberate act and nothing else in the repo
 does it.
 
+**Founding users are `grandfathered` and keep permanent access**
+(`202609090023_founders.sql`, owner's decision, 9 Sep 2026). `entitlement()`
+allows them unconditionally and `post_monthly_credits()` skips them, so this is
+a data fact, not a behaviour. It had to be restored: `202609070011_credits.sql`
+deliberately set every `grandfathered` row back to `none`, which meant Plans
+offered all of them a one-shot 3-day trial they had no use for — one account had
+already spent it, and `start_trial()` can never re-arm a spent trial. Worse, the
+day `enforced` was flipped, **nobody would have been grandfathered.** The trial
+CTA is now gated on `enforced` as well as status. `tests/database.mjs` pins both
+halves, because this stays silent until enforcement is turned on, which is the
+worst moment to discover it.
+
 `202609070010_billing.sql` — `billing_settings` (one row), `billing_plans`
 (monthly ₹99, annual ₹999), `subscriptions` (select-own RLS, no write policy —
 the Razorpay webhook writes as service_role), `entitlement()` and
