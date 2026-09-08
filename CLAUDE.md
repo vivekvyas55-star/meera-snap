@@ -533,6 +533,17 @@ grant is column-scoped (`story_views` grants UPDATE only on `screenshot_at`)
 every call 42501s. Use `ignoreDuplicates: true` (→ `DO NOTHING`) for pure
 presence rows — this is what `markStoryViewed`/`sendFriendRequest` do.
 
+**Every client write is executed in `tests/database.mjs`** as a real
+authenticated user, in a rolled-back transaction, under
+`PASS every client write succeeds for a legitimate user`. Reading a policy
+cannot catch a missing grant — the write has to actually run. Add a case there
+whenever `db.js` or `push.js` gains an insert/update/upsert/delete, and
+replicate what supabase-js sends: `ignoreDuplicates: true` is
+`ON CONFLICT DO NOTHING`, its absence is `DO UPDATE SET` over **every** payload
+column. Verified by mutation — revoking `update (birthday) on profiles`
+reproduces the original production failure ("permission denied for table
+profiles") and the test catches it.
+
 **Watch for paste truncation.** Large migrations pasted into the Monaco SQL
 editor have been silently truncated mid-statement, leaving columns/functions/
 grants missing — the root cause behind several "bug" reports (including the

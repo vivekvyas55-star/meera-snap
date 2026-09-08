@@ -209,4 +209,80 @@ await db.query("update game_invites set expires_at=now()-interval '1 second' whe
 await db.exec('select purge_expired()')
 assert.equal((await query('select * from game_invites where id=$1',[game.id])).length,0)
 console.log('PASS game authorization, acceptance retries, legal turns, stale moves, saved board, win, end and expiry cleanup')
+
+// --------------------------------------------------------------------------
+// Every write the client actually performs, executed as a real authenticated
+// user and rolled back.
+//
+// Grants gate writes BEFORE RLS, so a column the client writes without an
+// explicit grant fails 42501 while the policy still reads correctly — which is
+// how posting a story failed for every user, how `profiles.birthday` was
+// unwritable, and how deleting your own story would have failed. Reading the
+// policy cannot catch any of those. Executing the write can.
+//
+// The upserts replicate what supabase-js actually sends: `ignoreDuplicates`
+// becomes ON CONFLICT DO NOTHING, and its absence becomes DO UPDATE SET over
+// EVERY payload column — which needs UPDATE on all of them even on a first,
+// non-conflicting insert. That distinction is the `story_views` bug.
+async function clientWrite(label, steps) {
+ await db.exec('begin')
+ let failure = null
+ try {
+  for (const step of steps) {
+   if (step.as) {
+    await db.exec('reset role')
+    await db.query(`select set_config('request.jwt.claim.sub',$1,true)`,[step.as])
+    await db.exec('set local role authenticated')
+    continue
+   }
+   const res = await db.query(step.sql, step.args ?? [])
+   if (step.rows !== undefined && res.affectedRows !== step.rows) {
+    throw new Error(`affected ${res.affectedRows} rows, expected ${step.rows} — the policy filtered it out`)
+   }
+  }
+ } catch (err) { failure = err }
+ await db.exec('rollback')
+ if (failure) throw new Error(`client write "${label}" fails for a legitimate user: ${failure.message}`)
+}
+const storyPath=`${A}/stories/s.jpg`, memoryPath=`${A}/memories/m.jpg`
+await clientWrite('updateProfile / setBirthday',[{as:A},
+ {sql:`update profiles set display_name='Alice',avatar_emoji='🦊',avatar_hue=200 where id=$1`,args:[A],rows:1},
+ {sql:`update profiles set birthday='1996-05-28' where id=$1`,args:[A],rows:1}])
+await clientWrite('friend request, accept, decline',[{as:A},
+ {sql:`insert into friendships(user_a,user_b,requested_by,status) values($1,$2,$1,'pending') on conflict (user_a,user_b) do nothing`,args:[A,C],rows:1},
+ {as:C},{sql:`update friendships set status='accepted' where user_a=$1 and user_b=$2`,args:[A,C],rows:1},
+ {as:A},{sql:`delete from friendships where user_a=$1 and user_b=$2`,args:[A,C],rows:1}])
+await clientWrite('sendChat and logCall',[{as:A},
+ {sql:`insert into messages(user_a,user_b,sender_id,kind,body,client_id) values($1,$2,$1,'chat','hello',gen_random_uuid())`,args:[A,B],rows:1},
+ {sql:`insert into messages(user_a,user_b,sender_id,kind,body,view_seconds,delivered_at) values($1,$2,$1,'call','voice|ended',95,now())`,args:[A,B],rows:1}])
+await clientWrite('markOpened / markReplayed / markScreenshot',[{as:B},
+ {sql:`update messages set opened_at=now() where user_a=$1 and user_b=$2 and sender_id=$1 and opened_at is null`,args:[A,B]},
+ {sql:`update messages set replayed_at=now() where user_a=$1 and user_b=$2 and sender_id=$1`,args:[A,B]},
+ {sql:`update messages set screenshot_at=now() where user_a=$1 and user_b=$2 and sender_id=$1`,args:[A,B]}])
+await clientWrite('unsend',[{as:A},
+ {sql:`update messages set unsent_at=now() where sender_id=$1 and kind='chat'`,args:[A]}])
+await clientWrite('setMyLocation / stopSharingLocation',[{as:A},
+ {sql:`insert into locations(user_id,lat,lng,sharing,updated_at) values($1,12.9,77.6,true,now()) on conflict (user_id) do update set user_id=excluded.user_id,lat=excluded.lat,lng=excluded.lng,sharing=excluded.sharing,updated_at=excluded.updated_at`,args:[A],rows:1},
+ {sql:`delete from locations where user_id=$1`,args:[A],rows:1}])
+await clientWrite('setAnniversaryDate',[{as:A},
+ {sql:`insert into anniversaries(user_a,user_b,started_on,updated_at) values($1,$2,'2018-05-28',now()) on conflict (user_a,user_b) do update set user_a=excluded.user_a,user_b=excluded.user_b,started_on=excluded.started_on,updated_at=excluded.updated_at`,args:[A,B],rows:1}])
+await clientWrite('setStatusNote / clearStatusNote',[{as:A},
+ {sql:`insert into status_notes(user_id,body,created_at,expires_at) values($1,'brb',now(),now()+interval '24 hours') on conflict (user_id) do update set user_id=excluded.user_id,body=excluded.body,created_at=excluded.created_at,expires_at=excluded.expires_at`,args:[A],rows:1},
+ {sql:`delete from status_notes where user_id=$1`,args:[A],rows:1}])
+// The story and memory rows reference a real storage object — `integrity_followup`
+// rejects a row whose file is not there, so the fixture has to upload first.
+await clientWrite('postStory, markStoryViewed, deleteStory',[
+ {sql:`insert into storage.objects(bucket_id,name) values('media',$1)`,args:[storyPath]},{as:A},
+ {sql:`insert into stories(user_id,media_path,media_type,caption) values($1,$2,'image',null)`,args:[A,storyPath],rows:1},
+ {as:B},{sql:`insert into story_views(story_id,viewer_id) select id,$1 from stories where user_id=$2 on conflict (story_id,viewer_id) do nothing`,args:[B,A],rows:1},
+ {sql:`update story_views set screenshot_at=now() where viewer_id=$1`,args:[B],rows:1},
+ {as:A},{sql:`delete from stories where user_id=$1`,args:[A],rows:1}])
+await clientWrite('saveToMemory / deleteMemory',[
+ {sql:`insert into storage.objects(bucket_id,name) values('media',$1)`,args:[memoryPath]},{as:A},
+ {sql:`insert into memories(user_id,media_path,thumb_path,media_type,caption) values($1,$2,null,'image',null)`,args:[A,memoryPath],rows:1},
+ {sql:`delete from memories where user_id=$1`,args:[A],rows:1}])
+await clientWrite('saveSubscription / disablePush',[{as:A},
+ {sql:`insert into push_subscriptions(user_id,endpoint,p256dh,auth,user_agent) values($1,'https://push.example/x','p','a','ua') on conflict (endpoint) do update set user_id=excluded.user_id,endpoint=excluded.endpoint,p256dh=excluded.p256dh,auth=excluded.auth,user_agent=excluded.user_agent`,args:[A],rows:1},
+ {sql:`delete from push_subscriptions where endpoint='https://push.example/x'`,args:[],rows:1}])
+console.log('PASS every client write succeeds for a legitimate user')
 await db.close()
