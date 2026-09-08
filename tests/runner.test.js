@@ -1,8 +1,6 @@
 import { expect, test } from 'vitest'
 import { createRun, jump, scoreOf, step, GROUND_Y, MAX_SPEED, START_SPEED } from '../src/lib/runner'
 
-const seeded = () => { let n = 0; return () => ((n = (n * 9301 + 49297) % 233280) / 233280) }
-
 // Clear the track each frame so these two measure distance and speed rather
 // than how long the runner survives without anyone pressing jump.
 const runClear = (run, frames) => {

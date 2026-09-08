@@ -9,6 +9,11 @@ import Portal from './Portal'
 // done by tapping the snap again in the chat, so there's no in-viewer replay.
 export default function SnapViewer({ message, me, onClose, onScreenshot }) {
   const isMine = message.sender_id === me
+  // A disappearing snap can be kept in-chat by either person, which is a
+  // visible shared decision. Device export is intentionally narrower: a
+  // recipient cannot quietly turn an unsaved disappearing snap into a gallery
+  // file without the sender's mutual-save signal.
+  const canSaveToDevice = isMine || (message.saved_by ?? []).includes(me)
   const [error, setError] = useState(null)
   const [counting, setCounting] = useState(false)
   const [url, setUrl] = useState(null)
@@ -141,9 +146,13 @@ export default function SnapViewer({ message, me, onClose, onScreenshot }) {
           }}
         >
           <div style={{ display: 'flex', gap: 10 }}>
-            <button className="pill" onClick={save} disabled={saved}>
-              {saved ? '✓ Saved' : '⤓ Save'}
-            </button>
+            {canSaveToDevice ? (
+              <button className="pill" onClick={save} disabled={saved}>
+                {saved ? '✓ Saved' : '⤓ Save'}
+              </button>
+            ) : (
+              <span className="viewer-privacy-note">Save in chat to keep</span>
+            )}
             {!isVideo && !isMine && reopensLeft > 0 && ready && (
               <button
                 className="pill"

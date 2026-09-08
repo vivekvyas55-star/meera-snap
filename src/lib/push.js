@@ -127,7 +127,7 @@ export async function isEnabled(userId) {
 // friend can't put arbitrary text on your lock screen under Meera's name.
 // Never awaited on a send path and never allowed to throw: failing to notify
 // must not fail a message already committed to the database.
-// kind: 'chat' | 'snap' | 'voice' | 'sticker' | 'call'
+// kind: 'chat' | 'snap' | 'voice' | 'sticker' | 'call' | 'game' | 'game_accept'
 export function notify(to, kind) {
   if (!to || !kind) return Promise.resolve()
   return supabase.functions.invoke('push', { body: { to, kind } }).catch(() => {})

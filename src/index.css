@@ -1399,6 +1399,12 @@ button:disabled { cursor: not-allowed; }
   font-size: 11px; font-weight: 600; letter-spacing: 0.06em;
   text-transform: uppercase; color: var(--muted);
 }
+.qcards-heading { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.qcards-status {
+  max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: 11.5px; color: var(--muted);
+}
+.qcards-status.needs-you { color: #526000; font-weight: 600; }
 .qcards-badge { background: var(--lime); color: var(--ink); font-size: 11px; }
 .qcards-close {
   min-width: 32px; min-height: 32px;
@@ -1418,6 +1424,7 @@ button:disabled { cursor: not-allowed; }
   background: var(--card); border-radius: var(--r-card);
   padding: 12px 14px; margin-bottom: 7px;
 }
+.qcard:focus-within { outline: 2px solid rgba(74, 82, 196, 0.38); outline-offset: 2px; }
 /* One vibrant colour per card: yours lavender, theirs neutral, so a run of
    each is readable at a glance. */
 .qcard.mine { background: var(--lavender); }
@@ -1474,6 +1481,23 @@ button:disabled { cursor: not-allowed; }
 /* An unanswered question addressed to you is the one thing here that needs
    doing, so it carries the accent rather than sitting in the neutral card. */
 .qcard:not(.mine):has(.qcard-reply) { background: var(--lime); }
+
+/* Kept Together is a gallery, so a tile must also open with keyboard and touch.
+   The preview remains within the sheet: it is a quick look, not a second
+   navigation layer that loses the reader's place in the chat. */
+.kept-tile { border: 0; padding: 0; cursor: zoom-in; }
+.kept-tile:focus-visible { outline: 3px solid var(--indigo); outline-offset: 3px; }
+.kept-preview {
+  position: relative; margin-top: 14px; min-height: 180px; max-height: 48dvh;
+  display: grid; place-items: center; overflow: hidden;
+  border-radius: var(--r-card); background: var(--ink);
+}
+.kept-preview img, .kept-preview video { width: 100%; max-height: 48dvh; display: block; object-fit: contain; }
+.kept-preview-close {
+  position: absolute; z-index: 1; top: 8px; right: 8px; width: 38px; height: 38px;
+  border-radius: 50%; background: rgba(22,22,26,.72); color: #fff; font-size: 24px; line-height: 1;
+}
+.viewer-privacy-note { color: rgba(255,255,255,.72); font-size: 12px; padding: 11px 4px; }
 
 /* Friend profile — opened by tapping the chat header. Line icons instead of
    emoji chrome, one vibrant colour per stat card, list rows for actions. */
@@ -1703,6 +1727,47 @@ button:disabled { cursor: not-allowed; }
 
 /* Play together */
 .play-grid { display: flex; flex-direction: column; gap: 12px; margin-top: 4px; }
+.play-intro { margin: 2px 2px 0; color: var(--muted); font-size: 13.5px; line-height: 1.45; }
+.play-card-game { flex-wrap: wrap; }
+.play-card-game select { flex: 1 1 140px; min-height: 42px; padding: 0 12px; border: 1px solid rgba(22,22,26,.14); border-radius: 12px; background: rgba(255,255,255,.52); color: var(--ink); }
+.play-card-game .btn-dark { min-height: 42px; padding: 0 15px; }
+.play-empty { flex: 1 1 100%; margin-top: 2px; }
+.game-banner { position: fixed; z-index: 80; left: 14px; right: 14px; bottom: calc(var(--safe-bottom) + 88px); display: flex; align-items: center; gap: 10px; padding: 12px 12px 12px 15px; border-radius: 18px; background: var(--ink); color: #fff; box-shadow: 0 12px 30px rgba(22,22,26,.24); }
+.game-banner-copy { min-width: 0; flex: 1; font-size: 13px; line-height: 1.25; }
+.game-banner-copy strong { margin-right: 4px; }
+.game-banner-copy span { display: block; margin-top: 3px; color: #c2c0cd; font-size: 11px; }
+.game-banner-open { min-height: 38px; padding: 0 14px; border-radius: 12px; background: var(--lime); color: var(--ink); font-size: 12px; font-weight: 650; }
+.game-banner-dismiss { width: 30px; height: 30px; border-radius: 50%; color: #c2c0cd; font-size: 22px; }
+.game-invite { display: flex; flex-direction: column; gap: 12px; padding: 15px; margin-bottom: 12px; background: var(--lime); border-radius: var(--r-card); line-height: 1.35; }
+.game-invite strong { margin-right: 5px; }
+.game-invite span { display: block; margin-top: 4px; color: rgba(22,22,26,.65); font-size: 12px; }
+.game-invite-actions { display: flex; gap: 8px; }
+.game-invite-actions button { flex: 1; justify-content: center; }
+.game-room { padding: 4px 2px 24px; }
+.game-room-head { display: flex; align-items: center; justify-content: space-between; }
+.game-room-head h2 { margin: 4px 0 0; font-size: 25px; font-weight: 450; letter-spacing: -.035em; }
+.ttt-board { display: grid; grid-template-columns: repeat(3, 1fr); gap: 9px; max-width: 330px; margin: 22px auto; }
+.ttt-cell { aspect-ratio: 1; border-radius: 18px; background: var(--card); font-size: clamp(34px, 12vw, 54px); font-weight: 300; color: var(--ink); transition: transform 120ms, background 120ms; }
+.ttt-cell:not(:disabled):active { transform: scale(.94); background: var(--card-press); }
+.ttt-cell.mark-x { color: var(--indigo); background: var(--lavender); }
+.ttt-cell.mark-o { color: #9b4737; background: #f5d8ce; }
+.game-chat { margin: 18px 0 12px; border: 1px solid rgba(22,22,26,.1); border-radius: 18px; background: var(--card); overflow: hidden; }
+.game-chat-toggle { width: 100%; min-height: 48px; padding: 0 14px; display: flex; align-items: center; justify-content: space-between; color: var(--ink); font-weight: 550; text-align: left; }
+.game-chat-unread { min-width: 22px; height: 22px; padding: 0 6px; display: inline-flex; align-items: center; justify-content: center; border-radius: 999px; background: var(--indigo); color: white; font-size: 11px; }
+.game-chat-messages { max-height: 180px; padding: 4px 12px 10px; display: flex; flex-direction: column; gap: 6px; overflow-y: auto; overscroll-behavior: contain; }
+.game-chat-empty { padding: 14px 4px; color: var(--muted); font-size: 12.5px; text-align: center; }
+.game-chat-bubble { align-self: flex-start; max-width: 82%; padding: 8px 11px; border-radius: 13px 13px 13px 4px; background: white; font-size: 13px; line-height: 1.35; overflow-wrap: anywhere; }
+.game-chat-bubble.mine { align-self: flex-end; border-radius: 13px 13px 4px 13px; background: var(--lavender); }
+.game-chat-quick { display: flex; gap: 6px; padding: 0 9px 9px; overflow-x: auto; scrollbar-width: none; }
+.game-chat-quick::-webkit-scrollbar { display: none; }
+.game-chat-quick button { flex: 0 0 auto; padding: 7px 10px; border-radius: 999px; background: rgba(255,255,255,.82); color: var(--ink); font-size: 11.5px; }
+.game-chat-quick button:disabled { opacity: .4; }
+.game-chat-compose { display: flex; gap: 7px; padding: 9px; border-top: 1px solid rgba(22,22,26,.08); background: rgba(255,255,255,.62); }
+.game-chat-compose input { min-width: 0; flex: 1; height: 39px; padding: 0 11px; border: 1px solid rgba(22,22,26,.12); border-radius: 12px; background: white; color: var(--ink); }
+.game-chat-compose button { height: 39px; padding: 0 13px; border-radius: 12px; background: var(--ink); color: white; font-weight: 550; }
+.game-chat-compose button:disabled { opacity: .38; }
+.game-legend { display: flex; justify-content: center; gap: 18px; color: var(--muted); font-size: 13px; margin-bottom: 18px; }
+.game-legend .mark-x { color: var(--indigo); font-weight: 600; }
 .play-card {
   display: flex; align-items: center; gap: 12px; width: 100%;
   padding: 16px; border-radius: var(--r-card); text-align: left; color: var(--ink);
@@ -1863,3 +1928,16 @@ button:disabled { cursor: not-allowed; }
 @keyframes toast-in { from { opacity: 0; transform: translateX(-50%) translateY(10px); } }
 .offline-bar { animation: bar-down 240ms ease-out; }
 @keyframes bar-down { from { transform: translateY(-100%); } }
+.game-status { display: grid; gap: 6px; padding: 16px; margin: 18px 0; border-radius: 18px; background: var(--card); }
+.game-status.your-turn { background: var(--lavender); }
+.game-status strong { font-size: 18px; }
+.game-status span, .game-connection { font-size: 13px; line-height: 1.5; }
+.game-connection { padding: 12px; border: 1px solid #dfbc8a; border-radius: 14px; margin-bottom: 16px; display: grid; gap: 10px; }
+.game-room-actions { display: grid; justify-items: center; gap: 14px; margin-top: 20px; text-align: center; }
+.game-resume-list { display: grid; gap: 10px; }
+.game-resume-list h2 { font-size: 20px; margin: 0 0 4px; }
+.game-resume-card { display: flex; align-items: center; justify-content: space-between; gap: 14px; text-align: left; width: 100%; padding: 16px; border: 1px solid var(--line, #e8e4ee); border-radius: 18px; background: #faf8fd; font: inherit; cursor: pointer; }
+.game-resume-card small { display: block; margin-top: 5px; color: var(--muted); }
+.game-resume-card > span:last-child { font-size: 13px; white-space: nowrap; }
+.ttt-cell:disabled:empty { opacity: .55; cursor: default; }
+.ttt-cell:focus-visible, .game-resume-card:focus-visible { outline: 3px solid #7965b8; outline-offset: 3px; }

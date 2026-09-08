@@ -818,6 +818,7 @@ function FriendSheet({ friend, friendName, me, onClose, onRemoved }) {
       setBusy(false)
     }
   }
+  if (kept) return <KeptTogether friendId={friend.id} friendName={friendName} onClose={() => setKept(false)} />
   return (
     <Portal>
       <Sheet onClose={onClose} label="Friend options">
@@ -865,9 +866,6 @@ function FriendSheet({ friend, friendName, me, onClose, onRemoved }) {
               </span>
               <span className="fp-row-go"><ChevronIcon width={17} height={17} /></span>
             </button>
-            {kept && (
-              <KeptTogether friendId={friend.id} friendName={friendName} onClose={() => setKept(false)} />
-            )}
             {confirmRemove && (
               <Confirm
                 title={`Remove ${friendName}?`}

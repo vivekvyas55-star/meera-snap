@@ -131,6 +131,64 @@ export async function listFriendsWithProfiles(me) {
     .filter((r) => r.profile)
 }
 
+export async function createGameInvite(otherId, room) {
+  const { data, error } = await supabase.rpc('create_game_invite', { other: otherId, game_code: 'ttt', room_code: room })
+  if (error) throw error
+  return data
+}
+
+export async function listPendingGameInvites() {
+  const { data, error } = await supabase.rpc('pending_game_invites')
+  if (error) throw error
+  return data ?? []
+}
+
+export async function listAcceptedGameInviteResponses() {
+  const { data, error } = await supabase.rpc('accepted_game_invite_responses')
+  if (error) throw error
+  return data ?? []
+}
+
+export async function resolveGameInvite(inviteId, status) {
+  const { data, error } = await supabase.rpc('resolve_game_invite', { invite: inviteId, next_status: status })
+  if (error) throw error
+  if (!data) throw new Error('This invitation has expired or already been answered.')
+}
+
+export async function getGameInvite(id) {
+  const { data, error } = await supabase.from('game_invites').select('*').eq('id', id).maybeSingle()
+  if (error) throw error
+  return data
+}
+
+export async function syncGameRoom(invite) {
+  const { data, error } = await supabase.rpc('game_room', { invite })
+  if (error) throw error
+  return data
+}
+
+export async function playGameMove(invite, square, expectedRevision) {
+  const { data, error } = await supabase.rpc('play_game_move', { invite, square, expected_revision: expectedRevision })
+  if (error) throw error
+  return data
+}
+
+export async function endGameRoom(invite) {
+  const { error } = await supabase.rpc('end_game_room', { invite })
+  if (error) throw error
+}
+
+export async function listActiveGameRooms() {
+  const { data, error } = await supabase.rpc('active_game_rooms')
+  if (error) throw error
+  return data ?? []
+}
+
+export async function acknowledgeGameInvite(inviteId) {
+  const { error } = await supabase.rpc('acknowledge_game_invite', { invite: inviteId })
+  if (error) throw error
+}
+
 // --------------------------------------------------------------------------
 // messages
 // --------------------------------------------------------------------------

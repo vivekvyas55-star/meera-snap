@@ -16,6 +16,7 @@ export default function KeptTogether({ friendId, friendName, onClose }) {
   const [rows, setRows] = useState(null)
   const [urls, setUrls] = useState({})
   const [error, setError] = useState(null)
+  const [selected, setSelected] = useState(null)
 
   useEffect(() => {
     let alive = true
@@ -61,15 +62,31 @@ export default function KeptTogether({ friendId, friendName, onClose }) {
         {rows && rows.length > 0 && (
           <div className="kept-grid">
             {rows.map((m) => (
-              <div key={m.id} className="kept-tile">
+              <button
+                key={m.id}
+                className="kept-tile"
+                type="button"
+                onClick={() => setSelected(m)}
+                aria-label={`Open saved ${m.media_type === 'video' ? 'video' : 'photo'}`}
+              >
                 {m.media_type === 'video' ? (
                   <video src={urls[m.id] ?? undefined} preload="none" muted playsInline />
                 ) : (
                   <img src={urls[m.id] ?? undefined} alt="" loading="lazy" />
                 )}
                 {m.media_type === 'video' && <span className="kept-badge">▶</span>}
-              </div>
+              </button>
             ))}
+          </div>
+        )}
+        {selected && (
+          <div className="kept-preview" role="region" aria-label="Saved media preview">
+            <button className="kept-preview-close" onClick={() => setSelected(null)} aria-label="Close preview">×</button>
+            {selected.media_type === 'video' ? (
+              <video src={urls[selected.id] ?? undefined} controls autoPlay playsInline />
+            ) : (
+              <img src={urls[selected.id] ?? undefined} alt="Saved together" />
+            )}
           </div>
         )}
       </Sheet>

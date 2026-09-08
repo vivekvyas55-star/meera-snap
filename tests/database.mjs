@@ -28,6 +28,18 @@ try {
  console.log('PASS audit upgrade')
  await db.exec(fs.readFileSync('supabase/migrations/202609060001_audit_fixes.sql','utf8'))
  console.log('PASS upgrade replay')
+ for (const migration of [
+  '202609060006_kept_and_skips.sql',
+  '202609060007_pair_questions.sql',
+  '202609070008_pending_questions.sql',
+  '202609070010_billing.sql',
+  '202609070011_credits.sql',
+  '202609070012_integrity_followup.sql',
+  '202609070013_game_invites.sql',
+  '202609080014_game_invite_responses.sql',
+  '202609080015_game_rooms.sql',
+ ]) await db.exec(fs.readFileSync(`supabase/migrations/${migration}`,'utf8'))
+ console.log('PASS follow-up upgrade chain')
 } catch (err) { console.error('Migration failure:',err.message,err.where,err.position); await db.close(); process.exit(1) }
 const A='00000000-0000-4000-8000-000000000001',B='00000000-0000-4000-8000-000000000002',C='00000000-0000-4000-8000-000000000003'
 const query = async (sql,args=[]) => (await db.query(sql,args)).rows
@@ -85,6 +97,15 @@ await db.query("insert into storage.objects(bucket_id,name) values('media',$1)",
 await asUser(A,()=>query("insert into messages(user_a,user_b,sender_id,kind,media_path,media_type) values($1,$2,$1,'snap',$3,'image')",[A,B,ownedPath]))
 await db.query("update media_cleanup set due_at=now()-interval '1 hour' where path=$1",[ownedPath])
 assert.equal((await query('select claim_media_cleanup($1) ok',[ownedPath]))[0].ok,false)
+const thumbPath=`${A}/snaps/test-thumb.jpg`
+const fullWithThumb=`${A}/snaps/test-with-thumb.jpg`
+await asUser(A,()=>query('select queue_media_cleanup($1)',[thumbPath]))
+await asUser(A,()=>query('select queue_media_cleanup($1)',[fullWithThumb]))
+await db.query("insert into storage.objects(bucket_id,name) values('media',$1)",[thumbPath])
+await db.query("insert into storage.objects(bucket_id,name) values('media',$1)",[fullWithThumb])
+await asUser(A,()=>query("insert into messages(user_a,user_b,sender_id,kind,media_path,thumb_path,media_type) values($1,$2,$1,'snap',$3,$4,'image')",[A,B,fullWithThumb,thumbPath]))
+await db.query("update media_cleanup set due_at=now()-interval '1 hour' where path=$1",[thumbPath])
+assert.equal((await query('select claim_media_cleanup($1) ok',[thumbPath]))[0].ok,false)
 await asUser(B,()=>assert.rejects(query("insert into messages(user_a,user_b,sender_id,kind,media_path,media_type) values($1,$2,$2,'snap',$3,'image')",[A,B,ownedPath])))
 const orphan=`${A}/snaps/orphan.jpg`
 await asUser(A,()=>query('select queue_media_cleanup($1)',[orphan]))
@@ -93,6 +114,46 @@ await db.query("update media_cleanup set due_at=now()-interval '1 hour' where pa
 assert.equal((await query('select claim_media_cleanup($1) ok',[orphan]))[0].ok,true)
 await asUser(A,()=>assert.rejects(query("insert into messages(user_a,user_b,sender_id,kind,media_path,media_type) values($1,$2,$1,'snap',$3,'image')",[A,B,orphan])))
 console.log('PASS media ownership, referenced-file preservation and cleanup locking')
+// Pair-question badges only represent prompts visible today, and the ask cap
+// has a stable lock plus a user-facing length error.
+await db.query("insert into public.pair_questions(user_a,user_b,asker,body,on_date) values($1,$2,$1,'old question','2000-01-01')",[A,B])
+await asUser(B,async()=>{
+ const oldBadge=await query('select * from pending_questions_all()')
+ assert.equal(oldBadge.find(r=>r.other===A).pending,0)
+})
+await asUser(A,async()=>{
+ await assert.rejects(query('select ask_question($1,$2)',[B,'x'.repeat(301)]),/300 characters/)
+ await query('select ask_question($1,$2)',[B,'One?'])
+ await query('select ask_question($1,$2)',[B,'Two?'])
+ await query('select ask_question($1,$2)',[B,'Three?'])
+ await assert.rejects(query('select ask_question($1,$2)',[B,'Four?']),/three questions/)
+})
+await asUser(B,async()=>{
+ const badge=await query('select * from pending_questions_all()')
+ assert.equal(badge.find(r=>r.other===A).pending,3)
+})
+console.log('PASS question badge freshness and daily cap')
+// Credits are prepaid: a scheduled charge must not create debt, and an expired
+// paid subscription cannot bypass a zero credit balance.
+await db.query('update public.billing_settings set enforced=true where id')
+await db.query('delete from public.credit_ledger where user_id=$1',[C])
+await db.query("insert into public.subscriptions(user_id,status) values($1,'none') on conflict(user_id) do update set status='none', current_period_end=null",[C])
+await asUser(C,async()=>{
+ assert.equal((await query('select allowed from entitlement()'))[0].allowed,false)
+})
+await db.query("update public.subscriptions set status='active', current_period_end=now()-interval '1 day' where user_id=$1",[C])
+await asUser(C,async()=>{
+ assert.equal((await query('select allowed from entitlement()'))[0].allowed,false)
+})
+await db.query("update public.subscriptions set current_period_end=now()+interval '1 day' where user_id=$1",[C])
+await asUser(C,async()=>{
+ assert.equal((await query('select allowed from entitlement()'))[0].allowed,true)
+})
+await db.query("update public.subscriptions set status='none', current_period_end=null where user_id=$1",[C])
+await db.query("insert into public.credit_ledger(user_id,delta,reason) values($1,98,'test_grant')",[C])
+await query("select post_monthly_credits('2099-01')")
+assert.equal((await query("select count(*)::int n from public.credit_ledger where user_id=$1 and period='2099-01'",[C]))[0].n,0)
+console.log('PASS prepaid credits and subscription expiry')
 // Recovery lockout is enforced in SQL and a successful reset revokes sessions.
 await db.query("insert into auth.sessions(id,user_id) values(gen_random_uuid(),$1)",[A])
 await db.query("insert into auth.refresh_tokens(user_id) values($1)",[A])
@@ -102,4 +163,43 @@ assert.equal((await query('select count(*)::int n from auth.refresh_tokens where
 for(let i=0;i<5;i++) assert.equal((await query("select reset_password('alice','wrong','new-password') ok"))[0].ok,false)
 assert.equal((await query("select reset_password('alice','secret answer','new-password') ok"))[0].ok,false)
 console.log('PASS recovery session revocation and guess lockout')
+// Real SQL verifies authoritative turns, authorization and timeout retries.
+let game
+await asUser(A, async () => { game=(await query("select * from create_game_invite($1,'ttt','test-room')",[B]))[0] })
+await asUser(C, async () => {
+  await assert.rejects(query('select game_room($1)',[game.id]),/unavailable/)
+  assert.equal((await query('select * from game_invites where id=$1',[game.id])).length,0)
+})
+await asUser(A, async () => { await assert.rejects(query('select play_game_move($1,0,0)',[game.id]),/not active/) })
+await asUser(B, async () => {
+  assert.equal((await query("select resolve_game_invite($1,'accepted') ok",[game.id]))[0].ok,true)
+  assert.equal((await query("select resolve_game_invite($1,'accepted') ok",[game.id]))[0].ok,true)
+  await assert.rejects(query('select play_game_move($1,0,0)',[game.id]),/legal move/)
+})
+await asUser(A, async () => {
+  await assert.rejects(query('select play_game_move($1,9,0)',[game.id]),/Invalid move/)
+  const first=(await query('select * from play_game_move($1,0,0)',[game.id]))[0]
+  const retry=(await query('select * from play_game_move($1,0,0)',[game.id]))[0]
+  assert.equal(first.revision,1); assert.equal(retry.revision,1)
+  assert.equal(retry.board[0],'X')
+  await assert.rejects(query('select play_game_move($1,1,0)',[game.id]),/Board changed/)
+  await assert.rejects(query('select play_game_move($1,1,1)',[game.id]),/legal move/)
+})
+await asUser(B,()=>query('select play_game_move($1,3,1)',[game.id]))
+await asUser(A,()=>query('select play_game_move($1,1,2)',[game.id]))
+await asUser(B,()=>query('select play_game_move($1,4,3)',[game.id]))
+await asUser(A,async()=>{
+  const win=(await query('select * from play_game_move($1,2,4)',[game.id]))[0]
+  assert.equal(win.result,'X'); assert.equal(win.revision,5)
+  assert.deepEqual((await query('select * from game_room($1)',[game.id]))[0].board,win.board)
+})
+await asUser(B,async()=>{
+  await assert.rejects(query('select play_game_move($1,5,5)',[game.id]),/legal move/)
+  await query('select end_game_room($1)',[game.id])
+  assert.equal((await query('select * from active_game_rooms()')).length,0)
+})
+await db.query("update game_invites set expires_at=now()-interval '1 second' where id=$1",[game.id])
+await db.exec('select purge_expired()')
+assert.equal((await query('select * from game_invites where id=$1',[game.id])).length,0)
+console.log('PASS game authorization, acceptance retries, legal turns, stale moves, saved board, win, end and expiry cleanup')
 await db.close()

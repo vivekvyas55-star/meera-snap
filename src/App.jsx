@@ -14,7 +14,7 @@ import { ToastProvider } from './components/Toast'
 import { useToast } from './hooks/useToast'
 import { CallProvider } from './hooks/CallProvider'
 import CallOverlay from './components/CallOverlay'
-import { findByUsername, sendFriendRequest } from './lib/db'
+import { findByUsername, sendFriendRequest, listPendingGameInvites, listAcceptedGameInviteResponses, getProfile, resolveGameInvite, acknowledgeGameInvite } from './lib/db'
 import { primeRing } from './lib/ringtone'
 import { saveSubscription } from './lib/push'
 import { AliasClockProvider } from './hooks/AliasClockProvider'
@@ -24,6 +24,7 @@ import InstallPrompt from './components/InstallPrompt'
 import OutboxDelivery from './components/OutboxDelivery'
 import PinLock from './components/PinLock'
 import { isUnlocked } from './lib/appLock'
+import { signalReceiver } from './lib/privateRealtime'
 
 const PANES = [
   { key: 'chat', label: 'Chat', Icon: ChatIcon },
@@ -38,6 +39,15 @@ function Shell() {
   const [openChat, setOpenChat] = useState(null)
   const [showProfile, setShowProfile] = useState(false)
   const [showMap, setShowMap] = useState(false)
+  const [openPlay, setOpenPlay] = useState(false)
+  const [gameInvite, setGameInvite] = useState(null)
+  const [playVisible, setPlayVisible] = useState(false)
+  const gameRefresh = useRef(false)
+  useEffect(() => {
+    const changed = (event) => setPlayVisible(event.detail)
+    window.addEventListener('meera:play-visibility', changed)
+    return () => window.removeEventListener('meera:play-visibility', changed)
+  }, [])
   const [editing, setEditing] = useState(false) // a captured snap is open in the editor
   const [drag, setDrag] = useState(null)
   const touch = useRef(null)
@@ -85,6 +95,64 @@ function Shell() {
   const goToChat = useCallback((friend) => {
     setOpenChat(friend)
   }, [])
+
+  // Realtime makes the banner instant when the receiver is ready. The database
+  // check makes it reliable when an invite lands during startup, reconnection,
+  // background throttling, or a brief network gap.
+  const refreshGameInvites = useCallback(async () => {
+    if (!profile?.id || gameRefresh.current) return
+    gameRefresh.current = true
+    try {
+    const [pending, accepted] = await Promise.all([
+      listPendingGameInvites(),
+      listAcceptedGameInviteResponses(),
+    ])
+    const row = pending[0] || accepted[0]
+    if (!row) { setGameInvite(null); try { sessionStorage.removeItem(`meera:pending-game:${profile.id}`) } catch {} return }
+    const isResponse = row.status === 'accepted'
+    const peer = await getProfile(isResponse ? row.recipient_id : row.sender_id).catch(() => null)
+    if (!peer) return
+    const next = { ...row, peer, response: isResponse ? 'accepted' : undefined }
+    setGameInvite((current) => current?.id === next.id ? current : next)
+    if (!isResponse) {
+      try { sessionStorage.setItem(`meera:pending-game:${profile.id}`, JSON.stringify(next)) } catch {}
+    }
+    } finally { gameRefresh.current = false }
+  }, [profile?.id])
+
+  useEffect(() => {
+    const profileId = profile?.id
+    if (!profileId) return
+    const receiver = signalReceiver(profileId)
+      .on('broadcast', { event: 'game_invite' }, ({ payload, peer }) => {
+        if (payload?.room && payload.game === 'ttt') {
+          const next = { ...payload, id: payload.invite_id, peer }
+          setGameInvite(next)
+          try { sessionStorage.setItem(`meera:pending-game:${profile.id}`, JSON.stringify(next)) } catch {}
+        }
+      })
+      .on('broadcast', { event: 'game_accept' }, ({ payload, peer }) => {
+        if (!payload?.room) return
+        setGameInvite({ ...payload, id: payload.invite_id, peer, response: 'accepted' })
+      }).subscribe()
+    return () => receiver.close()
+  }, [profile])
+
+  useEffect(() => {
+    if (!profile?.id) return
+    const refresh = () => { if (document.visibilityState === 'visible') refreshGameInvites().catch(() => {}) }
+    refresh()
+    const timer = setInterval(refresh, 6000)
+    document.addEventListener('visibilitychange', refresh)
+    window.addEventListener('focus', refresh)
+    window.addEventListener('online', refresh)
+    return () => {
+      clearInterval(timer)
+      document.removeEventListener('visibilitychange', refresh)
+      window.removeEventListener('focus', refresh)
+      window.removeEventListener('online', refresh)
+    }
+  }, [profile?.id, refreshGameInvites])
 
   // A browser can rotate a push subscription on its own; the service worker
   // re-subscribes and hands the new one here, because only the page holds the
@@ -193,7 +261,7 @@ function Shell() {
   // camera is merely paused (tracks disabled, grant kept), which is the same
   // thing swiping between panes already does.
   const overlay = showProfile ? (
-    <Profile onBack={() => setShowProfile(false)} />
+    <Profile onBack={() => setShowProfile(false)} openPlay={openPlay} onPlayOpened={() => setOpenPlay(false)} />
   ) : showMap ? (
     <SnapMap onBack={() => setShowMap(false)} />
   ) : openChat ? (
@@ -257,6 +325,28 @@ function Shell() {
       <Suspense fallback={<div className="app"><div className="empty" role="status">Loading…</div></div>}>
         {overlay}
       </Suspense>
+    )}
+    {gameInvite && !playVisible && (
+      <div className="game-banner" role="status">
+        <div className="game-banner-copy"><strong>{gameInvite.peer?.display_name || gameInvite.peer?.username || 'A friend'}</strong> {gameInvite.response === 'accepted' ? 'accepted your invitation' : 'invited you to play'}<span>Private to you both · Tic-Tac-Toe</span></div>
+        <button type="button" className="game-banner-open" onClick={() => {
+          if (gameInvite.response === 'accepted') {
+            try { sessionStorage.setItem(`meera:resume-game:${profile.id}`, JSON.stringify(gameInvite)) } catch {}
+            if (gameInvite.id) acknowledgeGameInvite(gameInvite.id).catch(() => {})
+          }
+          setGameInvite(null); setShowProfile(true); setOpenPlay(true)
+        }}>Open</button>
+        <button type="button" className="game-banner-dismiss" aria-label="Dismiss game invitation" onClick={async () => {
+          try {
+          if (gameInvite.id) {
+            const action = gameInvite.response === 'accepted' ? acknowledgeGameInvite(gameInvite.id) : resolveGameInvite(gameInvite.id, 'dismissed')
+            await action
+          }
+          setGameInvite(null)
+          try { sessionStorage.removeItem(`meera:pending-game:${profile.id}`) } catch {}
+          } catch { toast('Could not dismiss the invitation. Try again.') }
+        }}>×</button>
+      </div>
     )}
     </>
   )

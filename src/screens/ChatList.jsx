@@ -95,7 +95,7 @@ export default function ChatList({ active = true, onOpenChat, onOpenProfile, onO
       .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, load)
       .subscribe()
     return () => supabase.removeChannel(channel)
-  }, [load])
+  }, [me, load])
 
   const streakFor = useCallback(
     (friendId) => {

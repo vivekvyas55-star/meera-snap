@@ -57,7 +57,7 @@ export default function Stories({ active, onCapture }) {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'stories' }, load)
       .subscribe()
     return () => supabase.removeChannel(channel)
-  }, [load])
+  }, [me, load])
 
   // Group into one entry per author, oldest story first within each group.
   const groups = useMemo(() => {

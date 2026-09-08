@@ -92,6 +92,11 @@ export default function QuestionCards({ me, friend, friendName }) {
 
   if (unavailable) return null
   const waitingOnYou = rows.filter((q) => q.asker !== me && !q.answer).length
+  const activityLabel = waitingOnYou > 0
+    ? `${waitingOnYou} question${waitingOnYou === 1 ? '' : 's'} waiting for your answer`
+    : rows.length > 0
+      ? `${rows.length} question${rows.length === 1 ? '' : 's'} shared today`
+      : 'No questions shared yet today'
 
   if (!expanded) {
     return (
@@ -99,6 +104,7 @@ export default function QuestionCards({ me, friend, friendName }) {
         className={`dq-chip${waitingOnYou > 0 ? ' waiting' : ''}`}
         onClick={() => { setTouched(true); setExpanded(true) }}
         aria-expanded="false"
+        aria-label={`${activityLabel}. Open questions.`}
       >
         <span className="dq-chip-icon">💭</span>
         <span className="dq-chip-text">
@@ -118,7 +124,12 @@ export default function QuestionCards({ me, friend, friendName }) {
   return (
     <div className="qcards dq-panel">
       <div className="qcards-head">
-        <span className="qcards-title">Question of the day</span>
+        <div className="qcards-heading">
+          <span className="qcards-title">Question of the day</span>
+          <span className={`qcards-status${waitingOnYou > 0 ? ' needs-you' : ''}`}>
+            {activityLabel}
+          </span>
+        </div>
         <button
           className="qcards-ask"
           onClick={() => setOpen((v) => !v)}
@@ -152,6 +163,7 @@ export default function QuestionCards({ me, friend, friendName }) {
             rows={2}
             maxLength={300}
             autoFocus
+            aria-label={`Question for ${friendName}`}
           />
           <div className="qcard-newfoot">
             <span className="qcard-count">
@@ -198,6 +210,7 @@ export default function QuestionCards({ me, friend, friendName }) {
                   placeholder="Your answer…"
                   rows={2}
                   maxLength={500}
+                  aria-label={`Your answer to ${friendName}'s question`}
                 />
                 <div className="qcard-newfoot">
                   <span className="qcard-count">Answers can’t be edited</span>

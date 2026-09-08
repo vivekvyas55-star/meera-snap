@@ -56,21 +56,33 @@ export async function sendSignal(from, to, event, payload) {
   }
 }
 
+const inboxes = new Map()
 export function signalReceiver(me) {
-  const handlers = new Map(), channels = new Map()
-  let stop
+  const handlers = new Map()
+  let inbox
   const api = {
     on(_type, filter, callback) { handlers.set(filter.event, callback); return api },
     subscribe() {
-      stop = watchFriends(me, friends => {
+      if (inbox) return api
+      inbox = inboxes.get(me)
+      if (inbox) { inbox.listeners.add(handlers); return api }
+      inbox = { listeners: new Set([handlers]), channels: new Map(), stop: null }
+      inboxes.set(me, inbox)
+      const shared = inbox
+      const channels = shared.channels
+      shared.stop = watchFriends(me, friends => {
         const ids = new Set(friends.map(f => f.id))
         for (const [id, ch] of channels) if (!ids.has(id)) { supabase.removeChannel(ch); channels.delete(id) }
         for (const friend of friends) {
           if (channels.has(friend.id)) continue
           const ch = supabase.channel(`signal:${me}:${friend.id}`, { config: { private: true } })
-          for (const [event, callback] of handlers) ch.on('broadcast', { event }, ({ payload }) => {
+          ch.on('broadcast', { event: '*' }, ({ event, payload }) => {
             if (!payload || typeof payload.room !== 'string') return
-            callback({ payload: { ...payload, from: friend.id, peer: friend } })
+            // Keep sender identity outside the untrusted broadcast payload. Callers
+            // can use `peer` directly without trusting a client-supplied profile.
+            for (const listener of shared.listeners) {
+              listener.get(event)?.({ payload: { ...payload, from: friend.id, peer: friend }, peer: friend })
+            }
           })
           ch.subscribe()
           channels.set(friend.id, ch)
@@ -78,7 +90,17 @@ export function signalReceiver(me) {
       })
       return api
     },
-    close() { stop?.(); channels.forEach(ch => supabase.removeChannel(ch)); channels.clear() },
+    close() {
+      if (!inbox) return
+      const shared = inbox
+      inbox = null
+      shared.listeners.delete(handlers)
+      if (shared.listeners.size) return
+      shared.stop?.()
+      shared.channels.forEach(ch => supabase.removeChannel(ch))
+      shared.channels.clear()
+      inboxes.delete(me)
+    },
   }
   return api
 }

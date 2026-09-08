@@ -126,6 +126,8 @@ const KINDS: Record<string, { body: (who: string) => string; tag: string; urgent
   voice:   { body: (w) => `${w} sent you a voice note`, tag: 'chat',  urgent: false },
   sticker: { body: (w) => `${w} sent you a sticker`,    tag: 'chat',  urgent: false },
   call:    { body: (w) => `${w} is calling…`,           tag: 'call',  urgent: true  },
+  game:    { body: (w) => `${w} invited you to play`,   tag: 'game',  urgent: false },
+  game_accept: { body: (w) => `${w} accepted your game invite`, tag: 'game', urgent: false },
 }
 
 // --- handler ---------------------------------------------------------------

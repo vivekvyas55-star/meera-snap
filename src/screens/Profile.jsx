@@ -31,7 +31,7 @@ const EMOJI_CHOICES = [
   '🚀', '💎', '🌙', '☀️', '🍀', '💜', '🫶', '✨',
 ]
 
-export default function Profile({ onBack }) {
+export default function Profile({ onBack, openPlay = false, onPlayOpened }) {
   const { profile, setProfile, signOut } = useAuth()
   const me = profile.id
   const toast = useToast()
@@ -47,7 +47,7 @@ export default function Profile({ onBack }) {
   const [showPlans, setShowPlans] = useState(false)
   const [ent, setEnt] = useState(null)
   const [rate, setRate] = useState(null)
-  const [showPlay, setShowPlay] = useState(false)
+  const [showPlay, setShowPlay] = useState(openPlay)
   const [secQ, setSecQ] = useState(SECURITY_QUESTIONS[0])
   const [secA, setSecA] = useState('')
   const [savingSec, setSavingSec] = useState(false)
@@ -59,6 +59,13 @@ export default function Profile({ onBack }) {
   const [pushBusy, setPushBusy] = useState(false)
   // null once checked and available; a string explains why it can't be enabled.
   const pushBlocked = blockedReason()
+
+  useEffect(() => {
+    if (openPlay) {
+      setShowPlay(true)
+      onPlayOpened?.()
+    }
+  }, [openPlay, onPlayOpened])
 
   useEffect(() => {
     isEnabled(me).then(setPushOn).catch(() => {})
