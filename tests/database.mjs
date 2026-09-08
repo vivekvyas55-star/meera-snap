@@ -20,6 +20,14 @@ await db.exec(`
  alter table realtime.messages enable row level security;
  create function realtime.topic() returns text language sql stable as $$ select current_setting('realtime.topic',true) $$;
  create publication supabase_realtime;
+ create schema if not exists extensions;
+ create schema if not exists vault;
+ create schema if not exists net;
+ create table vault.secrets(id uuid primary key default gen_random_uuid(), name text unique, secret text, description text);
+ create view vault.decrypted_secrets as select id, name, secret as decrypted_secret from vault.secrets;
+ create function vault.create_secret(secret text, name text default null, description text default '') returns uuid
+   language sql as $$ insert into vault.secrets(name,secret,description) values(name,secret,description) returning id $$;
+ create function net.http_post(url text, headers jsonb default '{}', body jsonb default '{}', timeout_milliseconds int default 5000) returns bigint language sql as $$ select 1::bigint $$;
 `)
 try {
  await db.exec(fs.readFileSync('supabase/migrations/202609060000_baseline.sql','utf8'))
@@ -28,17 +36,16 @@ try {
  console.log('PASS audit upgrade')
  await db.exec(fs.readFileSync('supabase/migrations/202609060001_audit_fixes.sql','utf8'))
  console.log('PASS upgrade replay')
- for (const migration of [
-  '202609060006_kept_and_skips.sql',
-  '202609060007_pair_questions.sql',
-  '202609070008_pending_questions.sql',
-  '202609070010_billing.sql',
-  '202609070011_credits.sql',
-  '202609070012_integrity_followup.sql',
-  '202609070013_game_invites.sql',
-  '202609080014_game_invite_responses.sql',
-  '202609080015_game_rooms.sql',
- ]) await db.exec(fs.readFileSync(`supabase/migrations/${migration}`,'utf8'))
+ // Enumerated, not listed. A hand-written list silently skipped four
+ // migrations, so they had never once been executed against a real Postgres —
+ // a broken one would have reached production having passed every check.
+ const applied = new Set(['202609060000_baseline.sql','202609060001_audit_fixes.sql'])
+ for (const migration of fs.readdirSync('supabase/migrations').filter((f) => f.endsWith('.sql')).sort()) {
+  if (applied.has(migration)) continue
+  const sql = fs.readFileSync(`supabase/migrations/${migration}`,'utf8')
+   .replace(/create extension[^;]*;/gi, '')
+  await db.exec(sql)
+ }
  console.log('PASS follow-up upgrade chain')
 } catch (err) { console.error('Migration failure:',err.message,err.where,err.position); await db.close(); process.exit(1) }
 const A='00000000-0000-4000-8000-000000000001',B='00000000-0000-4000-8000-000000000002',C='00000000-0000-4000-8000-000000000003'

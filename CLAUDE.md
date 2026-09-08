@@ -27,8 +27,8 @@ npm run dev      # dev server on :5173
 npm run build    # production build to dist/
 npm run preview  # serve the built output
 npx oxlint src   # lint
-npx vitest run   # component + unit tests (25)
-npm run test:db  # runs the real baseline + upgrade SQL against PGlite
+npx vitest run   # component + unit tests (74)
+npm run test:db  # runs EVERY migration in supabase/migrations/ against PGlite
 ```
 
 Requires `.env` with `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`; the app
@@ -204,6 +204,27 @@ current):** `snap_reopen.sql` (said 3 reopens/4 views; live `SNAP_MAX_OPENS`=6 =
 1+5) and `chat_recall.sql` (two-stage delete, replaced by the `view_leaves`
 counter).
 Apply new migrations via the Supabase SQL editor; they're written idempotently.
+
+**The client/schema contract is a test** (`tests/schema-contract.test.js`).
+Three features shipped in halves — a client calling an RPC no applied migration
+defined, or a migration applied with no client to use it — and each time it
+looked like the feature was simply broken. The test now fails the build if any
+`.rpc('name')` in `src/` has no `create function name(` in
+`supabase/migrations/`, if any `.from('table')` has no `create table`, or if
+`tests/database.mjs` stops enumerating the migrations directory.
+
+`tests/database.mjs` **enumerates `supabase/migrations/` rather than listing
+files**. It used to apply a hand-written list, which silently skipped four
+migrations — they had never once been executed against a real Postgres, so a
+broken one would have reached production having passed every check. Two things
+make enumeration work under PGlite: a preamble that stubs the managed-platform
+pieces (`vault.secrets` / `decrypted_secrets` / `create_secret`, and a
+`net.http_post` that returns a fake request id), and a `create extension …;`
+strip on the follow-up chain — `pg_net` does not exist in PGlite and the rest of
+that migration still has to run. Don't stub `extensions.crypt`/`gen_random_bytes`
+there: the baseline installs real pgcrypto **into the `extensions` schema**, and
+a preamble wrapper referencing it fails at creation time (the preamble runs
+first).
 
 **`recovery_hardening_2.sql`** — (1) `reset_password` changed the password but
 left `auth.sessions`/`auth.refresh_tokens` alone. GoTrue only checks the password
