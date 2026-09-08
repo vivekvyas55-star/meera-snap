@@ -46,12 +46,29 @@ export function CallProvider({ children }) {
   const startingRef = useRef(false)
   const ringRepeat = useRef(null) // re-broadcasts the invite while ringing
   const loggedRef = useRef(false) // one call-log per call (caller side)
+  // Rooms whose call is over, with the moment they stop mattering. The caller
+  // repeats its invite every 3s for the invite's whole validity, so without
+  // this a declined / cancelled / hung-up call rang this phone again on the
+  // very next repeat — "am I already showing this room?" is false the instant
+  // teardown clears the call.
+  const endedRooms = useRef(new Map())
+  // useOnline() returns a fresh function whenever presence re-syncs; held in a
+  // ref so a check made AFTER an await sees the presence we have now, not the
+  // one captured when the callback was created.
+  const isOnlineRef = useRef(isOnline)
   callRef.current = call
   meRef.current = me
   profileRef.current = profile
+  isOnlineRef.current = isOnline
 
   const teardown = useCallback(() => {
     genRef.current += 1
+    const ending = callRef.current?.room
+    if (ending) {
+      const now = Date.now()
+      for (const [room, until] of endedRooms.current) if (until <= now) endedRooms.current.delete(room)
+      endedRooms.current.set(ending, now + CONNECT_TIMEOUT_MS) // an invite can't outlive its own validity
+    }
     clearTimeout(watchdog.current)
     clearTimeout(dropTimer.current)
     clearInterval(ringRepeat.current)
@@ -233,6 +250,14 @@ export function CallProvider({ children }) {
     const ch = signalReceiver(me)
     ch.on('broadcast', { event: 'invite' }, ({ payload }) => {
       if (!Number.isFinite(payload.expiresAt) || payload.expiresAt <= Date.now() || payload.expiresAt > Date.now() + CONNECT_TIMEOUT_MS) return
+      // A repeat of a call we already ended. Dropped silently: answering it
+      // with 'busy' would tell the caller something untrue about a call they
+      // have already been declined.
+      const endedAt = endedRooms.current.get(payload.room)
+      if (endedAt !== undefined) {
+        if (endedAt > Date.now()) return
+        endedRooms.current.delete(payload.room)
+      }
       const c = callRef.current
       // The caller re-broadcasts the invite while ringing (so a phone woken by
       // a push notification still finds the call in progress). Re-arriving
@@ -341,8 +366,14 @@ export function CallProvider({ children }) {
       // the missed call immediately rather than making the caller wait out the
       // full 40s watchdog.
       const res = await notify(peer.id, 'call')
-      const delivered = res?.data?.sent > 0
-      if (!delivered && !isOnline(peer.id)) {
+      // Only a push that actually ran and reported zero subscriptions is
+      // evidence nobody can be woken. A 500, a cold start, a network blip or a
+      // rejected invoke all come back with no data — that says nothing about
+      // the friend, and treating it as "unavailable" cancelled calls to people
+      // sitting in the app. Presence is re-read here, after the await: it is
+      // false for the first second or two of app start and during any re-sync.
+      const unreachable = res?.data != null && !(res.data.sent > 0)
+      if (unreachable && !isOnlineRef.current(peer.id)) {
         const c = callRef.current
         if (c?.room === room && c.state === 'outgoing') {
           signalInbox(peer.id, 'cancel', { room })
@@ -352,7 +383,7 @@ export function CallProvider({ children }) {
         }
       }
     },
-    [toast, isOnline, armWatchdog, signalInbox, teardown] // eslint-disable-line react-hooks/exhaustive-deps
+    [toast, armWatchdog, signalInbox, teardown] // eslint-disable-line react-hooks/exhaustive-deps
   )
 
   const accept = useCallback(async () => {
@@ -362,14 +393,22 @@ export function CallProvider({ children }) {
     setCall((x) => (x ? { ...x, state: 'connecting' } : x))
     armWatchdog()
     const pc = await setupPeer(c.video)
-    if (!pc) return // torn down / permission denied during setup
+    if (!pc) {
+      // Torn down, or mic/camera permission was denied. Saying nothing left the
+      // caller ringing for the full 40s watchdog (and re-broadcasting the
+      // invite the whole time). Their decline handler logs the missed call.
+      signalInbox(c.peer.id, 'decline', { room: c.room })
+      return
+    }
     signalInbox(c.peer.id, 'accept', { room: c.room })
   }, [joinRoom, setupPeer, armWatchdog, signalInbox])
 
   const decline = useCallback(() => {
     const c = callRef.current
     if (!c) return
-    signalInbox(c.peer.id, 'decline', {})
+    // Name the room explicitly: signalInbox's fallback reads callRef.current,
+    // which teardown() is about to clear.
+    signalInbox(c.peer.id, 'decline', { room: c.room })
     teardown()
   }, [signalInbox, teardown])
 

@@ -128,7 +128,20 @@ export async function isEnabled(userId) {
 // Never awaited on a send path and never allowed to throw: failing to notify
 // must not fail a message already committed to the database.
 // kind: 'chat' | 'snap' | 'voice' | 'sticker' | 'call' | 'game' | 'game_accept'
-export function notify(to, kind) {
-  if (!to || !kind) return Promise.resolve()
-  return supabase.functions.invoke('push', { body: { to, kind } }).catch(() => {})
+//
+// Always resolves to `{ data, error }`, and the difference between the two
+// matters to the caller: `data` present means the function RAN and its `sent`
+// count is real ('sent: 0' = the friend has no subscribed device). `data: null`
+// means the call itself failed — a 500, a cold start, an offline blip — which
+// says nothing at all about the friend. Collapsing the two (this used to
+// resolve `undefined` for every non-success) is what told people sitting in the
+// app that their friend "isn't available right now".
+export async function notify(to, kind) {
+  if (!to || !kind) return { data: null, error: new Error('Nothing to notify') }
+  try {
+    const { data, error } = await supabase.functions.invoke('push', { body: { to, kind } })
+    return error ? { data: null, error } : { data: data ?? null, error: null }
+  } catch (error) {
+    return { data: null, error }
+  }
 }

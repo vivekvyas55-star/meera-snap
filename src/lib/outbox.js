@@ -50,23 +50,37 @@ export function retryQueued(tempId) {
 }
 export function removeQueued(tempId) { localStorage.removeItem(PREFIX + tempId); changed() }
 let flushing = false
+// Set when flushOutbox is called while a flush is already running. The work
+// list is read ONCE at the top of a pass, so a message enqueued mid-flight
+// (Chat's only send path is enqueue -> OUTBOX_EVENT -> flushOutbox) was invisible
+// to the pass in progress and rejected by the guard — it then sat on "Pending"
+// until the 15s interval. Re-running the pass is what makes the second message
+// go out with the first. The guard itself is unchanged: still exactly one
+// concurrent run.
+let again = false
 export async function flushOutbox(sendFn, me) {
-  if (flushing || !me) return { sent: [], dropped: [] }
+  if (!me) return { sent: [], dropped: [] }
+  if (flushing) { again = true; return { sent: [], dropped: [] } }
   flushing = true
   const sent = []
   try {
-    for (const item of read().filter(i => i.me === me && !i.error)) {
-      try { await sendFn(item) }
-      catch (err) {
-        if (looksOffline(err) || !err.code || /^5/.test(String(err.status))) break
-        // Preserve failed text; an invalid item must not block the rest of the queue.
-        if (localStorage.getItem(PREFIX + item.tempId)) persist({ ...item, error: err.message })
-        changed()
-        continue
+    do {
+      again = false
+      for (const item of read().filter(i => i.me === me && !i.error)) {
+        try { await sendFn(item) }
+        catch (err) {
+          if (looksOffline(err) || !err.code || /^5/.test(String(err.status))) return { sent, dropped: [] }
+          // Preserve failed text; an invalid item must not block the rest of the queue.
+          if (localStorage.getItem(PREFIX + item.tempId)) persist({ ...item, error: err.message })
+          changed()
+          continue
+        }
+        removeQueued(item.tempId)
+        sent.push(item.tempId)
       }
-      removeQueued(item.tempId)
-      sent.push(item.tempId)
-    }
+      // Each extra pass either sends something (shrinking the queue) or marks it
+      // failed, and only a re-entrant call re-arms `again` — so this terminates.
+    } while (again)
     return { sent, dropped: [] }
-  } finally { flushing = false }
+  } finally { flushing = false; again = false }
 }
