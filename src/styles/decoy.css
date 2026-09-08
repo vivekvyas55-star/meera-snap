@@ -1,0 +1,302 @@
+/* ==========================================================================
+   decoy.css — the markets/research screen shown during a PIN lockout.
+
+   Imported once, from components/MarketDecoy.jsx.
+
+   This file deliberately shares NOTHING with Meera's ABC visual language: no
+   lavender / lime / indigo / coral, no --sp-* / --fs-* / --r-* tokens, no
+   weight-300 display headings, no vibrant 20-24px cards. It is dense-table
+   finance styling in a plain system font, because a finance app that looks
+   like Meera is itself a tell that this is not the app that normally lives
+   here. Do NOT "bring the decoy on brand".
+
+   The base .mk / .mk-row / .mk-hero rules live in index.css alongside the rest
+   of the shell; everything the research build added is here. The 420px
+   phone-column media query is re-stated at the end for the same reason it
+   exists there: full-bleed on a wide screen, while every other screen in this
+   app is a centred phone column, would give the game away.
+   ========================================================================== */
+
+/* Header: a dull wordmark, no logo, nothing that resembles a real broker. */
+.mk-brand-sub {
+  font-size: 11.5px;
+  color: #6b7280;
+  margin-top: 1px;
+  letter-spacing: 0.01em;
+}
+
+/* --------------------------------------------------------------------------
+   India / US switch. Two markets, each with its own holdings, watchlist,
+   orders, funds and coverage — and its own currency and digit grouping.
+   -------------------------------------------------------------------------- */
+.mk-markets {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 16px 10px;
+}
+.mk-mkt {
+  appearance: none;
+  border: 1px solid #d8dde3;
+  background: #ffffff;
+  color: #4b5563;
+  font: inherit;
+  font-size: 12.5px;
+  padding: 4px 11px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.mk-mkt.on {
+  background: #eef2f6;
+  border-color: #b6c0cb;
+  color: #111418;
+  font-weight: 600;
+}
+.mk-asof {
+  margin-left: auto;
+  font-size: 11px;
+  color: #9aa3ad;
+}
+
+/* --------------------------------------------------------------------------
+   Market status, from the real clock (see lib/decoyMarket.js sessionFor).
+   -------------------------------------------------------------------------- */
+.mk-status {
+  display: flex;
+  border-top: 1px solid #eef1f4;
+  border-bottom: 1px solid #eef1f4;
+  background: #fafbfc;
+}
+.mk-status-cell {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0 6px;
+  align-items: center;
+  padding: 8px 12px;
+}
+.mk-status-cell + .mk-status-cell { border-left: 1px solid #eef1f4; }
+.mk-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  grid-row: 1 / span 1;
+}
+.mk-dot.on { background: #12a150; }
+.mk-dot.off { background: #b6bcc4; }
+.mk-status-ex {
+  font-size: 11.5px;
+  color: #4b5563;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mk-status-state {
+  grid-column: 2;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.mk-status-state.on { color: #12a150; }
+.mk-status-state.off { color: #6b7280; }
+.mk-status-time {
+  grid-column: 2;
+  font-size: 10.5px;
+  color: #9aa3ad;
+  font-variant-numeric: tabular-nums;
+}
+
+/* --------------------------------------------------------------------------
+   Tabs. Buttons, not inputs — this screen never asks for anything, so there
+   is no form control anywhere in it.
+   -------------------------------------------------------------------------- */
+.mk-tab {
+  appearance: none;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 13.5px;
+  color: #6b7280;
+  padding: 9px 0 10px;
+  cursor: pointer;
+}
+.mk-tab.on {
+  color: #111418;
+  font-weight: 600;
+  box-shadow: inset 0 -2px 0 #2b6cb0;
+}
+.mk-tabs { gap: 16px; overflow-x: auto; scrollbar-width: none; }
+.mk-tabs::-webkit-scrollbar { display: none; }
+
+.mk-sub-head {
+  font-size: 11.5px;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* --------------------------------------------------------------------------
+   Sector heat strip. The sector names are invented descriptors, like every
+   other name on this screen.
+   -------------------------------------------------------------------------- */
+.mk-sectors {
+  padding: 14px 16px 4px;
+  border-top: 8px solid #f3f5f7;
+}
+.mk-sector {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 0;
+  font-size: 12.5px;
+}
+.mk-sector-name { flex: 0 0 40%; color: #374151; }
+.mk-heat {
+  flex: 1;
+  height: 6px;
+  background: #eef1f4;
+  border-radius: 2px;
+  overflow: hidden;
+}
+.mk-heat-fill { display: block; height: 100%; }
+.mk-heat-fill.up { background: #12a150; }
+.mk-heat-fill.down { background: #e5484d; }
+.mk-sector .mk-pct { width: 56px; text-align: right; }
+
+/* --------------------------------------------------------------------------
+   Research notes — rating, target, thesis, sector. Every issuer, analyst and
+   thesis is invented; see the header of lib/decoyMarket.js.
+   -------------------------------------------------------------------------- */
+.mk-research-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 16px 8px;
+}
+.mk-coverage { display: flex; gap: 6px; }
+.mk-tagline {
+  font-size: 10.5px;
+  padding: 2px 7px;
+  border-radius: 3px;
+  background: #eef1f4;
+  color: #4b5563;
+  font-variant-numeric: tabular-nums;
+}
+.mk-note {
+  padding: 12px 16px 13px;
+  border-bottom: 1px solid #f1f3f5;
+}
+.mk-note-top { display: flex; align-items: flex-start; gap: 10px; }
+.mk-note-name { font-weight: 400; color: #6b7280; font-size: 12.5px; }
+.mk-rating {
+  flex: 0 0 auto;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  border-radius: 3px;
+}
+.mk-rating.r-buy, .mk-tagline.r-buy { background: #e7f6ed; color: #0f7a3d; }
+.mk-rating.r-hold, .mk-tagline.r-hold { background: #f0f2f5; color: #4b5563; }
+.mk-rating.r-reduce, .mk-tagline.r-reduce { background: #fdeceb; color: #b4272b; }
+.mk-thesis {
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: #374151;
+  margin-top: 8px;
+}
+.mk-note-foot {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 8px;
+  font-size: 11.5px;
+  color: #6b7280;
+  font-variant-numeric: tabular-nums;
+}
+
+/* --------------------------------------------------------------------------
+   Orders and funds.
+   -------------------------------------------------------------------------- */
+.mk-order, .mk-ledger {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 16px;
+  border-bottom: 1px solid #f1f3f5;
+}
+.mk-side {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 1px 5px;
+  border-radius: 3px;
+  margin-right: 7px;
+  vertical-align: 1px;
+}
+.mk-side.buy { background: #e7f6ed; color: #0f7a3d; }
+.mk-side.sell { background: #fdeceb; color: #b4272b; }
+.mk-order-id {
+  font-size: 11px;
+  color: #9aa3ad;
+  margin-top: 3px;
+  font-variant-numeric: tabular-nums;
+}
+.mk-state {
+  flex: 0 0 auto;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 3px;
+}
+.mk-state.s-executed { background: #e7f6ed; color: #0f7a3d; }
+.mk-state.s-pending { background: #fff5e0; color: #8a5a00; }
+.mk-state.s-cancelled { background: #f0f2f5; color: #6b7280; }
+
+.mk-fund-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  border-bottom: 8px solid #f3f5f7;
+}
+.mk-fund-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 11px 16px;
+  border-bottom: 1px solid #f1f3f5;
+}
+.mk-fund-cell:nth-child(odd) { border-right: 1px solid #f1f3f5; }
+.mk-fund-k { font-size: 11.5px; color: #6b7280; }
+.mk-fund-v {
+  font-size: 14px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.mk-amt {
+  font-size: 13.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.mk-amt.up { color: #12a150; }
+.mk-amt.down { color: #e5484d; }
+
+/* On a wide screen the rest of the app is a centred 420px phone column. The
+   decoy has to match, or its full-bleed layout is itself a tell that this is
+   not the app that normally lives here. Re-stated here (and not shared with
+   the ABC media queries) so this file stands on its own. */
+@media (min-width: 560px) {
+  .mk {
+    position: fixed;
+    inset: 0;
+    margin: auto;
+    width: 420px;
+    max-width: 100%;
+    height: min(100dvh, 900px);
+    border-radius: 30px;
+    overflow: hidden auto;
+    box-shadow: 0 24px 70px rgba(0, 0, 0, 0.45);
+  }
+}

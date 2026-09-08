@@ -584,6 +584,20 @@ the repo. That is said plainly in Profile — and **only** in Profile:
 - Every ticker is **invented** and the numbers are pseudo-random noise. It must
   not imitate a real broker's app, and it must never ask for a login, password
   or any other detail — it is a blank wall, not a trap. Nothing leaves the device.
+- **Check invented names against real listings before shipping them.** The first
+  version carried `SOLARA` and `MERIDA`, and SOLARA is a live NSE ticker.
+  Fabricated prices attached to a real listed company is misrepresenting data
+  about a real entity — it is the one thing that turns this from a dull wall into
+  something harmful. `tests/decoy.test.jsx` holds a blocklist of real index,
+  company, ticker and broker names and fails if any appears in the rendered text.
+  No index is named at all; the only real-world facts are the two exchanges'
+  trading HOURS, referred to generically, with no fabricated data attached.
+- Quotes are a pure function of `(symbol, tick)` (`lib/decoyMarket.js`), so a
+  re-render never reshuffles the screen — numbers that jump on every paint read
+  as fake immediately.
+- Digit grouping is hand-rolled for both Indian (`2,75,684.29`) and Western
+  (`275,684.29`) conventions rather than `toLocaleString`, so it cannot depend on
+  whatever ICU data the runtime happens to ship.
 
 **What it does NOT hide** (don't oversell this): the home-screen icon and its
 label, the manifest name, the URL, and browser history all still say Meera. The
