@@ -139,6 +139,25 @@ await asUser(B,async()=>{
  const badge=await query('select * from pending_questions_all()')
  assert.equal(badge.find(r=>r.other===A).pending,3)
 })
+// Answering was never exercised, which is the only reason a parameter/column
+// collision could reach production: ask_question has the same `body` parameter
+// but INSERTs, and an INSERT's VALUES list has no table columns in scope.
+await asUser(B,async()=>{
+ const q=(await query('select id from pair_questions where asker=$1 and answer is null order by created_at limit 1',[A]))[0]
+ const answered=(await query('select * from answer_question($1,$2)',[q.id,'  because it matters  ']))[0]
+ assert.equal(answered.answer,'because it matters')
+ assert.notEqual(answered.answered_at,null)
+ // Final once written — the same rule prompt_answers enforces with a missing
+ // UPDATE grant.
+ await assert.rejects(query('select answer_question($1,$2)',[q.id,'second thoughts']),/already answered/)
+ await assert.rejects(query('select answer_question($1,$2)',[q.id,'   ']),/Write an answer/)
+})
+await asUser(A,async()=>{
+ const q=(await query('select id from pair_questions where asker=$1 and answer is null order by created_at limit 1',[A]))[0]
+ // The asker cannot answer their own question.
+ await assert.rejects(query('select answer_question($1,$2)',[q.id,'me again']),/not yours to answer/)
+})
+console.log('PASS a pair question can actually be answered')
 console.log('PASS question badge freshness and daily cap')
 // Credits are prepaid: a scheduled charge must not create debt, and an expired
 // paid subscription cannot bypass a zero credit balance.

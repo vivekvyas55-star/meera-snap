@@ -466,6 +466,21 @@ policy on `prompt_answers` that queries `prompt_answers` directly recurses
 infinitely, and going through a definer function breaks the cycle. Don't
 "simplify" it back into an inline EXISTS.
 
+**A plpgsql parameter named like a column is ambiguous in UPDATE, but not in
+INSERT.** `answer_question(question uuid, body text)` sat broken in production —
+`update pair_questions q set answer = btrim(body)` raised *column reference
+"body" is ambiguous*, so a pair question could be asked and never answered.
+`ask_question` has the identical parameter name and works, because an INSERT's
+VALUES list has no table columns in scope. Aliasing the table does not help: the
+alias adds a qualified name, it does not remove the bare one. Read the argument
+into a local before the table comes into scope (or qualify it as
+`answer_question.body`) — do NOT rename the parameter, since PostgREST
+dispatches on argument names and a rename breaks every client in the same
+breath.
+
+The reason it survived: the half of the feature the tests exercised was the half
+that could not break. `tests/database.mjs` now answers one.
+
 **There is deliberately no UPDATE grant on `prompt_answers`.** An answer is
 final once written; being able to edit yours after seeing theirs would hollow
 out the simultaneous reveal. The `unique (user_a, user_b, responder, on_date)`
