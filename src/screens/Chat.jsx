@@ -34,13 +34,14 @@ import Avatar from '../components/Avatar'
 import StatusIcon from '../components/StatusIcon'
 import SnapViewer from '../components/SnapViewer'
 import PlayChip from '../components/PlayChip'
+import { usePlayState } from '../hooks/usePlayState'
 import Portal from '../components/Portal'
 import Sheet from '../components/Sheet'
 import KeptTogether from '../components/KeptTogether'
 import FriendSignals from '../components/FriendSignals'
 import HeartBurst from '../components/HeartBurst'
 import Confirm from '../components/Confirm'
-import { ArrowIcon, BackIcon, CalendarIcon, ChatIcon, CheckIcon, ChevronIcon, CloseIcon, FlameIcon, ForwardIcon, GridIcon, HeartIcon, ImageIcon, LockIcon, MicIcon, PhoneIcon, PlayIcon, PlusIcon, ReplyIcon, SaveIcon, SmileyIcon, VideoIcon } from '../components/Icons'
+import { ArrowIcon, BackIcon, CalendarIcon, ChatIcon, CheckIcon, ChevronIcon, CloseIcon, FlameIcon, ForwardIcon, GridIcon, HeartIcon, ImageIcon, LockIcon, MicIcon, GameIcon, PhoneIcon, PlayIcon, PlusIcon, ReplyIcon, SaveIcon, SmileyIcon, VideoIcon } from '../components/Icons'
 import { useAudioRecorder } from '../hooks/useAudioRecorder'
 import { useCall } from '../hooks/useCall'
 import QuestionCards from '../components/QuestionCards'
@@ -105,6 +106,8 @@ export default function Chat({ friend, onBack, onOpenPlay }) {
   const alias = useAlias()
   const isOnline = useOnline()
   const { startCall } = useCall()
+  // One poll feeds both the header button and the strip chip.
+  const play = usePlayState(friend.id, me, Boolean(onOpenPlay))
   const friendName = alias(friend)
 
   const [messages, setMessages] = useState([])
@@ -480,7 +483,21 @@ export default function Chat({ friend, onBack, onOpenPlay }) {
           </h1>
           <span className="sr-only">— friend info</span>
         </button>
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+        <div className="chat-actions">
+          {onOpenPlay && (
+            <button
+              className={`circle filled play-btn play-${play.state.key}`}
+              onClick={() => onOpenPlay(play.room)}
+              aria-label={`Play together — ${play.state.label}`}
+            >
+              <GameIcon />
+              {/* The state rides the corner of the button, the way the "in this
+                  chat" marker rides the avatar. Colour is never the only
+                  carrier — the label above says it in words, and the strip
+                  below spells it out whenever a game actually exists. */}
+              {play.state.key !== 'idle' && <span className="play-dot" aria-hidden="true" />}
+            </button>
+          )}
           <button className="circle filled" onClick={() => startCall(friend, false)} aria-label="Voice call">
             <PhoneIcon />
           </button>
@@ -490,9 +507,11 @@ export default function Chat({ friend, onBack, onOpenPlay }) {
         </div>
       </div>
 
-      {onOpenPlay && (
+      {/* Idle is the common case and the header icon already covers it, so the
+          strip only appears when there is a game to say something about. */}
+      {onOpenPlay && play.state.key !== 'idle' && (
         <div className="hero-strip">
-          <PlayChip me={me} friendId={friend.id} onOpenPlay={onOpenPlay} />
+          <PlayChip state={play.state} room={play.room} onOpenPlay={onOpenPlay} />
         </div>
       )}
 

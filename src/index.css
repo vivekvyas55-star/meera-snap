@@ -1777,6 +1777,25 @@ button:disabled { cursor: not-allowed; }
    CLAUDE.md). The state is carried by the dot's colour and the label together —
    never colour alone. */
 .hero-strip { display: flex; gap: 8px; padding: 0 14px 8px; }
+/* Play sits with the call buttons. CLAUDE.md is right that this header has no
+   spare width — so the state is a dot on the button rather than a third label,
+   and below 360px all three circles shrink to give the name its characters
+   back. */
+.chat-actions { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+.play-btn { position: relative; }
+.play-dot {
+  position: absolute; top: 1px; right: 1px;
+  width: 9px; height: 9px; border-radius: 50%;
+  background: var(--muted); box-shadow: 0 0 0 2px var(--bg);
+}
+.play-btn.play-your-turn .play-dot,
+.play-btn.play-invited .play-dot { background: var(--coral); animation: pulse-dot 1.6s ease-in-out infinite; }
+.play-btn.play-rematch .play-dot { background: var(--lime); }
+.play-btn.play-resume .play-dot { background: var(--indigo); }
+@media (max-width: 360px) {
+  .chat-actions .circle { width: 34px; height: 34px; }
+  .chat-actions { gap: 6px; }
+}
 .play-chip {
   display: inline-flex; align-items: center; gap: 7px;
   padding: 7px 13px; border-radius: var(--r-pill);

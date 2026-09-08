@@ -100,6 +100,19 @@ export const PlayIcon = (p) => (
   </svg>
 )
 
+// A die, not a media triangle: PlayIcon is the ▶ used on video thumbnails, and
+// reusing it for "play a game together" reads as "play this video". Pips are
+// dots on the same 24px grid, so it holds up at 20px in the chat header.
+export const GameIcon = (p) => (
+  <svg {...base} {...p}>
+    <rect x="3.5" y="3.5" width="17" height="17" rx="4.5" />
+    <circle cx="8.75" cy="8.75" r="1.15" fill="currentColor" stroke="none" />
+    <circle cx="15.25" cy="15.25" r="1.15" fill="currentColor" stroke="none" />
+    <circle cx="15.25" cy="8.75" r="1.15" fill="currentColor" stroke="none" />
+    <circle cx="8.75" cy="15.25" r="1.15" fill="currentColor" stroke="none" />
+  </svg>
+)
+
 export const ImageIcon = (p) => (
   <svg {...base} {...p}>
     <rect x="3" y="4" width="18" height="16" rx="2.5" />
@@ -273,5 +286,72 @@ export const CoinIcon = (p) => (
   <svg {...base} {...p}>
     <circle cx="12" cy="12" r="8.5" />
     <circle cx="12" cy="12" r="4" />
+  </svg>
+)
+
+// --------------------------------------------------------------------------
+// Privacy Centre. Added for Profile's six sections, which had been leaning on
+// text alone — same 24px grid and 1.6px stroke as everything above.
+// --------------------------------------------------------------------------
+
+export const KeyIcon = (p) => (
+  <svg {...base} {...p}>
+    <circle cx="8.4" cy="15.6" r="3.6" />
+    <path d="M10.9 13.1L19.5 4.5" />
+    <path d="M16.4 7.6l2.2 2.2" />
+    <path d="M14.1 9.9l2.2 2.2" />
+  </svg>
+)
+
+export const ShieldIcon = (p) => (
+  <svg {...base} {...p}>
+    <path d="M12 3.4l7 2.5v5.3c0 4.1-2.8 7.3-7 9.4-4.2-2.1-7-5.3-7-9.4V5.9z" />
+  </svg>
+)
+
+export const AlertIcon = (p) => (
+  <svg {...base} {...p}>
+    <path d="M12 4.4l8.6 14.9H3.4z" />
+    <path d="M12 10.2v4" />
+    <path d="M12 16.9h.01" />
+  </svg>
+)
+
+export const DownloadIcon = (p) => (
+  <svg {...base} {...p}>
+    <path d="M12 4v10.5" />
+    <path d="M7.8 10.6L12 14.8l4.2-4.2" />
+    <path d="M4.8 19.2h14.4" />
+  </svg>
+)
+
+export const TrashIcon = (p) => (
+  <svg {...base} {...p}>
+    <path d="M4.8 7h14.4" />
+    <path d="M9.6 7V5.4A1.4 1.4 0 0 1 11 4h2a1.4 1.4 0 0 1 1.4 1.4V7" />
+    <path d="M6.8 7l.8 11.1A1.9 1.9 0 0 0 9.5 20h5a1.9 1.9 0 0 0 1.9-1.8L17.2 7" />
+  </svg>
+)
+
+export const DeviceIcon = (p) => (
+  <svg {...base} {...p}>
+    <rect x="7.2" y="3.2" width="9.6" height="17.6" rx="2.4" />
+    <path d="M10.7 17.9h2.6" />
+  </svg>
+)
+
+export const LayersIcon = (p) => (
+  <svg {...base} {...p}>
+    <path d="M12 3.8l8 3.6-8 3.6-8-3.6z" />
+    <path d="M4 12l8 3.6 8-3.6" />
+    <path d="M4 16.4L12 20l8-3.6" />
+  </svg>
+)
+
+export const GamepadIcon = (p) => (
+  <svg {...base} {...p}>
+    <path d="M7.4 7.2h9.2a4.1 4.1 0 0 1 4 3.2l.8 3.9a3.1 3.1 0 0 1-5.5 2.6l-.9-1.1H8.9L8 16.9a3.1 3.1 0 0 1-5.5-2.6l.8-3.9a4.1 4.1 0 0 1 4.1-3.2z" />
+    <path d="M6.4 10.6v3.2M4.8 12.2H8" />
+    <path d="M15.4 11.4h.01M17.6 13.4h.01" />
   </svg>
 )

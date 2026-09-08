@@ -513,7 +513,7 @@ stocks app tells them they opened the wrong thing.
 
 **The lock is MANDATORY and the passcode is changeable.** Meera does not open
 without one. A device that has never had a passcode is seeded by `ensurePin()`
-with `DEFAULT_PIN` (`9943`), so there is no state in which the pad can be
+with `DEFAULT_PIN` (`9934`), so there is no state in which the pad can be
 skipped and nothing to "set up" before first use. `lib/pinStore.js` keeps a
 PBKDF2 hash (210k iterations, 16-byte random salt per device) in localStorage —
 **the default is stored as a hash too**, never as plaintext. It can be changed

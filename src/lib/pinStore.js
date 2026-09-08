@@ -26,7 +26,7 @@ export const PIN_LENGTH = 4
 // never be opened without one — but a default that lives in the source is
 // public knowledge, and until the owner changes it the lock stops a stranger
 // picking up the phone, not anyone who has read this file. Profile says so.
-export const DEFAULT_PIN = '9943'
+export const DEFAULT_PIN = '9934'
 
 const encode = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf)))
 const decode = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0))
