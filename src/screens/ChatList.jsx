@@ -15,6 +15,7 @@ import {
   streakState,
 } from '../lib/db'
 import { matchesSearch } from '../lib/alias'
+import { bestFriendFrom, rowSignal } from '../lib/rowSignal'
 import { statusFor } from '../lib/status'
 import { useAuth } from '../hooks/useAuth'
 import { useAlias } from '../hooks/useAliasClock'
@@ -22,10 +23,12 @@ import { useOnline } from '../hooks/useOnlinePresence'
 import { useToast } from '../hooks/useToast'
 import Avatar from '../components/Avatar'
 import StatusIcon from '../components/StatusIcon'
+import RowSignal from '../components/RowSignal'
 import Portal from '../components/Portal'
 import Sheet from '../components/Sheet'
 const Snapcode = lazy(() => import('../components/Snapcode'))
-import { CheckIcon, MapIcon, NoteIcon, PlusIcon, CloseIcon } from '../components/Icons'
+import { CheckIcon, MapIcon, PlusIcon, CloseIcon } from '../components/Icons'
+import '../styles/chatlist.css'
 
 export default function ChatList({ active = true, onOpenChat, onOpenProfile, onOpenMap }) {
   const { profile } = useAuth()
@@ -117,19 +120,12 @@ export default function ChatList({ active = true, onOpenChat, onOpenProfile, onO
   }, [friends, lastByFriend])
 
   // Your best friend = strongest active Snapstreak (Snapchat's 💛 is the friend
-  // you snap the most). Whoever has the highest streak count wears the heart.
-  const bestFriendId = useMemo(() => {
-    let bestId = null
-    let bestCount = 0
-    for (const f of accepted) {
-      const c = streakFor(f.profile.id).count
-      if (c > bestCount) {
-        bestCount = c
-        bestId = f.profile.id
-      }
-    }
-    return bestId
-  }, [accepted, streakFor])
+  // you snap the most). The winner is picked by bestFriendFrom so the friend
+  // sheet — which reads raw streak rows in a different order — agrees on a tie.
+  const bestFriendId = useMemo(
+    () => bestFriendFrom(accepted.map((f) => ({ id: f.profile.id, count: streakFor(f.profile.id).count }))),
+    [accepted, streakFor]
+  )
 
   // Searching matches the handle and display name too, not just the alias
   // showing right now — see matchesSearch.
@@ -239,6 +235,17 @@ export default function ChatList({ active = true, onOpenChat, onOpenProfile, onO
           // Call logs never carry an "unread" state — exclude them so a call as
           // the last message doesn't leave a permanent New badge.
           const unread = last && last.sender_id !== me && last.kind !== 'call' && !last.opened_at
+          // Nine competing markers used to share this row. Exactly one wins
+          // now — see lib/rowSignal.js for the order and why — and the rest
+          // live in the friend sheet (Chat.jsx FriendSheet → FriendSignals).
+          const signal = rowSignal({
+            streakCount: streak.count,
+            streakExpiring: streak.expiring,
+            pendingQuestions: prompts[f.profile.id]?.pending ?? 0,
+            birthday: birthdays.has(f.profile.id),
+            note: notes[f.profile.id],
+            bestFriend: f.profile.id === bestFriendId,
+          })
           return (
             <button className={`row chat-row${unread ? ' is-unread' : ''}`} key={f.profile.id} onClick={() => onOpenChat(f.profile)}>
               <Avatar profile={f.profile} />
@@ -249,20 +256,6 @@ export default function ChatList({ active = true, onOpenChat, onOpenProfile, onO
                     title={isOnline(f.profile.id) ? 'Active now' : 'Offline'}
                   />
                   {alias(f.profile)}
-                  {birthdays.has(f.profile.id) && <span title="Birthday today!">🎂</span>}
-                  {f.profile.id === bestFriendId && <span title="Best friend">💛</span>}
-                  {streak.count >= 100 && <span title="100-day Snapstreak!">💯</span>}
-                  {streak.expiring && <span title="Snapstreak about to end">⌛</span>}
-                  {prompts[f.profile.id]?.pending > 0 && (
-                    <span
-                      className="qotd-dot"
-                      role="img"
-                      aria-label={`${alias(f.profile)} asked you a question`}
-                      title="Asked you a question"
-                    >
-                      💭
-                    </span>
-                  )}
                 </div>
                 <div className={`row-sub${unread ? ' unread' : ''}`}>
                   {st ? (
@@ -274,22 +267,10 @@ export default function ChatList({ active = true, onOpenChat, onOpenProfile, onO
                     <span>Tap to chat</span>
                   )}
                 </div>
-                {/* Their note sits below the message status — it's colour, not
-                    the row's primary information. */}
-                {notes[f.profile.id] && (
-                  <div className="row-note">
-                    <NoteIcon width={13} height={13} />
-                    <b>{notes[f.profile.id]}</b>
-                  </div>
-                )}
               </div>
               <div className="row-right">
                 {last && <span className="row-time">{shortTime(last.created_at)}</span>}
-                {streak.count > 0 && (
-                  <span className="row-streak" title={`${streak.count} day Snapstreak`}>
-                    🔥 {streak.count}
-                  </span>
-                )}
+                <RowSignal signal={signal} />
               </div>
             </button>
           )

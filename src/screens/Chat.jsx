@@ -37,6 +37,7 @@ import PlayChip from '../components/PlayChip'
 import Portal from '../components/Portal'
 import Sheet from '../components/Sheet'
 import KeptTogether from '../components/KeptTogether'
+import FriendSignals from '../components/FriendSignals'
 import HeartBurst from '../components/HeartBurst'
 import Confirm from '../components/Confirm'
 import { ArrowIcon, BackIcon, CalendarIcon, ChatIcon, CheckIcon, ChevronIcon, CloseIcon, FlameIcon, ForwardIcon, GridIcon, HeartIcon, ImageIcon, LockIcon, MicIcon, PhoneIcon, PlayIcon, PlusIcon, ReplyIcon, SaveIcon, SmileyIcon, VideoIcon } from '../components/Icons'
@@ -864,6 +865,12 @@ function FriendSheet({ friend, friendName, me, onClose, onRemoved }) {
                 ))}
               </div>
             )}
+
+            {/* Streak and its expiry, best friend, birthday, status note and
+                the question-of-the-day state. The chat-list row shows at most
+                one of these now (lib/rowSignal.js); this is where the rest of
+                them stayed reachable. */}
+            <FriendSignals friend={friend} friendName={friendName} me={me} />
 
             <button className="fp-row" onClick={() => setKept(true)}>
               <span className="fp-row-icon"><GridIcon width={19} height={19} /></span>

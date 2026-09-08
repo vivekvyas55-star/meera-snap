@@ -1,0 +1,52 @@
+/* ==========================================================================
+   Chat-list row signals (screens/ChatList.jsx + components/RowSignal.jsx)
+
+   A row shows the name, the unread state and exactly ONE relationship signal.
+   Which one is decided in lib/rowSignal.js; this file only says how loud it
+   looks. Three tones, matching the three reasons a signal exists:
+
+     urgent  you lose something today  — coral, the palette's alarm
+     action  someone is waiting on you — lime, bright but not a warning
+     quiet   ambient                   — the pressed-card grey, nearly silent
+
+   Tokens only: no new colours, radii or type sizes are invented here.
+   ========================================================================== */
+
+.row-signal {
+  display: inline-flex;
+  align-items: center;
+  max-width: 92px;              /* at 320px the name gets what is left */
+  padding: 2px var(--sp-2);
+  border-radius: var(--r-pill);
+  font-size: var(--fs-micro);
+  font-weight: 500;
+  line-height: 1.6;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  background: var(--card-press);
+  color: var(--muted);
+}
+
+/* The pill sits on a grey row, so the tones have to carry on --card. */
+.row-signal.urgent { background: var(--coral); color: #fff; }
+.row-signal.action { background: var(--lime); color: var(--ink); }
+.row-signal.quiet { background: var(--card-press); color: var(--muted); }
+
+/* A note is the only signal whose text is the friend's own words, so it is
+   the only one that needs room to be cut off mid-sentence. */
+.row-signal.sig-note { font-weight: 400; }
+
+/* Emoji-only chips (birthday, best friend) would otherwise render as a pill
+   with a stripe of colour behind a glyph that already has its own. */
+.row-signal.sig-birthday,
+.row-signal.sig-best-friend {
+  background: none;
+  padding: 0;
+  font-size: var(--fs-sm);
+}
+
+/* An unread row already shouts through its status line; a second shout in the
+   same row is what the clutter pass was about. */
+.chat-row.is-unread .row-signal.quiet { opacity: 0.75; }
