@@ -227,7 +227,7 @@ export function TicTacToe({ me, friend, incoming, inviteId, room, mark, onClose 
     } catch { setError('Could not end the game. Reconnect and try again.'); setConfirmEnd(false) }
   }
   return <div className="game-room">
-    <div className="game-room-head"><div><span className="eyebrow">Private to you both</span><h2>Tic-Tac-Toe</h2>{(state?.round || 0) > 0 && <span className="play-sub">Round {(state.round || 0) + 1}</span>}</div><button type="button" className="pill-btn" onClick={onClose}>Save & leave</button></div>
+    <div className="game-room-head"><div><span className="eyebrow">Private to you both</span><h2>Tic-Tac-Toe</h2>{(state?.round || 0) > 0 && <span className="play-sub">Round {(state.round || 0) + 1}</span>}</div><button type="button" className="pill-btn pill-inline" onClick={onClose}>Save &amp; leave</button></div>
     <div className={`game-status ${ready && turn === mark ? 'your-turn' : ''}`} role="status">
       <strong>{busy ? 'Saving your move…' : status}</strong>
       <span>{state?.status === 'pending' ? 'They can accept later. You can leave and resume from Play.' : ready ? returned ? friendName + ' is back' : here ? friendName + ' is in the room' : friendName + ' is away. Your moves will wait here.' : 'Rooms are available for 24 hours from the invitation.'}</span>

@@ -219,14 +219,42 @@ export const MESSAGE_PAGE = 200
 // so the scroll-up handler that would fetch the next page never fires. Keep
 // pulling pages until something is visible, bounded so a long run of cleared
 // history can't turn one open into an unbounded fetch loop.
+// A page can come back non-empty from the database and still contain nothing
+// this viewer may see. `message_page` filters with `message_visible` server
+// side, but Chat filters AGAIN with `isVisibleTo` — and the moment those two
+// predicates disagree by even one case, a fully-filtered page dead-ends the UI:
+// Chat renders "Nothing here yet", so there is nothing to scroll, so the
+// scroll-up handler that would fetch the next page never fires, and visible
+// history further back is unreachable. Keep pulling until something survives
+// the client filter, bounded so one open cannot become an unbounded fetch loop.
+const MAX_EMPTY_PAGES = 5
+
 export async function listMessages(me, otherId, before = null) {
-  const { data, error } = await supabase.rpc('message_page', {
-    other: otherId, before_time: before?.created_at ?? null,
-    before_id: before?.id ?? null, page_size: MESSAGE_PAGE,
-  })
-  if (error) throw error
-  const raw = data ?? []
-  return { messages: raw.slice().reverse(), oldestCursor: raw.length ? { created_at: raw.at(-1).created_at, id: raw.at(-1).id } : null, hasMore: raw.length === MESSAGE_PAGE }
+  let cursor = before
+  let collected = []
+  let hasMore = false
+
+  for (let page = 0; page <= MAX_EMPTY_PAGES; page += 1) {
+    const { data, error } = await supabase.rpc('message_page', {
+      other: otherId, before_time: cursor?.created_at ?? null,
+      before_id: cursor?.id ?? null, page_size: MESSAGE_PAGE,
+    })
+    if (error) throw error
+    const raw = data ?? []
+    hasMore = raw.length === MESSAGE_PAGE
+    if (!raw.length) break
+    cursor = { created_at: raw.at(-1).created_at, id: raw.at(-1).id }
+    collected = raw
+    if (raw.some((m) => isVisibleTo(m, me))) break
+    // Nothing visible in this page. Stop if there is no more history to try.
+    if (!hasMore) break
+  }
+
+  return {
+    messages: collected.slice().reverse(),
+    oldestCursor: cursor,
+    hasMore,
+  }
 }
 
 // Idempotency is enforced by (sender_id, client_id) in the database.

@@ -143,7 +143,7 @@ function Shell() {
         setGameInvite({ ...payload, id: payload.invite_id, peer, response: 'accepted' })
       }).subscribe()
     return () => receiver.close()
-  }, [profile])
+  }, [profile?.id])
 
   useEffect(() => {
     if (!profile?.id) return
@@ -165,17 +165,22 @@ function Shell() {
   // re-subscribes and hands the new one here, because only the page holds the
   // Supabase session needed to persist it. Without this the stored endpoint
   // goes stale and notifications silently stop.
+  // The id, not the object. AuthProvider hands back a fresh profile object on
+  // every refetch, so depending on the object tore down the listener and built
+  // it again for no reason — and each teardown is a window where an event that
+  // arrives is delivered to nobody.
+  const meId = profile?.id
   useEffect(() => {
-    if (!profile || !('serviceWorker' in navigator)) return
+    if (!meId || !('serviceWorker' in navigator)) return
     const onMessage = (e) => {
       if (e.data?.type === 'push-resubscribed' && e.data.subscription) {
         const s = e.data.subscription
-        saveSubscription(profile.id, { toJSON: () => s }).catch(() => {})
+        saveSubscription(meId, { toJSON: () => s }).catch(() => {})
       }
     }
     navigator.serviceWorker.addEventListener('message', onMessage)
     return () => navigator.serviceWorker.removeEventListener('message', onMessage)
-  }, [profile])
+  }, [meId])
 
   // Android's hardware Back closes the innermost open thing, one layer at a
   // time. The bookkeeping lives in lib/backStack.js because Profile's

@@ -80,8 +80,17 @@ export function signalReceiver(me) {
             if (!payload || typeof payload.room !== 'string') return
             // Keep sender identity outside the untrusted broadcast payload. Callers
             // can use `peer` directly without trusting a client-supplied profile.
+            // Every listener gets its own try/catch. These are shared channels:
+            // Call, Play and the notification handlers all subscribe to the same
+            // event, and without isolation one of them throwing would stop the
+            // rest of that event's delivery — a bug in Play could silence an
+            // incoming call.
             for (const listener of shared.listeners) {
-              listener.get(event)?.({ payload: { ...payload, from: friend.id, peer: friend }, peer: friend })
+              try {
+                listener.get(event)?.({ payload: { ...payload, from: friend.id, peer: friend }, peer: friend })
+              } catch (err) {
+                console.error('[meera] realtime listener threw', event, err)
+              }
             }
           })
           ch.subscribe()

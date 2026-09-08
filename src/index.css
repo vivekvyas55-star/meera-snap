@@ -1805,7 +1805,11 @@ button:disabled { cursor: not-allowed; }
 .game-score strong { color: var(--ink); font-weight: 650; margin-right: 3px; }
 .game-score-sep { opacity: 0.5; }
 .game-again .btn-dark { min-height: 44px; padding: 0 20px; }
-.game-room-head { display: flex; align-items: center; justify-content: space-between; }
+.game-room-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+/* .pill-btn is width:100% with a top margin — correct in a stacked settings
+   column, wrong inside a header row, where it squeezed the title and could
+   overflow at 320px. Anything sitting beside a heading needs this modifier. */
+.pill-btn.pill-inline { width: auto; margin-top: 0; min-height: 40px; padding: 0 16px; font-size: 13px; white-space: nowrap; flex: 0 0 auto; }
 .game-room-head h2 { margin: 4px 0 0; font-size: 25px; font-weight: 450; letter-spacing: -.035em; }
 .ttt-board { display: grid; grid-template-columns: repeat(3, 1fr); gap: 9px; max-width: 330px; margin: 22px auto; }
 .ttt-cell { aspect-ratio: 1; border-radius: 18px; background: var(--card); font-size: clamp(34px, 12vw, 54px); font-weight: 300; color: var(--ink); transition: transform 120ms, background 120ms; }
