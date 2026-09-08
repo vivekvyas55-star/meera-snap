@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { getMyLocation, getProfile, getVisibleLocations, setMyLocation, stopSharingLocation } from '../lib/db'
@@ -6,21 +6,13 @@ import { useAuth } from '../hooks/useAuth'
 import { useAlias } from '../hooks/useAliasClock'
 import { isSecureContext } from '../hooks/useCamera'
 import { useToast } from '../hooks/useToast'
+import useLiveLocation from '../hooks/useLiveLocation'
+// Great-circle distance in km. Both coordinates are already on the map, so the
+// nicest thing to say about them costs nothing extra. It lives in lib/geo with
+// the publish throttle, which measures in the same units.
+import { distanceKm } from '../lib/geo'
 import { BackIcon } from '../components/Icons'
 import { sharingUntilLabel, timeAgo } from '../lib/timeAgo'
-
-// Great-circle distance in km. Both coordinates are already on the map, so the
-// nicest thing to say about them costs nothing extra.
-function distanceKm(a, b) {
-  const R = 6371
-  const rad = (d) => (d * Math.PI) / 180
-  const dLat = rad(b.lat - a.lat)
-  const dLng = rad(b.lng - a.lng)
-  const h =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(dLng / 2) ** 2
-  return 2 * R * Math.asin(Math.sqrt(h))
-}
 
 const prettyDistance = (km) =>
   km < 1 ? `${Math.round(km * 1000)} m` : km < 10 ? `${km.toFixed(1)} km` : `${Math.round(km)} km`
@@ -65,6 +57,11 @@ export default function SnapMap({ onBack }) {
   const [busy, setBusy] = useState(false)
   const [count, setCount] = useState(0)
   const [nearest, setNearest] = useState(null) // { name, km } — closest sharing friend
+  // True only while we intend the row to exist. Checked on BOTH sides of every
+  // write, so a fix that was already in flight when the user tapped Go Ghost can
+  // never resurrect the row they just deleted.
+  const publishOk = useRef(false)
+  const [liveBlocked, setLiveBlocked] = useState(false)
 
   useEffect(() => {
     const map = L.map(mapEl.current, { zoomControl: false, attributionControl: false }).setView([20, 0], 2)
@@ -148,7 +145,70 @@ export default function SnapMap({ onBack }) {
     return () => clearInterval(t)
   }, [sharing])
 
+  // Friends move too, and their pins used to be fetched exactly once per visit.
+  // The table is a handful of tiny rows and profiles are cached, so a slow
+  // refetch is cheap — and it runs only while you are sharing and looking at it.
+  useEffect(() => {
+    if (!sharing) return
+    const t = setInterval(() => {
+      if (!document.hidden) load().catch(() => {})
+    }, 120_000)
+    return () => clearInterval(t)
+  }, [sharing, load])
+
+  // Keep the write guard in step with the stored state. goGhost also clears it
+  // synchronously, before its own await — that is the half that matters.
+  useEffect(() => {
+    publishOk.current = sharing === true
+  }, [sharing])
+
+  // A fresh fix from the live watch. Same write the Share button makes, minus
+  // the toast: an automatic refresh shouldn't announce itself every minute.
+  const publishFix = useCallback(
+    async ({ lat, lng }) => {
+      if (!publishOk.current) return
+      try {
+        await setMyLocation(me, lat, lng, true)
+      } catch {
+        return // transient — the watch will hand us another fix soon enough
+      }
+      if (!publishOk.current) {
+        // Go Ghost landed while this write was in flight. Undo it, or the row
+        // the user asked to have deleted quietly comes back.
+        stopSharingLocation(me).catch(() => {})
+        return
+      }
+      lastFix.current = { lat, lng, at: Date.now() }
+      setMyLoc((prev) => ({
+        ...prev,
+        user_id: me,
+        lat,
+        lng,
+        sharing: true,
+        updated_at: new Date().toISOString(),
+      }))
+      setNow(Date.now())
+      load().catch(() => {})
+    },
+    [me, load]
+  )
+
+  // What is already stored counts as "the last thing we wrote", so re-opening
+  // the map on a phone that hasn't moved costs no write at all.
+  const seed = useMemo(() => {
+    if (!myLoc?.sharing || !Number.isFinite(myLoc.lat) || !Number.isFinite(myLoc.lng)) return null
+    return { lat: myLoc.lat, lng: myLoc.lng, at: Date.parse(myLoc.updated_at) || 0 }
+  }, [myLoc])
+
+  const onBlocked = useCallback(() => setLiveBlocked(true), [])
+
+  // The fix for the reported bug: while — and only while — sharing is on, the
+  // position refreshes itself. Ghost Mode is still the default and still deletes
+  // the row, and nothing here asks the device for a position when sharing is off.
+  useLiveLocation({ active: sharing === true, seed, onFix: publishFix, onBlocked })
+
   const goGhost = async () => {
+    publishOk.current = false
     // Only claim success once the delete actually lands — otherwise coords could
     // linger server-side while the UI says you're hidden. Remove the row outright
     // (not just flip the flag) so Ghost Mode leaves nothing to leak.
@@ -159,14 +219,18 @@ export default function SnapMap({ onBack }) {
       toast('Ghost Mode on — your location was removed')
       load().catch(() => {})
     } catch (err) {
+      // The row is still there, so the guard has to go back to matching reality.
+      publishOk.current = sharing === true
       toast(err.message)
     }
   }
 
   const publish = async (lat, lng) => {
+    publishOk.current = true
     try {
       await setMyLocation(me, lat, lng, true)
       lastFix.current = { lat, lng, at: Date.now() }
+      setLiveBlocked(false)
       setSharingState(true)
       // Show the readout straight away, then reconcile with the stored row —
       // any expiry is decided server-side (column default), not here.
@@ -176,6 +240,7 @@ export default function SnapMap({ onBack }) {
       refreshMine()
       load().catch(() => {})
     } catch (err) {
+      publishOk.current = sharing === true
       toast(err.message)
     } finally {
       setBusy(false)
@@ -279,6 +344,14 @@ export default function SnapMap({ onBack }) {
                     this states the truth rather than inventing an end time. */}
                 <div className="map-until">{sharingUntilLabel(myLoc?.expires_at, now)}</div>
                 {updatedAgo && <div className="map-updated">Your location updated {updatedAgo}</div>}
+                {/* We will not raise a permission prompt nobody asked for, so
+                    when the grant isn't already there the honest thing is to say
+                    the dot is frozen rather than to let it quietly go stale. */}
+                {liveBlocked && (
+                  <div className="map-updated">
+                    Live updates need location permission — Go Ghost, then Share again.
+                  </div>
+                )}
               </>
             ) : (
               <>

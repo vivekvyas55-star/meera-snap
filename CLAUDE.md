@@ -1030,6 +1030,36 @@ countdown. Messages show timestamps.
   flips the flag) so no coordinates linger server-side (data-minimisation). This
   is the "ethical Snapchat" stance — honest defaults, no dark patterns.
 
+  **The position refreshes while sharing is on** (`hooks/useLiveLocation.js`,
+  `lib/geo.js`). It did not, once: `getCurrentPosition` was called in exactly
+  one place — inside the Share handler — so the row froze at whatever coordinate
+  you were standing on when you tapped it, and Go Ghost → Share was the only way
+  to move your own dot. Friends' pins had the same shape of bug (`load()` ran on
+  mount and on a toggle, nothing else).
+
+  The rules the watch obeys, none of them optional:
+  - **No watch when sharing is off.** The hook returns before it even checks
+    permission. The app must never be asking the device where it is while the
+    user is Ghost.
+  - **No prompt without a gesture.** It starts only on `permissions.state ===
+    'granted'`; `'prompt'`/`'denied'` render a line telling the user what to do.
+    A `PERMISSION_DENIED` mid-session clears the watch permanently instead of
+    retrying at a bubble the user already dismissed — repeated permission
+    prompts were a real complaint, and a timer is how they come back.
+  - **The watch stops on `visibilitychange` and on unmount.** A leaked
+    geolocation watch is a battery bug and a privacy bug at the same time. The
+    accepted cost is that a position can be one map-visit stale.
+  - **`fixDecision()` in `lib/geo.js` is the whole "should these coordinates
+    leave the phone?" rule**, pure and tested: 75 m minimum movement (scaled up
+    by the fix's own accuracy, because a move smaller than the error bars is
+    indistinguishable from noise), at most one write a minute, and a 10-minute
+    heartbeat so "updated 4 min ago" stays an honest sentence. `enableHighAccuracy`
+    is FALSE — the map reads out "4.2 km apart" and GPS precision would only keep
+    the radio hot for a number nobody looks at.
+  - `goGhost` clears the publish guard synchronously and `publishFix` re-checks
+    it **after** its await, so a fix landing mid-delete re-deletes rather than
+    silently resurrecting coordinates the user asked to remove.
+
 **Recovery**: security-question password reset (see `security_qa.sql` above) —
 signup collects a Q+A, existing users set it in Profile, "Forgot password?" on
 the login screen runs username → question → answer + new password → auto login.
