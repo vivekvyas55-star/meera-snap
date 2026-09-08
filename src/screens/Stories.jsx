@@ -12,9 +12,12 @@ import { useAlias } from '../hooks/useAliasClock'
 import Avatar from '../components/Avatar'
 import Portal from '../components/Portal'
 import Confirm from '../components/Confirm'
+import StoryHint from '../components/StoryHint'
 import { useToast } from '../hooks/useToast'
 import { PlusIcon, StoriesIcon } from '../components/Icons'
 import { supabase } from '../lib/supabase'
+import { groupThumb, pruneStoryThumbs, rememberStoryThumb } from '../lib/storyThumbs'
+import '../styles/capture.css'
 
 export default function Stories({ active, onCapture }) {
   const { profile } = useAuth()
@@ -40,6 +43,9 @@ export default function Stories({ active, onCapture }) {
       ids.map(async (id) => [id, await getProfile(id).catch(() => null)])
     )
     if (request !== requestRef.current) return
+    // Cached row previews must not outlive the stories they describe: a story
+    // that has expired or been taken down should stop showing a frame.
+    pruneStoryThumbs(rows.map((r) => r.id))
     setStories(rows)
     setViews(nextViews)
     setAuthors(Object.fromEntries(entries.filter(([, p]) => p)))
@@ -72,6 +78,7 @@ export default function Stories({ active, onCapture }) {
       .map(([userId, items]) => ({
         userId,
         items,
+        unseen: items.filter((s) => !seenIds.has(s.id)).length,
         allSeen: items.every((s) => seenIds.has(s.id)),
         mine: userId === me,
       }))
@@ -121,9 +128,15 @@ export default function Stories({ active, onCapture }) {
         {groups.map((g) => {
           const author = authors[g.userId]
           if (!author) return null
+          const count = `${g.items.length} ${g.items.length === 1 ? 'snap' : 'snaps'}`
+          const isNew = !g.mine && g.unseen > 0
+          // Only ever a frame from a story this device has already downloaded
+          // — see src/lib/storyThumbs.js. A story you have not opened has no
+          // cached frame and gets the tile, not a fresh full-size download.
+          const thumb = groupThumb(g.items)
           return (
             <button
-              className={`row${g.mine ? ' story-row-mine' : ''}`}
+              className={`row story-row${g.mine ? ' story-row-mine' : ''}${isNew ? ' is-new' : ''}`}
               key={g.userId}
               onClick={() => setOpenAuthor(g.userId)}
             >
@@ -135,8 +148,11 @@ export default function Stories({ active, onCapture }) {
                 <div className="row-name">
                   {g.mine ? 'My Story' : alias(author)}
                 </div>
-                <div className="row-sub">
-                  {g.items.length} {g.items.length === 1 ? 'snap' : 'snaps'}
+                {/* Unseen and seen used to differ only by a ring on the avatar,
+                    which is easy to miss and says nothing about how much is
+                    new. The sub-line now states it in words. */}
+                <div className={`row-sub${isNew ? ' unread' : ''}`}>
+                  {g.mine ? count : isNew ? `${g.unseen} new · ${count}` : `Seen · ${count}`}
                 </div>
               </div>
               {/* How long it lasts is the one thing that changes minute to
@@ -145,6 +161,9 @@ export default function Stories({ active, onCapture }) {
               <div className="row-right">
                 <span className="row-time">{hoursLeft(g.items[g.items.length - 1].expires_at)}</span>
               </div>
+              <span className={`story-tile${isNew ? ' is-new' : ''}`} aria-hidden="true">
+                {thumb ? <img src={thumb} alt="" /> : <StoriesIcon width={18} height={18} />}
+              </span>
             </button>
           )
         })}
@@ -179,6 +198,14 @@ export default function Stories({ active, onCapture }) {
   )
 }
 
+// Storage serves signed URLs with `access-control-allow-origin: *`, so the
+// story image can be loaded CORS-clean — which is the whole reason the row
+// preview is free: a canvas fed by a plain <img> is tainted and toDataURL()
+// throws. If a response ever came back without that header the image would
+// fail to load, so the viewer falls back to a plain load once and remembers it
+// for the session. Watching the story always beats having a thumbnail of it.
+let corsUsable = true
+
 function StoryViewer({ group, author, me, onClose, onNextAuthor }) {
   // Back leaves the story, not the Stories pane. The component is keyed by
   // author, so moving to the next author remounts it and swaps the layer.
@@ -188,6 +215,7 @@ function StoryViewer({ group, author, me, onClose, onNextAuthor }) {
   const [storyId, setStoryId] = useState(null)
   const [ready, setReady] = useState(false)
   const [mediaError, setMediaError] = useState(false)
+  const [corsRetry, setCorsRetry] = useState(!corsUsable)
   const [url, setUrl] = useState(null)
   const [paused, setPaused] = useState(false)
   const [elapsed, setElapsed] = useState(0)
@@ -212,6 +240,7 @@ function StoryViewer({ group, author, me, onClose, onNextAuthor }) {
     let alive = true
     setReady(false)
     setMediaError(false)
+    setCorsRetry(!corsUsable)
     if (!currentStoryId) return
     setUrl(null)
     setElapsed(0)
@@ -261,10 +290,29 @@ function StoryViewer({ group, author, me, onClose, onNextAuthor }) {
       onPointerUp={() => setPaused(false)}
       onPointerCancel={() => setPaused(false)}
     >
-      {url && <img key={story.id} src={url} alt="" onLoad={() => {
-        setReady(true)
-        if (!group.mine) markStoryViewed(story.id, me).catch(() => {})
-      }} onError={() => setMediaError(true)} />}
+      {url && (
+        <img
+          key={`${story.id}:${corsRetry ? 'plain' : 'cors'}`}
+          src={url}
+          alt=""
+          crossOrigin={corsRetry ? undefined : 'anonymous'}
+          onLoad={(e) => {
+            setReady(true)
+            // These bytes are on the wire either way; the row preview is
+            // derived here so it never costs a second download.
+            if (!corsRetry) rememberStoryThumb(story.id, e.currentTarget)
+            if (!group.mine) markStoryViewed(story.id, me).catch(() => {})
+          }}
+          onError={() => {
+            if (!corsRetry) {
+              corsUsable = false
+              setCorsRetry(true)
+              return
+            }
+            setMediaError(true)
+          }}
+        />
+      )}
       {mediaError && <div className="viewer-loading">Could not load this story. Tap Next or Close.</div>}
 
       <div className="progress">
@@ -293,6 +341,10 @@ function StoryViewer({ group, author, me, onClose, onNextAuthor }) {
 
       <button className="tapzone back" onClick={back} aria-label="Previous" />
       <button className="tapzone fwd" onClick={advance} aria-label="Next" />
+
+      {/* First open only, ever. It sits above the tap zones but takes no
+          pointer events, so it cannot swallow the gestures it describes. */}
+      <StoryHint />
 
       {/* Own story: an eye + viewer count at bottom-left; tap to see who saw it
           (like Snapchat / WhatsApp status). */}

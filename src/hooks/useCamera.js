@@ -8,6 +8,20 @@ export const isSecureContext =
   location.hostname === 'localhost' ||
   location.hostname === '127.0.0.1'
 
+// Is the camera grant *permanently* refused, as opposed to merely dismissed
+// this once? Only the Permissions API can tell those apart — getUserMedia
+// reports both as NotAllowedError. Returns null when the answer is unknown
+// (Safari has no 'camera' descriptor), and callers must treat null as "a retry
+// might work" rather than as a denial.
+async function probeCameraBlocked() {
+  try {
+    const status = await navigator.permissions?.query({ name: 'camera' })
+    return status ? status.state === 'denied' : null
+  } catch {
+    return null
+  }
+}
+
 export function useCamera() {
   const videoRef = useRef(null)
   const streamRef = useRef(null)
@@ -18,6 +32,12 @@ export function useCamera() {
   const facingRef = useRef('user')
   const streamFacingRef = useRef(null) // which camera the live stream is for
   const [error, setError] = useState(null)
+  // Why it failed, so the UI can decide whether a Retry button would be honest:
+  // 'insecure' | 'unsupported' | 'denied' | 'notfound' | 'other'.
+  const [errorKind, setErrorKind] = useState(null)
+  // true = the browser has hard-denied the camera and only its settings can
+  // undo that; false = allowed; null = unknown (assume a retry may work).
+  const [blocked, setBlocked] = useState(null)
   const [ready, setReady] = useState(false)
   // Bumped on every stop() so a getUserMedia that resolves after we've left the
   // pane can detect it's stale and shut its own tracks down (no zombie stream).
@@ -76,12 +96,17 @@ export function useCamera() {
   const acquire = useCallback(
     async (mode) => {
       setError(null)
+      setErrorKind(null)
+      const fail = (kind, message) => {
+        setErrorKind(kind)
+        setError(message)
+      }
       if (!isSecureContext) {
-        setError('Camera needs HTTPS. Open this page over https:// (or localhost).')
+        fail('insecure', 'Camera needs HTTPS. Open this page over https:// (or localhost).')
         return
       }
       if (!navigator.mediaDevices?.getUserMedia) {
-        setError('This browser does not support camera access.')
+        fail('unsupported', 'This browser does not support camera access.')
         return
       }
       // Reuse an already-granted live stream for the SAME camera — re-attach and
@@ -120,6 +145,7 @@ export function useCamera() {
           streamRef.current = stream
           streamFacingRef.current = mode
           await attach(stream)
+          setBlocked(false)
           setReady(true)
           return
         } catch (e) {
@@ -127,12 +153,25 @@ export function useCamera() {
           if (e.name === 'NotAllowedError') break // no point retrying a denial
         }
       }
-      setError(
-        lastErr?.name === 'NotAllowedError'
-          ? 'Camera permission denied. Allow camera access in Settings, then reload.'
-          : lastErr?.name === 'NotFoundError'
-            ? 'No camera found on this device.'
-            : `Camera error: ${lastErr?.message ?? 'unknown'}`
+      if (lastErr?.name === 'NotAllowedError') {
+        // Dismissed-this-once and blocked-forever are the same error; only the
+        // Permissions API separates them, and it decides whether we offer a
+        // Retry or send the user to their browser settings.
+        const denied = await probeCameraBlocked()
+        setBlocked(denied)
+        fail(
+          'denied',
+          denied === true
+            ? 'Camera access is blocked for this site.'
+            : 'Camera permission was not given.'
+        )
+        return
+      }
+      fail(
+        lastErr?.name === 'NotFoundError' ? 'notfound' : 'other',
+        lastErr?.name === 'NotFoundError'
+          ? 'No camera found on this device.'
+          : `Camera error: ${lastErr?.message ?? 'unknown'}`
       )
     },
     [stop, attach]
@@ -151,6 +190,16 @@ export function useCamera() {
     },
     [acquire]
   )
+
+  // An explicit, user-initiated re-request after a failure. This is the ONLY
+  // sanctioned way to ask again: nothing may call it from an effect or a timer,
+  // or we are back to the repeated permission prompts that pause() exists to
+  // prevent. It re-probes rather than trusting the last answer, because the
+  // user may have just fixed the grant in their browser settings.
+  const retry = useCallback(async () => {
+    setBlocked(null)
+    return start()
+  }, [start])
 
   const flip = useCallback(() => {
     const next = facingRef.current === 'user' ? 'environment' : 'user'
@@ -183,5 +232,5 @@ export function useCamera() {
 
   useEffect(() => stop, [stop])
 
-  return { videoRef, start, stop, pause, flip, capture, facing, error, ready }
+  return { videoRef, start, stop, pause, flip, capture, retry, facing, error, errorKind, blocked, ready }
 }

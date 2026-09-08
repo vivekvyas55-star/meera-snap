@@ -7,6 +7,7 @@ import Avatar from '../components/Avatar'
 import Portal from '../components/Portal'
 import Sheet from '../components/Sheet'
 import SnapEditor from '../components/SnapEditor'
+import CameraError from '../components/CameraError'
 import { useAlias } from '../hooks/useAliasClock'
 import { ArrowIcon, CheckIcon, CloseIcon, FlipIcon, SaveIcon, StoriesIcon } from '../components/Icons'
 
@@ -42,7 +43,9 @@ export default function CameraScreen({ active, onSent, onEditing }) {
   const { profile } = useAuth()
   const me = profile.id
   const toast = useToast()
-  const { videoRef, start, stop, pause, flip, capture, facing, error, ready } = useCamera()
+  const { videoRef, start, stop, pause, flip, capture, retry, facing, error, errorKind, blocked, ready } =
+    useCamera()
+  const [retrying, setRetrying] = useState(false)
 
   const [shot, setShot] = useState(null) // { blob, url }
   const [released, setReleased] = useState(false) // a call took the camera
@@ -227,6 +230,16 @@ export default function CameraScreen({ active, onSent, onEditing }) {
 
   const timerLabel = useMemo(() => (viewSeconds === null ? '∞' : `${viewSeconds}s`), [viewSeconds])
 
+  // Retry lives on a tap and nowhere else — see the note in CameraError.
+  const retryCamera = async () => {
+    setRetrying(true)
+    try {
+      await retry()
+    } finally {
+      setRetrying(false)
+    }
+  }
+
   return (
     <div className="camera">
       {!shot && (
@@ -243,7 +256,15 @@ export default function CameraScreen({ active, onSent, onEditing }) {
               autoPlay
             />
           )}
-          {error && <div className="cam-error">{error}</div>}
+          {error && (
+            <CameraError
+              error={error}
+              kind={errorKind}
+              blocked={blocked}
+              retrying={retrying}
+              onRetry={retryCamera}
+            />
+          )}
 
           <div className="cam-top">
             <Avatar profile={profile} size="sm" />

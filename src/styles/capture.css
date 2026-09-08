@@ -1,0 +1,185 @@
+/* ==========================================================================
+   capture.css — Stories rows and hint, camera failure card, map readout.
+
+   Everything here uses the tokens from index.css (--sp-*, --fs-*, --r-*, the
+   vibrant palette) so it stays inside the ABC language rather than starting a
+   second one. Imported once, from Stories.jsx.
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   Story rows — the preview tile and the seen/unseen state.
+
+   The tile is a 46px square at the end of the row. It shows a real frame only
+   when this device has already downloaded that story (see lib/storyThumbs.js);
+   otherwise it is a flat tile, vibrant when there is something unseen behind
+   it and quiet when there is not. It is never a full-size original scaled
+   down in CSS — that is the egress mistake memories_thumbs.sql exists to fix.
+   -------------------------------------------------------------------------- */
+.story-tile {
+  width: 46px;
+  height: 46px;
+  flex: 0 0 auto;
+  border-radius: var(--r-tile);
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  background: var(--bg);
+  color: var(--muted);
+}
+
+.story-tile img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* Seen: the frame is still there, just stepped back so the unseen rows above
+   it read first. */
+.story-tile:not(.is-new) img {
+  filter: saturate(0.6);
+  opacity: 0.65;
+}
+
+.story-tile.is-new {
+  background: var(--lavender);
+  color: var(--ink);
+}
+
+/* A ring around the tile, matching the one the avatar gets, so the two ends of
+   an unseen row agree with each other. */
+.story-row.is-new .story-tile {
+  box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--coral);
+}
+
+.story-row .row-sub.unread {
+  color: var(--ink);
+}
+
+/* --------------------------------------------------------------------------
+   First-use hint in the story viewer.
+
+   One-shot on mount, so the global prefers-reduced-motion rule in index.css
+   (which collapses every duration to 0.01ms) lands it in its finished state.
+   The explicit block below says the same thing locally rather than relying on
+   that rule being maintained elsewhere.
+   -------------------------------------------------------------------------- */
+.story-hint {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(var(--safe-bottom) + 78px);
+  z-index: 4;
+  /* Never eat the taps it is describing. */
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  max-width: calc(100% - 48px);
+  padding: 9px var(--sp-4);
+  border-radius: var(--r-pill);
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(10px);
+  color: rgba(255, 255, 255, 0.92);
+  font-size: var(--fs-meta);
+  line-height: 1.2;
+  white-space: nowrap;
+  animation: story-hint-in 320ms cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+.story-hint b {
+  font-weight: 600;
+  color: #fff;
+}
+
+.story-hint-dot {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.5);
+}
+
+@keyframes story-hint-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 8px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .story-hint {
+    animation: none;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Camera failure card. .cam-error itself lives in index.css; this is the
+   message/help/retry stack inside it.
+   -------------------------------------------------------------------------- */
+.cam-error-msg {
+  margin: 0;
+  font-weight: 500;
+}
+
+.cam-error-help {
+  margin: var(--sp-2) 0 0;
+  font-size: var(--fs-meta);
+  line-height: 1.55;
+  color: rgba(255, 255, 255, 0.72);
+}
+
+/* White pill on the black card: the primary action on this surface, matching
+   the dark circular button's role everywhere else. */
+.cam-error-retry {
+  margin-top: var(--sp-3);
+  padding: 11px var(--sp-5);
+  border-radius: var(--r-pill);
+  background: #fff;
+  color: var(--ink);
+  font-size: var(--fs-sm);
+  font-weight: 500;
+}
+
+.cam-error-retry:active {
+  background: #e7e7ea;
+}
+
+.cam-error-retry:disabled {
+  opacity: 0.5;
+}
+
+/* --------------------------------------------------------------------------
+   Map panel readout.
+   -------------------------------------------------------------------------- */
+.map-until {
+  margin-top: var(--sp-2);
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.map-updated {
+  margin-top: 2px;
+  font-size: var(--fs-meta);
+  color: var(--muted);
+}
+
+/* "Sharing" is a state worth spotting at a glance, so it takes the lime fill
+   rather than the neutral chip grey the count beside it uses. */
+.map-chip-live {
+  background: var(--lime);
+  font-weight: 500;
+}
+
+.map-ghost-title {
+  font-size: var(--fs-lead);
+  font-weight: 500;
+  letter-spacing: -0.02em;
+}
+
+.map-ghost-sub {
+  margin-top: var(--sp-1);
+  font-size: var(--fs-meta);
+  color: var(--muted);
+  line-height: 1.5;
+}

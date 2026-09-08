@@ -7,6 +7,7 @@ import { useAlias } from '../hooks/useAliasClock'
 import { isSecureContext } from '../hooks/useCamera'
 import { useToast } from '../hooks/useToast'
 import { BackIcon } from '../components/Icons'
+import { sharingUntilLabel, timeAgo } from '../lib/timeAgo'
 
 // Great-circle distance in km. Both coordinates are already on the map, so the
 // nicest thing to say about them costs nothing extra.
@@ -54,6 +55,12 @@ export default function SnapMap({ onBack }) {
   // Share button while getMyLocation was still in flight, so a tap during that
   // window re-prompted someone who was already sharing.
   const [sharing, setSharingState] = useState(null)
+  // The whole row, not just the flag: "since when" and "until when" are the
+  // two questions a location-sharing switch has to be able to answer.
+  const [myLoc, setMyLoc] = useState(null)
+  // "4 min ago" goes stale while the screen is open, so it is recomputed on a
+  // slow tick rather than only when something else happens to re-render.
+  const [now, setNow] = useState(() => Date.now())
   const lastFix = useRef(null) // { lat, lng, at } — lets a Ghost→Share toggle reuse a recent fix
   const [busy, setBusy] = useState(false)
   const [count, setCount] = useState(0)
@@ -116,10 +123,30 @@ export default function SnapMap({ onBack }) {
     else map.fitBounds(pts, { maxZoom: 14, padding: [50, 50] })
   }, [me, profile, alias])
 
+  const refreshMine = useCallback(
+    () =>
+      getMyLocation(me)
+        .then((loc) => {
+          setMyLoc(loc)
+          setSharingState(!!loc?.sharing)
+        })
+        .catch(() => {
+          setMyLoc(null)
+          setSharingState(false)
+        }),
+    [me]
+  )
+
   useEffect(() => {
-    getMyLocation(me).then((loc) => setSharingState(!!loc?.sharing)).catch(() => setSharingState(false))
+    refreshMine()
     load().catch(() => {})
-  }, [me, load])
+  }, [refreshMine, load])
+
+  useEffect(() => {
+    if (!sharing) return
+    const t = setInterval(() => setNow(Date.now()), 30_000)
+    return () => clearInterval(t)
+  }, [sharing])
 
   const goGhost = async () => {
     // Only claim success once the delete actually lands — otherwise coords could
@@ -128,6 +155,7 @@ export default function SnapMap({ onBack }) {
     try {
       await stopSharingLocation(me)
       setSharingState(false)
+      setMyLoc(null)
       toast('Ghost Mode on — your location was removed')
       load().catch(() => {})
     } catch (err) {
@@ -140,7 +168,12 @@ export default function SnapMap({ onBack }) {
       await setMyLocation(me, lat, lng, true)
       lastFix.current = { lat, lng, at: Date.now() }
       setSharingState(true)
+      // Show the readout straight away, then reconcile with the stored row —
+      // any expiry is decided server-side (column default), not here.
+      setMyLoc((prev) => ({ ...prev, user_id: me, lat, lng, sharing: true, updated_at: new Date().toISOString() }))
+      setNow(Date.now())
       toast('Sharing your location with friends')
+      refreshMine()
       load().catch(() => {})
     } catch (err) {
       toast(err.message)
@@ -204,6 +237,8 @@ export default function SnapMap({ onBack }) {
     )
   }
 
+  const updatedAgo = sharing ? timeAgo(myLoc?.updated_at, now) : null
+
   return (
     <div className="app" style={{ display: 'flex', flexDirection: 'column' }}>
       <div className="header">
@@ -230,14 +265,29 @@ export default function SnapMap({ onBack }) {
             {sharing === null ? (
               <>Checking your map settings…</>
             ) : sharing ? (
-              <div className="map-chips">
-                <span className="chip">Sharing</span>
-                <span className="chip">
-                  {Math.max(0, count - 1)} friend{count - 1 === 1 ? '' : 's'} on the map
-                </span>
-              </div>
+              <>
+                <div className="map-chips">
+                  <span className="chip map-chip-live">Sharing</span>
+                  <span className="chip">
+                    {Math.max(0, count - 1)} friend{count - 1 === 1 ? '' : 's'} on the map
+                  </span>
+                </div>
+                {/* Sharing a location without saying for how long is the dark
+                    pattern this screen exists to avoid, so the deadline gets a
+                    line of its own. `locations.expires_at` arrives with a
+                    separate change; until it does — and whenever it is null —
+                    this states the truth rather than inventing an end time. */}
+                <div className="map-until">{sharingUntilLabel(myLoc?.expires_at, now)}</div>
+                {updatedAgo && <div className="map-updated">Your location updated {updatedAgo}</div>}
+              </>
             ) : (
-              <>👻 Ghost Mode — nobody can see you. Share to appear on your friends’ maps.</>
+              <>
+                <div className="map-ghost-title">👻 Ghost Mode is on</div>
+                <div className="map-ghost-sub">
+                  Nobody can see you, and nothing of yours is stored. Share to appear on your
+                  friends’ maps.
+                </div>
+              </>
             )}
           </div>
           {sharing === null ? (
