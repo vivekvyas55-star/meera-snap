@@ -173,6 +173,14 @@ export async function playGameMove(invite, square, expectedRevision) {
   return data
 }
 
+// Start the next round on a board that has already finished. Idempotent in the
+// database, so both players tapping at once cannot skip a round.
+export async function rematchGame(invite) {
+  const { data, error } = await supabase.rpc('rematch_game', { invite })
+  if (error) throw error
+  return Array.isArray(data) ? data[0] : data
+}
+
 export async function endGameRoom(invite) {
   const { error } = await supabase.rpc('end_game_room', { invite })
   if (error) throw error

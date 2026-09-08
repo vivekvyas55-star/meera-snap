@@ -944,6 +944,33 @@ user explicitly does NOT want an in-app AI assistant).
 and a real-time 1:1 Tic-Tac-Toe. Migrations `202609070013_game_invites.sql`,
 `202609080014_game_invite_responses.sql`, `202609080015_game_rooms.sql`.
 
+**A finished game is not the end of the room** (`202609080019_rematch.sql`).
+`rematch_game(invite)` starts the next ROUND in the same room, which keeps the
+whole acceptance and authorisation story untouched. Before this a won board
+dropped out of `active_game_rooms()` and offered only "Save & leave" — a second
+game meant a fresh invitation and another acceptance for a room still open.
+
+- **`revision` stays monotonic for the life of the room.** It is the optimistic
+  concurrency token; resetting it to zero would make a stale client's
+  `expected_revision` from the previous round look valid again in this one.
+  Where the round began is recorded in `round_start_revision` instead, and moves
+  this round are `revision - round_start_revision`.
+- **The starter alternates by round.** X first every round hands the inviter a
+  standing advantage — in this game the first player is the only one who can
+  force a win. `public.game_turn(moves, round)` is the single definition, and
+  `pieceToMove()` in `lib/gameState.js` mirrors it exactly. Drift shows up as a
+  board that refuses the tap it just invited.
+- The draw test is **nine moves this round**, not `revision = 9`. The old test
+  would have declared a draw partway through round two and never in round three.
+- `rematch_game` is **idempotent** — both players tap "Play again" on a game they
+  watched finish together, and the second call must not skip a round past the
+  first. It returns the row unchanged when there is no result yet, so it can
+  never wipe a board still in play.
+- `active_game_rooms()` now keeps finished rooms (they leave on end or expiry),
+  so `accepted_game_invite_responses()` states `result is null` itself — it used
+  to lean on that exclusion, and would otherwise put the "they accepted your
+  invitation" banner back on screen every time somebody won.
+
 **Realtime is a nudge, never the state.** The board lives in
 `game_invites.board` (a `text[9]`) and every change goes through
 `play_game_move(invite, square, expected_revision)` — SECURITY DEFINER,

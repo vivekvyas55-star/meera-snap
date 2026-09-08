@@ -18,22 +18,40 @@
 // enough inside the room, not twitchy outside it.
 export const AWAY_MS = 20000
 
-// The pieces are fixed by play_game_move: the inviter is X and moves on even
-// revisions. Deriving it the same way here keeps the chip and the database
-// from ever disagreeing about whose move it is.
+// Whose piece moves next. This mirrors public.game_turn() exactly, and it has
+// to: the database rejects a move made out of turn, so any drift here shows up
+// as a board that refuses the tap it just invited.
+//
+// The starter alternates by round — X first every round would hand the inviter
+// a standing advantage, and in Tic-Tac-Toe the first player is the only one who
+// can force a win.
+//
+// The `?? 0` defaults are what a row from a database without the rematch
+// migration looks like, and they reduce to the original single-round rule.
+export function pieceToMove(room) {
+  const moves = room.revision - (room.round_start_revision ?? 0)
+  const round = room.round ?? 0
+  return (moves % 2 === 0) === (round % 2 === 0) ? 'X' : 'O'
+}
+
+export const myPiece = (room, me) => (room.sender_id === me ? 'X' : 'O')
+
 export function isMyTurn(room, me) {
-  const iAmSender = room.sender_id === me
-  return (room.revision % 2 === 0) === iAmSender
+  return pieceToMove(room) === myPiece(room, me)
 }
 
 export function playState(room, me, now = Date.now()) {
   if (!room) return { key: 'idle', label: 'Play' }
-  // A finished, abandoned or expired room is not a game in progress. Without
-  // this the chip would keep offering to resume a board somebody already won.
+  // An abandoned or expired room is not a game in progress.
   const expired = room.expires_at && new Date(room.expires_at).getTime() <= now
-  if (expired || room.ended_at || room.result || room.status === 'dismissed') {
+  if (expired || room.ended_at || room.status === 'dismissed') {
     return { key: 'idle', label: 'Play' }
   }
+
+  // A finished game is not over as a conversation — it is the moment someone
+  // most wants another round. It used to fall through to "Play", which meant a
+  // fresh invitation and another acceptance for a room that is already open.
+  if (room.result) return { key: 'rematch', label: 'Play again' }
 
   if (room.status === 'pending') {
     return room.sender_id === me

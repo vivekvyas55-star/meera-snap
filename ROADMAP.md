@@ -34,6 +34,8 @@ Everything discussed, so nothing is lost. Status as of **8 Sep 2026**.
 ### UI
 - [x] **One notification strip** — install, game banner and toast each picked their own
       offset and overlapped. Now one container ordered by priority.
+- [x] **Rematch** — a finished game starts the next round in the same room, with the
+      starter alternating. Was a dead end.
 - [x] **Play reachable from the conversation** — state chip in the relationship strip:
       Waiting for acceptance / Wants to play / Your turn / Friend is away /
       Accepted — Resume.

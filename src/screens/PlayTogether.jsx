@@ -3,10 +3,10 @@ import Confirm from '../components/Confirm'
 import DinoRun from '../components/DinoRun'
 import { BackIcon, CheckIcon, CloseIcon } from '../components/Icons'
 import { useAuth } from '../hooks/useAuth'
-import { listFriendsWithProfiles, createGameInvite, resolveGameInvite, syncGameRoom, playGameMove, endGameRoom, listActiveGameRooms, isVisibleTo, clearViewedChats, listMessages, sendChat, pairKey, markChatsOpened } from '../lib/db'
+import { rematchGame, listFriendsWithProfiles, createGameInvite, resolveGameInvite, syncGameRoom, playGameMove, endGameRoom, listActiveGameRooms, isVisibleTo, clearViewedChats, listMessages, sendChat, pairKey, markChatsOpened } from '../lib/db'
 import { useToast } from '../hooks/useToast'
 import { sendSignal, signalReceiver } from '../lib/privateRealtime'
-import { peerPresence } from '../lib/gameState'
+import { peerPresence, pieceToMove } from '../lib/gameState'
 import { notify } from '../lib/push'
 import { supabase } from '../lib/supabase'
 import { mergeMessages } from '../lib/messageState'
@@ -161,7 +161,9 @@ export function TicTacToe({ me, friend, incoming, inviteId, room, mark, onClose 
   const result = state?.result
   const expired = state && Date.parse(state.expires_at) <= now
   const terminal = state?.ended_at || state?.status === 'dismissed' || expired
-  const turn = (state?.revision || 0) % 2 === 0 ? 'X' : 'O'
+  // Mirrors public.game_turn() via lib/gameState. Deriving it here by hand is
+  // how the board ends up refusing a tap it just invited.
+  const turn = state ? pieceToMove(state) : 'X'
   const ready = state?.status === 'accepted' && !terminal && !result
   // One definition of "away", shared with the chip in the conversation. These
   // were 15s here and 45s there, so the same moment could read "Friend is away"
@@ -200,6 +202,23 @@ export function TicTacToe({ me, friend, incoming, inviteId, room, mark, onClose 
       syncRef.current()
     } finally { moving.current = false; if (alive.current) setBusy(false) }
   }
+  // A finished board used to offer only "Save & leave" and "End game for both",
+  // and the room dropped out of both players' lists the moment it was won — so
+  // a second round meant a fresh invitation and another acceptance for a room
+  // that was still open. Either player can start the next round; the previous
+  // game is over, so there is nothing left to lose by clearing the board.
+  const again = async () => {
+    if (moving.current) return
+    moving.current = true; setBusy(true)
+    try {
+      apply(await rematchGame(inviteId))
+      setError('')
+      sendSignal(me, friend.id, 'game_changed', { room }).catch(() => {})
+    } catch {
+      if (alive.current) setError('Could not start a new game. Sync and try again.')
+      syncRef.current()
+    } finally { moving.current = false; if (alive.current) setBusy(false) }
+  }
   const end = async () => {
     try {
       await endGameRoom(inviteId)
@@ -208,11 +227,21 @@ export function TicTacToe({ me, friend, incoming, inviteId, room, mark, onClose 
     } catch { setError('Could not end the game. Reconnect and try again.'); setConfirmEnd(false) }
   }
   return <div className="game-room">
-    <div className="game-room-head"><div><span className="eyebrow">Private to you both</span><h2>Tic-Tac-Toe</h2></div><button type="button" className="pill-btn" onClick={onClose}>Save & leave</button></div>
+    <div className="game-room-head"><div><span className="eyebrow">Private to you both</span><h2>Tic-Tac-Toe</h2>{(state?.round || 0) > 0 && <span className="play-sub">Round {(state.round || 0) + 1}</span>}</div><button type="button" className="pill-btn" onClick={onClose}>Save & leave</button></div>
     <div className={`game-status ${ready && turn === mark ? 'your-turn' : ''}`} role="status">
       <strong>{busy ? 'Saving your move…' : status}</strong>
       <span>{state?.status === 'pending' ? 'They can accept later. You can leave and resume from Play.' : ready ? returned ? friendName + ' is back' : here ? friendName + ' is in the room' : friendName + ' is away. Your moves will wait here.' : 'Rooms are available for 24 hours from the invitation.'}</span>
     </div>
+    {result && !terminal && (
+      <div className="game-again">
+        <button type="button" className="btn-dark" onClick={again} disabled={busy}>
+          {busy ? 'Setting up…' : 'Play again'}
+        </button>
+        {/* Who starts alternates, and saying so stops the next round looking
+            like a bug to whoever went second last time. */}
+        <span className="play-sub">{pieceToMove({ revision: 0, round_start_revision: 0, round: (state?.round || 0) + 1 }) === mark ? 'You start this time' : friendName + ' starts this time'}</span>
+      </div>
+    )}
     {error && <div className="game-connection" role="alert">{error}<button type="button" className="pill-btn" onClick={() => syncRef.current()}>Sync board</button></div>}
     <div className="game-legend"><span className={mark === 'X' ? 'mark-x' : 'mark-o'}>You · {mark}</span><span>{friendName} · {mark === 'X' ? 'O' : 'X'}</span></div>
     <div className="ttt-board" aria-label="Tic-Tac-Toe board">{board.map((value, i) => <button type="button" key={i} className={`ttt-cell ${value ? 'mark-' + value.toLowerCase() : ''}`} onClick={() => play(i)} aria-label={value ? `${value}, square ${i + 1}` : `Empty square ${i + 1}`} disabled={!ready || busy || !!error || !!value || turn !== mark}>{value}</button>)}</div>

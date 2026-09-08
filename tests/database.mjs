@@ -200,8 +200,57 @@ await asUser(A,async()=>{
   assert.equal(win.result,'X'); assert.equal(win.revision,5)
   assert.deepEqual((await query('select * from game_room($1)',[game.id]))[0].board,win.board)
 })
-await asUser(B,async()=>{
+// --- Rematch: the next round in the same room ------------------------------
+// A finished board dropped out of both players' lists, so a second game meant a
+// fresh invitation and another acceptance for a room that was still open.
+await asUser(A,async()=>{
+  // A won room stays reachable — that is the whole point — but it must not put
+  // the "they accepted your invitation" banner back on screen every time
+  // somebody wins.
+  assert.equal((await query('select * from active_game_rooms()')).length,1)
+  assert.equal((await query('select * from accepted_game_invite_responses()')).length,0)
+
+  // Still no moving on a board somebody already won (this assertion used to
+  // live after end_game_room, which the rematch now sits in front of).
   await assert.rejects(query('select play_game_move($1,5,5)',[game.id]),/legal move/)
+
+  const next=(await query('select * from rematch_game($1)',[game.id]))[0]
+  assert.equal(next.result,null)
+  assert.deepEqual(next.board,['','','','','','','','',''])
+  assert.equal(next.round,1)
+  // revision stays MONOTONIC: resetting it would make a stale client's
+  // expected_revision from the last round look valid again in this one.
+  assert.equal(next.revision,5)
+  assert.equal(next.round_start_revision,5)
+
+  // Idempotent — both players tap "Play again" on a game they watched finish
+  // together, and the second call must not skip a round past the first.
+  const twice=(await query('select * from rematch_game($1)',[game.id]))[0]
+  assert.equal(twice.round,1)
+
+  // The starter ALTERNATES. X moving first every round hands the inviter a
+  // standing advantage, and in this game the first player is the only one who
+  // can force a win.
+  await assert.rejects(query('select play_game_move($1,0,5)',[game.id]),/legal move/)
+})
+await asUser(B,()=>query('select play_game_move($1,0,5)',[game.id]))
+await asUser(A,async()=>{
+  const mine=(await query('select * from play_game_move($1,1,6)',[game.id]))[0]
+  assert.equal(mine.board[0],'O'); assert.equal(mine.board[1],'X')
+  // Nine moves THIS ROUND, not nine revisions ever. The old draw test was
+  // `revision = 9`, which in round two declares a draw partway through the
+  // board — here revision is already past 9 with four squares still empty.
+  assert.equal(mine.result,null)
+  assert.equal(mine.revision,7)
+})
+// Rematching a game still in progress is a no-op rather than a board wipe.
+await asUser(B,async()=>{
+  const untouched=(await query('select * from rematch_game($1)',[game.id]))[0]
+  assert.equal(untouched.round,1)
+  assert.equal(untouched.board[0],'O')
+})
+console.log('PASS rematch resets the board, alternates who starts, and is idempotent')
+await asUser(B,async()=>{
   await query('select end_game_room($1)',[game.id])
   assert.equal((await query('select * from active_game_rooms()')).length,0)
 })

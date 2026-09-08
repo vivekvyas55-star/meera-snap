@@ -1796,6 +1796,10 @@ button:disabled { cursor: not-allowed; }
 .game-invite-actions { display: flex; gap: 8px; }
 .game-invite-actions button { flex: 1; justify-content: center; }
 .game-room { padding: 4px 2px 24px; }
+/* The rematch action sits with the result, which is where someone is standing
+   when they decide whether to play another round. */
+.game-again { display: flex; align-items: center; gap: 12px; margin: 12px 0; }
+.game-again .btn-dark { min-height: 44px; padding: 0 20px; }
 .game-room-head { display: flex; align-items: center; justify-content: space-between; }
 .game-room-head h2 { margin: 4px 0 0; font-size: 25px; font-weight: 450; letter-spacing: -.035em; }
 .ttt-board { display: grid; grid-template-columns: repeat(3, 1fr); gap: 9px; max-width: 330px; margin: 22px auto; }

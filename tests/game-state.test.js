@@ -1,11 +1,12 @@
 import { expect, test } from 'vitest'
-import { AWAY_MS, isMyTurn, peerPresence, playState, roomWith } from '../src/lib/gameState'
+import { AWAY_MS, isMyTurn, peerPresence, pieceToMove, playState, roomWith } from '../src/lib/gameState'
 
 const ME = 'me', FRIEND = 'friend'
 const now = Date.now()
 const room = (over = {}) => ({
   id: 'g', room: 'r', sender_id: ME, recipient_id: FRIEND, status: 'accepted',
-  revision: 0, board: Array(9).fill(''), result: null, ended_at: null,
+  revision: 0, round: 0, round_start_revision: 0,
+  board: Array(9).fill(''), result: null, ended_at: null,
   expires_at: new Date(now + 3600000).toISOString(),
   sender_present_at: new Date(now).toISOString(),
   recipient_present_at: new Date(now).toISOString(),
@@ -50,8 +51,10 @@ test('your own move outranks their absence', () => {
     .toBe('Your turn')
 })
 
-test('a finished, abandoned or expired room stops offering to resume', () => {
-  for (const over of [{ result: 'X' }, { ended_at: new Date().toISOString() }, { status: 'dismissed' }]) {
+test('an abandoned or expired room stops offering to resume', () => {
+  // A won board is handled separately — it becomes a rematch, not an idle
+  // chip — because that is the moment someone most wants another round.
+  for (const over of [{ ended_at: new Date().toISOString() }, { status: 'dismissed' }]) {
     expect(playState(room(over), ME, now).key).toBe('idle')
   }
   expect(playState(room({ expires_at: new Date(now - 1).toISOString() }), ME, now).key).toBe('idle')
@@ -75,4 +78,38 @@ test('every surface asks the same question about presence', () => {
   // Asked from the other side it reads the other stamp, not the same one.
   expect(peerPresence(room({ sender_present_at: stale, recipient_present_at: fresh }), FRIEND, now)).toBe('away')
   expect(peerPresence(null, ME, now)).toBe('away')
+})
+
+test('a finished game offers another round, not a fresh invitation', () => {
+  // It used to fall through to "Play", which meant leaving the conversation,
+  // sending a new invitation and waiting for it to be accepted — for a room
+  // that is still open.
+  expect(playState(room({ result: 'X' }), ME, now)).toEqual({ key: 'rematch', label: 'Play again' })
+  expect(playState(room({ result: 'draw' }), FRIEND, now).key).toBe('rematch')
+  // Ended or expired is genuinely over, and stays over.
+  expect(playState(room({ result: 'X', ended_at: new Date().toISOString() }), ME, now).key).toBe('idle')
+  expect(playState(room({ result: 'X', expires_at: new Date(now - 1).toISOString() }), ME, now).key).toBe('idle')
+})
+
+test('who moves next matches public.game_turn, round by round', () => {
+  // X starts round 0, O starts round 1. Drift here shows up as a board that
+  // refuses the tap it just invited, because the database rejects the move.
+  expect(pieceToMove({ revision: 0, round_start_revision: 0, round: 0 })).toBe('X')
+  expect(pieceToMove({ revision: 1, round_start_revision: 0, round: 0 })).toBe('O')
+  expect(pieceToMove({ revision: 5, round_start_revision: 5, round: 1 })).toBe('O')
+  expect(pieceToMove({ revision: 6, round_start_revision: 5, round: 1 })).toBe('X')
+  expect(pieceToMove({ revision: 12, round_start_revision: 12, round: 2 })).toBe('X')
+  // A row from a database without the rematch migration has neither column,
+  // and must reduce to the original single-round rule rather than throw.
+  expect(pieceToMove({ revision: 0 })).toBe('X')
+  expect(pieceToMove({ revision: 3 })).toBe('O')
+})
+
+test('the turn is read against the right player in a later round', () => {
+  const second = room({ revision: 5, round_start_revision: 5, round: 1, result: null })
+  // ME invited, so ME is X — and X does not start round 1.
+  expect(isMyTurn(second, ME)).toBe(false)
+  expect(isMyTurn(second, FRIEND)).toBe(true)
+  expect(playState(second, ME, now).label).toBe('Accepted — Resume')
+  expect(playState(second, FRIEND, now).label).toBe('Your turn')
 })
