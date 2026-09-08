@@ -623,6 +623,35 @@ Regression tests for both, and for the gesture rules above, are in
 `scrollHeight`/`clientHeight` via prototype getters — without that, "am I at the
 bottom?" answers yes forever and none of it is testable).
 
+## Android Back closes one layer at a time
+
+`lib/backStack.js` + `hooks/useBackLayer.js`. Every screen or overlay that can
+be dismissed registers itself as a layer — one history entry each — and Back
+closes the innermost one. This was hand-rolled in App.jsx for exactly one level,
+so Back from Memories, Plans or Play closed the whole Profile behind them, and
+Back inside a chat sheet left the conversation.
+
+`useBackLayer(open, onClose)` is the whole API. `Sheet.jsx` and the two viewers
+call it themselves, so every sheet (Confirm included) and every snap or story
+gets Back-to-dismiss without the call site doing anything — and a sheet written
+later cannot forget to.
+
+**Two synchronous `history.back()` calls do not go back two steps.** The second
+is applied against a stack the first has not moved yet and is simply lost —
+measured in jsdom, and specified the same way in browsers. Closing a parent
+while a child is open drops two layers in one tick, so `dropLayer` batches the
+steps into a single `history.go(-n)` on a microtask. That traversal fires
+exactly **one** popstate however many entries it spends, so exactly one
+acknowledgement is owed back — counting `n` there would swallow the user's next
+real Back.
+
+The `owed` counter is why a traversal we caused is never mistaken for a press:
+`history.back()` is asynchronous, so its popstate can land after the user has
+already opened the next screen, and "close the top layer" would then close the
+wrong one. A boolean cannot do this job — two layers closing at once owe two
+acknowledgements. `layers`, not `history.state`, is the accounting: a layer
+already taken by a popstate is gone from the array and its entry went with it.
+
 ## Stacked sheets: Escape belongs to the top one
 
 `components/Sheet.jsx` keeps a module-level stack and only the topmost sheet

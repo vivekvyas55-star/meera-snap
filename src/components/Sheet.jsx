@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { useBackLayer } from '../hooks/useBackLayer'
 
 // The bottom sheets were plain divs with a backdrop click handler: no role, no
 // Escape, no focus trap, and no focus restore. That makes them unusable by
@@ -28,6 +29,12 @@ export default function Sheet({ onClose, label, className = 'sheet-body', childr
   // incoming message. Hold it in a ref and run the effect exactly once.
   const closeRef = useRef(onClose)
   closeRef.current = onClose
+
+  // A sheet is a Back-closable layer for as long as it is mounted. Doing this
+  // here rather than at each call site means Android's Back dismisses the sheet
+  // instead of the screen underneath it, for every sheet including ones written
+  // later — and it cannot be forgotten for a new one.
+  useBackLayer(true, onClose)
 
   // Identity for this sheet's slot in the stack.
   const tokenRef = useRef({})

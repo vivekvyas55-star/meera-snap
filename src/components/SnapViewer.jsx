@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useBackLayer } from '../hooks/useBackLayer'
 import { recordSnapOpen, markScreenshot, signedUrl, SNAP_MAX_OPENS } from '../lib/db'
 import { useScreenshotHeuristic } from '../hooks/useScreenshotHeuristic'
 import { CloseIcon } from './Icons'
@@ -8,6 +9,8 @@ import Portal from './Portal'
 // Each open counts toward the reopen limit (recorded server-side); reopening is
 // done by tapping the snap again in the chat, so there's no in-viewer replay.
 export default function SnapViewer({ message, me, onClose, onScreenshot }) {
+  // Back closes the snap, not the conversation behind it.
+  useBackLayer(true, onClose)
   const isMine = message.sender_id === me
   // A disappearing snap can be kept in-chat by either person, which is a
   // visible shared decision. Device export is intentionally narrower: a

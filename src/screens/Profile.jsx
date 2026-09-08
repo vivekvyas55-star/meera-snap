@@ -19,6 +19,7 @@ import { BackIcon, BellIcon, CheckIcon, ChevronIcon, CoinIcon, FlameIcon, PowerI
 import { formatCredits, getBillingSettings, getEntitlement, runwayLabel } from '../lib/billing'
 import { lockApp } from '../lib/appLock'
 import { clearPin, hasPin } from '../lib/pinStore'
+import { useBackLayer } from '../hooks/useBackLayer'
 import PinSetup from '../components/PinSetup'
 import Memories from './Memories'
 import { SECURITY_QUESTIONS } from '../lib/securityQuestions'
@@ -187,6 +188,13 @@ export default function Profile({ onBack, openPlay = false, onPlayOpened }) {
       setSavingSec(false)
     }
   }
+
+  // Each sub-screen is its own Back layer. Without these, Android's Back from
+  // Memories, Plans or Play closed the whole Profile behind them — one press
+  // skipping two screens.
+  useBackLayer(showMemories, () => setShowMemories(false))
+  useBackLayer(showPlans, () => setShowPlans(false))
+  useBackLayer(showPlay, () => setShowPlay(false))
 
   if (showMemories) return <Memories me={me} onBack={() => setShowMemories(false)} />
   if (showPlans) return <Plans onBack={() => setShowPlans(false)} />

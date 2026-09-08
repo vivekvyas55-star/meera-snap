@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useBackLayer } from '../hooks/useBackLayer'
 import {
   getProfile,
   listMyStoryViews,
@@ -179,6 +180,9 @@ export default function Stories({ active, onCapture }) {
 }
 
 function StoryViewer({ group, author, me, onClose, onNextAuthor }) {
+  // Back leaves the story, not the Stories pane. The component is keyed by
+  // author, so moving to the next author remounts it and swaps the layer.
+  useBackLayer(true, onClose)
   const toast = useToast()
   const alias = useAlias()
   const [storyId, setStoryId] = useState(null)

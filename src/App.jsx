@@ -25,6 +25,7 @@ import OutboxDelivery from './components/OutboxDelivery'
 import PinLock from './components/PinLock'
 import { isUnlocked } from './lib/appLock'
 import { hasPin } from './lib/pinStore'
+import { useBackLayer } from './hooks/useBackLayer'
 import { signalReceiver } from './lib/privateRealtime'
 
 const PANES = [
@@ -171,61 +172,15 @@ function Shell() {
     return () => navigator.serviceWorker.removeEventListener('message', onMessage)
   }, [profile])
 
-  // Android's hardware Back (and the browser's back gesture) used to leave the
-  // PWA entirely from inside a conversation, because Chat/Profile/Map are state,
-  // not routes. Push one history entry when an overlay opens and close it on
-  // popstate instead — Back now means "out of this screen", as it should.
-  const overlayOpen = Boolean(openChat || showProfile || showMap)
-  const overlayDepth = useRef(0)
-  // Set while a history.back() WE asked for is still in flight. history.back()
-  // is asynchronous, so the popstate it produces can land after the user has
-  // already opened the next screen — and that popstate would close the screen
-  // they just opened. Tapping Back and then a chat row in quick succession made
-  // the chat flash open and shut. The overlay is already closed by the time the
-  // acknowledgement arrives, so consuming it costs nothing.
-  const selfPop = useRef(false)
-  useEffect(() => {
-    if (overlayOpen) {
-      if (overlayDepth.current === 0) {
-        overlayDepth.current = 1
-        window.history.pushState({ meeraOverlay: true }, '')
-      }
-      return
-    }
-    // Closed from inside the app (the Back button): drop the entry we pushed so
-    // the history stack doesn't grow one dead step per screen visited.
-    if (overlayDepth.current === 1 && window.history.state?.meeraOverlay) {
-      overlayDepth.current = 0
-      selfPop.current = true
-      window.history.back()
-    } else {
-      overlayDepth.current = 0
-    }
-  }, [overlayOpen])
-
-  // Sign-out, a PIN relock or an account switch unmounts Shell from underneath
-  // an open overlay. Without this the entry pushed above outlives the ref that
-  // tracks it, and every cycle leaves one dead step on the stack — Back then
-  // appears to do nothing.
-  useEffect(() => () => {
-    if (overlayDepth.current === 1 && window.history.state?.meeraOverlay) {
-      overlayDepth.current = 0
-      selfPop.current = true
-      window.history.back()
-    }
-  }, [])
-
-  useEffect(() => {
-    const onPop = () => {
-      if (selfPop.current) { selfPop.current = false; return }
-      overlayDepth.current = 0
-      setOpenChat(null)
-      setShowProfile(false)
-      setShowMap(false)
-    }
-    window.addEventListener('popstate', onPop)
-    return () => window.removeEventListener('popstate', onPop)
-  }, [])
+  // Android's hardware Back closes the innermost open thing, one layer at a
+  // time. The bookkeeping lives in lib/backStack.js because Profile's
+  // sub-screens and Chat's sheets are layers too, and Back used to jump
+  // straight past them to here.
+  useBackLayer(Boolean(openChat || showProfile || showMap), () => {
+    setOpenChat(null)
+    setShowProfile(false)
+    setShowMap(false)
+  })
 
   // A scanned Snapcode opens the app at ?add=<username>; once signed in, send
   // that friend request, then strip the param so it can't fire twice.
