@@ -13,7 +13,7 @@ await db.exec(`
  create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid $$;
  grant usage on schema auth to authenticated,anon;
  create table storage.buckets(id text primary key,name text,public boolean);
- create table storage.objects(id uuid primary key default gen_random_uuid(),bucket_id text,name text);
+ create table storage.objects(id uuid primary key default gen_random_uuid(),bucket_id text,name text,metadata jsonb);
  alter table storage.objects enable row level security;
  create function storage.foldername(text) returns text[] language sql immutable as $$ select string_to_array($1,'/') $$;
  create table realtime.messages(topic text,extension text);
@@ -285,4 +285,26 @@ await clientWrite('saveSubscription / disablePush',[{as:A},
  {sql:`insert into push_subscriptions(user_id,endpoint,p256dh,auth,user_agent) values($1,'https://push.example/x','p','a','ua') on conflict (endpoint) do update set user_id=excluded.user_id,endpoint=excluded.endpoint,p256dh=excluded.p256dh,auth=excluded.auth,user_agent=excluded.user_agent`,args:[A],rows:1},
  {sql:`delete from push_subscriptions where endpoint='https://push.example/x'`,args:[],rows:1}])
 console.log('PASS every client write succeeds for a legitimate user')
+
+// Egress accounting. The projection is the only part worth testing — the raw
+// totals are a sum, but the story multiplier is the thing that was making the
+// bill inexplicable, and getting it wrong in either direction is silent.
+await db.query("update storage.objects set metadata=jsonb_build_object('size',1000)")
+const storyObject=`${A}/stories/egress.jpg`
+await db.query("insert into storage.objects(bucket_id,name,metadata) values('media',$1,jsonb_build_object('size',500000))",[storyObject])
+await asUser(A,()=>query("insert into stories(user_id,media_path,media_type) values($1,$2,'image')",[A,storyObject]))
+const metrics=(await query('select * from record_ops_metrics()'))[0]
+assert.equal(Number(metrics.story_bytes),500000)
+// A is friends with B only, so one story of 500 kB is 500 kB out — not the
+// 500 kB that a naive "bytes stored today" reading would report if the author
+// had ten friends.
+assert.equal(Number(metrics.projected_daily_egress)-Number(metrics.snap_bytes),500000)
+await db.query(`insert into public.friendships(user_a,user_b,requested_by,status) values($1,$2,$1,'accepted')`,[A,C])
+const wider=(await query('select * from record_ops_metrics()'))[0]
+assert.equal(Number(wider.projected_daily_egress)-Number(wider.snap_bytes),1000000)
+// Same day twice must overwrite, not accumulate: the cron retries, and a
+// backfill is expected to be safe to repeat.
+assert.equal((await query('select count(*)::int n from ops_metrics'))[0].n,1)
+await asUser(B,()=>assert.rejects(query('select * from ops_metrics'),/permission denied/))
+console.log('PASS egress projection counts a story once per friend, and is idempotent per day')
 await db.close()

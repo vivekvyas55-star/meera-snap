@@ -546,6 +546,22 @@ image transforms would do this server-side but are Pro-only.
 Uploads set `cacheControl: '86400'` (supabase-js defaults to 3600). Safe because
 every upload gets a fresh uuid path — objects are immutable once written.
 
+**Egress is now measured, in `ops_metrics`** (`202609080016_egress.sql`, daily
+via `operations/schedule_ops_metrics.sql`). Be clear about what it is: Storage
+downloads never touch Postgres, so Supabase's own transfer counter is NOT
+readable from SQL and this does not pretend to read it. It measures everything
+that *drives* the bill — bytes stored, bytes added per IST day, and a projection
+that multiplies each story by the number of accepted friends its author has,
+because a story is fetched once per friend while a snap is fetched once. That
+multiplier is why egress looked inexplicable next to storage size. The table is
+locked like `bot_quotes` (RLS on, no policy, grants revoked) and
+`record_ops_metrics()` is operator-only; read it from the SQL editor with the
+queries in the operations file. It is idempotent per day, so a retried cron and
+a hand backfill both cost one row. A rolling week above a third of the 5 GB
+allowance raises a WARNING into the Postgres log. If the projection and the
+dashboard diverge badly, the gap is re-downloads — check the signed-URL cache
+in `db.js` first.
+
 **Grants gate writes before RLS.** Table-wide privileges were revoked in
 hardening and re-granted per column/table, so any column the client writes needs
 an explicit grant or the write fails with 42501 *before* RLS is even evaluated.
