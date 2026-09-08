@@ -14,6 +14,7 @@ import CameraScreen from './screens/CameraScreen'
 import Stories from './screens/Stories'
 const Profile = lazy(() => import('./screens/Profile'))
 const SnapMap = lazy(() => import('./screens/SnapMap'))
+const PlayTogether = lazy(() => import('./screens/PlayTogether'))
 import { ToastProvider } from './components/Toast'
 import { useToast } from './hooks/useToast'
 import { CallProvider } from './hooks/CallProvider'
@@ -43,6 +44,9 @@ function Shell() {
   const toast = useToast()
   const [pane, setPane] = useState(0) // start with conversations; camera activates only when selected
   const [openChat, setOpenChat] = useState(null)
+  // Set only when Play was opened FROM a conversation; the chat stays mounted
+  // underneath so closing Play returns to it.
+  const [playWith, setPlayWith] = useState(null)
   const [showProfile, setShowProfile] = useState(false)
   const [showMap, setShowMap] = useState(false)
   const [openPlay, setOpenPlay] = useState(false)
@@ -190,6 +194,8 @@ function Shell() {
     setShowProfile(false)
     setShowMap(false)
   })
+  // Pushed after the one above, so Back closes the board before the chat.
+  useBackLayer(Boolean(playWith), () => setPlayWith(null))
 
   // A scanned Snapcode opens the app at ?add=<username>; once signed in, send
   // that friend request, then strip the param so it can't fire twice.
@@ -225,7 +231,9 @@ function Shell() {
   // prompt when you came back. The shell stays mounted and display:none'd; the
   // camera is merely paused (tracks disabled, grant kept), which is the same
   // thing swiping between panes already does.
-  const overlay = showProfile ? (
+  const overlay = playWith ? (
+    <PlayTogether onBack={() => setPlayWith(null)} />
+  ) : showProfile ? (
     <Profile onBack={() => setShowProfile(false)} openPlay={openPlay} onPlayOpened={() => setOpenPlay(false)} />
   ) : showMap ? (
     <SnapMap onBack={() => setShowMap(false)} />
@@ -236,9 +244,15 @@ function Shell() {
       key={openChat.id}
       friend={openChat}
       onBack={() => setOpenChat(null)}
-      // Play lives under Profile, so opening it from a conversation hands the
-      // room (or just the friend) across in sessionStorage rather than adding
-      // another piece of state that has to be kept in step with the pager.
+      // Play opened from a conversation is a layer ON TOP of that conversation,
+      // not a trip through Profile. Routing it through Profile meant Back from
+      // the board landed on the settings screen instead of the chat you came
+      // from — you left a conversation and could not get back to it in one
+      // press. `openChat` deliberately stays set underneath.
+      //
+      // The room (or just the friend) still goes across in sessionStorage,
+      // because PlayTogether is reached from two places and a second piece of
+      // pager state would have to be kept in step with both.
       onOpenPlay={(room) => {
         try {
           if (room) {
@@ -254,9 +268,7 @@ function Shell() {
             sessionStorage.setItem(`meera:play-with:${profile.id}`, openChat.id)
           }
         } catch { /* the screen still opens, just without the handoff */ }
-        setOpenChat(null)
-        setShowProfile(true)
-        setOpenPlay(true)
+        setPlayWith(openChat)
       }}
     />
   ) : null

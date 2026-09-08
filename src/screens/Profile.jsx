@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import {
   clearStatusNote,
+  getSecurityQuestion,
   getSnapScore,
   listFriendsWithProfiles,
   listStatusNotes,
@@ -15,7 +16,25 @@ import Plans from './Plans'
 import PlayTogether from './PlayTogether'
 import { useToast } from '../hooks/useToast'
 import Avatar from '../components/Avatar'
-import { BackIcon, BellIcon, CheckIcon, ChevronIcon, CoinIcon, FlameIcon, PowerIcon, UsersIcon } from '../components/Icons'
+import {
+  AlertIcon,
+  ArrowIcon,
+  BackIcon,
+  BellIcon,
+  CheckIcon,
+  ChevronIcon,
+  CoinIcon,
+  FlameIcon,
+  GamepadIcon,
+  ImageIcon,
+  KeyIcon,
+  LockIcon,
+  NoteIcon,
+  PowerIcon,
+  ShieldIcon,
+  SmileyIcon,
+  UsersIcon,
+} from '../components/Icons'
 import { formatCredits, getBillingSettings, getEntitlement, runwayLabel } from '../lib/billing'
 import { lockApp } from '../lib/appLock'
 import { usingDefaultPin } from '../lib/pinStore'
@@ -60,6 +79,13 @@ const EMOJI_CHOICES = [
 // nothing. useSaveState + <SaveState> give each one a line of its own that
 // reports saving / saved / the error in words. On a phone, silence after a tap
 // is indistinguishable from a control that does not work.
+//
+// Third: the visual pass. The screen was a column of identical grey pills, so
+// deleting an account and opening Memories looked like the same kind of act.
+// It is now a lavender identity hero, section headers with an icon and a
+// hairline between them, navigation rows that carry the reference's dark
+// circular action, and exactly one escalation of button weight — grey pill,
+// ink outline, coral outline — where coral means nothing but danger.
 export default function Profile({ onBack, openPlay = false, onPlayOpened }) {
   const { profile, setProfile, signOut } = useAuth()
   const me = profile.id
@@ -82,6 +108,10 @@ export default function Profile({ onBack, openPlay = false, onPlayOpened }) {
   const [showPlay, setShowPlay] = useState(openPlay)
   const [secQ, setSecQ] = useState(SECURITY_QUESTIONS[0])
   const [secA, setSecA] = useState('')
+  // undefined = we have not been able to ask, null = asked and there is none,
+  // string = the question currently stored. The screen must not imply any of
+  // the three when it means another.
+  const [storedQ, setStoredQ] = useState(undefined)
   const [birthday, setBday] = useState(profile.birthday || '')
   const [note, setNote] = useState('')
   const [noteSaved, setNoteSaved] = useState('')
@@ -121,13 +151,52 @@ export default function Profile({ onBack, openPlay = false, onPlayOpened }) {
       .catch(() => {})
   }, [me])
 
+  // Which question is on file. Saving REPLACES it, and the old screen opened
+  // on SECURITY_QUESTIONS[0] with an empty answer whether or not one was set —
+  // so someone with a working recovery answer could overwrite it believing
+  // they were setting it for the first time. The question is readable by
+  // design (the reset screen has to show it before you are signed in); the
+  // answer is a hash the client can never read, and nothing here pretends
+  // otherwise. Guarded because the getter is not part of every build's db
+  // surface — an absent one leaves us at "we could not ask", which is exactly
+  // what `undefined` means here.
+  useEffect(() => {
+    // Read through a try: a build (or a test double) whose db surface predates
+    // this getter must leave the screen at "we could not ask" rather than take
+    // the whole Privacy Centre down with it.
+    let ask
+    try {
+      ask = getSecurityQuestion
+    } catch {
+      return
+    }
+    if (typeof ask !== 'function') return
+    let alive = true
+    ask(profile.username)
+      .then((q) => {
+        if (!alive) return
+        setStoredQ(q ?? null)
+        if (q && SECURITY_QUESTIONS.includes(q)) setSecQ(q)
+      })
+      .catch(() => {})
+    return () => { alive = false }
+  }, [profile.username])
+
   const saveBirthday = async (d) => {
+    const previous = birthday
     setBday(d)
-    await birthdaySave.run(async () => {
+    const ok = await birthdaySave.run(async () => {
       await setBirthday(me, d)
-      setProfile({ ...profile, birthday: d || null })
+      // Merge against the LATEST profile, not the one captured when this
+      // render ran: a "Save profile" that lands while the date write is in
+      // flight would otherwise be undone by a stale copy of the old row.
+      setProfile((p) => ({ ...(p ?? profile), birthday: d || null }))
       toast(d ? 'Birthday saved 🎂' : 'Birthday cleared')
+      return true
     })
+    // A failed write must not leave the new date sitting in the field looking
+    // saved. Put back what the server still holds and let the error speak.
+    if (!ok) setBday(previous)
   }
 
   const saveNote = async () => {
@@ -195,24 +264,29 @@ export default function Profile({ onBack, openPlay = false, onPlayOpened }) {
     await securitySave.run(async () => {
       await setSecurityQuestion(secQ, secA.trim())
       toast('Security question saved')
+      setStoredQ(secQ)
       setSecA('')
     })
   }
 
+  const closeMemories = useCallback(() => setShowMemories(false), [])
+  const closePlans = useCallback(() => setShowPlans(false), [])
+  const closePlay = useCallback(() => setShowPlay(false), [])
+
   // Each sub-screen is its own Back layer. Without these, Android's Back from
   // Memories, Plans or Play closed the whole Profile behind them — one press
   // skipping two screens.
-  useBackLayer(showMemories, () => setShowMemories(false))
-  useBackLayer(showPlans, () => setShowPlans(false))
-  useBackLayer(showPlay, () => setShowPlay(false))
+  useBackLayer(showMemories, closeMemories)
+  useBackLayer(showPlans, closePlans)
+  useBackLayer(showPlay, closePlay)
 
-  if (showMemories) return <Memories me={me} onBack={() => setShowMemories(false)} />
-  if (showPlans) return <Plans onBack={() => setShowPlans(false)} />
-  if (showPlay) return <PlayTogether onBack={() => setShowPlay(false)} />
+  if (showMemories) return <Memories me={me} onBack={closeMemories} />
+  if (showPlans) return <Plans onBack={closePlans} />
+  if (showPlay) return <PlayTogether onBack={closePlay} />
 
   return (
     <div className="app" style={{ display: 'flex', flexDirection: 'column', background: '#fff' }}>
-      <div className="header">
+      <div className="header pc-head">
         <button className="circle filled" onClick={onBack} aria-label="Back">
           <BackIcon />
         </button>
@@ -222,68 +296,76 @@ export default function Profile({ onBack, openPlay = false, onPlayOpened }) {
         </button>
       </div>
 
-      <div className="list profile-list" style={{ paddingTop: 8 }}>
+      <div className="list profile-list">
         {/* ================================================================
             1 — IDENTITY
             ================================================================ */}
-        <SettingsGroup eyebrow="Identity" title="Who you are">
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, padding: '8px 0 18px' }}>
-            <Avatar profile={preview} size="lg" />
-            <div style={{ fontSize: 22, fontWeight: 300, letterSpacing: '-0.02em' }}>
-              {displayName || profile.username}
-            </div>
-            <div style={{ color: 'var(--muted)', fontSize: 14 }}>@{profile.username}</div>
-
-            {/* Vibrant stat cards, per the ABC design language — the same
-                icon-above-number card the friend sheet uses, so a stat looks the
-                same wherever you meet it. */}
-            <div className="fp-stats" style={{ marginTop: 10, width: '100%' }}>
-              <div className="stat-card fp-stat" style={{ background: 'var(--lavender)' }}>
-                <FlameIcon width={17} height={17} />
-                <div className="stat-num">{score ?? '—'}</div>
-                <div className="stat-label">Snap score</div>
-              </div>
-              <div className="stat-card fp-stat" style={{ background: 'var(--lime)' }}>
-                <UsersIcon width={17} height={17} />
-                <div className="stat-num">{friendCount ?? '—'}</div>
-                <div className="stat-label">Friends</div>
+        <SettingsGroup
+          eyebrow="Identity"
+          title="Who you are"
+          icon={<SmileyIcon width={19} height={19} />}
+        >
+          {/* The hero the screen never had: one lavender field carrying the
+              face, the name, the handle and the two numbers, so Identity reads
+              as a single object instead of an avatar floating over a form. */}
+          <div className="pc-hero">
+            <div className="pc-hero-top">
+              <Avatar profile={preview} size="lg" />
+              <div className="pc-hero-id">
+                <div className="pc-hero-name">{displayName || profile.username}</div>
+                <div className="pc-hero-handle">@{profile.username}</div>
               </div>
             </div>
-
-            {/* Credits get a full-width tile rather than a third stat card: it
-                is the number that decides access, and it is also the only way
-                into Plans from here. Rendered only once the server has told us a
-                balance — a placeholder dash next to the word "credits" reads as
-                "you have none". */}
-            {ent?.credits != null && (
-              <button className="credit-tile" onClick={() => setShowPlans(true)}>
-                <CoinIcon width={17} height={17} />
-                <div className="credit-tile-main">
-                  <div className="credit-tile-num">{formatCredits(ent.credits)}</div>
-                  <div className="credit-tile-label">
-                    Credits · {runwayLabel(ent.credits, rate ?? undefined)}
-                  </div>
+            <div className="pc-hero-stats">
+              <div className="pc-figure">
+                <div className="pc-figure-num">{score ?? '—'}</div>
+                <div className="pc-figure-label">
+                  <FlameIcon width={13} height={13} /> Snap score
                 </div>
-                <ChevronIcon width={18} height={18} className="chev" />
-              </button>
-            )}
+              </div>
+              <div className="pc-figure">
+                <div className="pc-figure-num">{friendCount ?? '—'}</div>
+                <div className="pc-figure-label">
+                  <UsersIcon width={13} height={13} /> Friends
+                </div>
+              </div>
+            </div>
           </div>
 
-          <div className="pc-label">Display name</div>
+          {/* Credits get their own tile rather than a third figure: it is the
+              number that decides access, and it is also the only way into
+              Plans from here. Rendered only once the server has told us a
+              balance — a placeholder dash next to the word "credits" reads as
+              "you have none". */}
+          {ent?.credits != null && (
+            <button className="credit-tile" onClick={() => setShowPlans(true)}>
+              <CoinIcon width={17} height={17} />
+              <div className="credit-tile-main">
+                <div className="credit-tile-num">{formatCredits(ent.credits)}</div>
+                <div className="credit-tile-label">
+                  Credits · {runwayLabel(ent.credits, rate ?? undefined)}
+                </div>
+              </div>
+              <ChevronIcon width={18} height={18} className="chev" />
+            </button>
+          )}
+
+          <label className="pc-label" htmlFor="pc-name">Display name</label>
           <input
+            id="pc-name"
             value={displayName}
             onChange={(e) => setDisplayName(e.target.value)}
             maxLength={40}
             placeholder={profile.username}
             className="field"
-            aria-label="Display name"
           />
 
-          <div className="pc-label">Avatar</div>
-          <div className="emoji-grid">
+          <div className="pc-label" id="pc-avatar-label">Avatar</div>
+          <div className="emoji-grid" role="group" aria-labelledby="pc-avatar-label">
             <button
               onClick={() => setEmoji(null)}
-              title="Letter avatar"
+              aria-label="Letter avatar"
+              aria-pressed={emoji === null}
               className={emoji === null ? 'on' : undefined}
               style={{ fontSize: 20 }}
             >
@@ -293,6 +375,7 @@ export default function Profile({ onBack, openPlay = false, onPlayOpened }) {
               <button
                 key={e}
                 onClick={() => setEmoji(e)}
+                aria-pressed={emoji === e}
                 className={emoji === e ? 'on' : undefined}
               >
                 {e}
@@ -302,25 +385,20 @@ export default function Profile({ onBack, openPlay = false, onPlayOpened }) {
 
           {emoji === null && (
             <>
-              <div className="pc-label">Colour</div>
+              <label className="pc-label" htmlFor="pc-hue">Avatar colour</label>
               <input
+                id="pc-hue"
                 type="range"
                 min="0"
                 max="359"
                 value={hue}
                 onChange={(e) => setHue(Number(e.target.value))}
                 style={{ width: '100%', accentColor: `hsl(${hue} 85% 52%)` }}
-                aria-label="Avatar colour"
               />
             </>
           )}
 
-          <button
-            className="btn-dark"
-            style={{ marginTop: 22 }}
-            disabled={!dirty || profileSave.busy}
-            onClick={save}
-          >
+          <button className="btn-dark" disabled={!dirty || profileSave.busy} onClick={save}>
             <CheckIcon width={17} height={17} /> {profileSave.busy ? 'Saving…' : 'Save profile'}
           </button>
           {/* The name, emoji and colour only reach the server on this button,
@@ -335,17 +413,19 @@ export default function Profile({ onBack, openPlay = false, onPlayOpened }) {
             <SaveState state={profileSave.state} error={profileSave.error} savedLabel="Profile saved" />
           )}
 
-          <div className="pc-label">Birthday</div>
-          <div className="field-hint">
+          <label className="pc-label" htmlFor="pc-bday">Birthday</label>
+          <p className="field-hint" id="pc-bday-hint">
             Friends see a 🎂 next to your name on the day. Year is never shown.
-          </div>
+            Saves as soon as you pick it.
+          </p>
           <input
+            id="pc-bday"
+            aria-describedby="pc-bday-hint"
             type="date"
             value={birthday}
             max={new Date().toISOString().slice(0, 10)}
             onChange={(e) => saveBirthday(e.target.value)}
             className="field"
-            aria-label="Birthday"
           />
           <SaveState
             state={birthdaySave.state}
@@ -361,11 +441,18 @@ export default function Profile({ onBack, openPlay = false, onPlayOpened }) {
           eyebrow="Shared moments"
           title="What friends see"
           hint="Everything here is visible to accepted friends and nobody else."
+          icon={<NoteIcon width={19} height={19} />}
         >
-          <div className="pc-label">What’s up?</div>
-          <div className="field-hint">
-            A line your friends see under your name. Disappears after 24 hours.
+          <div className="pc-label-row">
+            {/* Not a <label>: the field's accessible name is "Status note",
+                which is what it is, while the visible line is the question it
+                answers. */}
+            <div className="pc-label">What’s up?</div>
+            {noteSaved ? <span className="pc-chip on">Live for friends</span> : null}
           </div>
+          <p className="field-hint" id="pc-note-hint">
+            A line your friends see under your name. Disappears after 24 hours.
+          </p>
           <input
             value={note}
             onChange={(e) => setNote(e.target.value)}
@@ -373,10 +460,10 @@ export default function Profile({ onBack, openPlay = false, onPlayOpened }) {
             placeholder="Studying · At home · Out for chai"
             className="field"
             aria-label="Status note"
+            aria-describedby="pc-note-hint"
           />
           <button
             className="btn-dark"
-            style={{ marginTop: 10 }}
             onClick={saveNote}
             disabled={noteSave.busy || note.trim() === noteSaved.trim()}
           >
@@ -389,24 +476,41 @@ export default function Profile({ onBack, openPlay = false, onPlayOpened }) {
           />
 
           <div className="pc-label">Memories</div>
-          <div className="field-hint">
+          <p className="field-hint">
             Snaps you chose to keep. Private to you — nobody else can open this.
-          </div>
-          <button onClick={() => setShowMemories(true)} className="pill-btn">
-            Open Memories
+          </p>
+          <button onClick={() => setShowMemories(true)} className="pc-nav">
+            <span className="pc-nav-icon" aria-hidden="true">
+              <ImageIcon width={19} height={19} />
+            </span>
+            <span className="pc-nav-title">Open Memories</span>
+            <span className="pc-nav-go" aria-hidden="true">
+              <ArrowIcon width={17} height={17} />
+            </span>
           </button>
         </SettingsGroup>
 
         {/* ================================================================
             3 — PLAY
             ================================================================ */}
-        <SettingsGroup eyebrow="Play" title="Games together">
+        <SettingsGroup
+          eyebrow="Play"
+          title="Games together"
+          icon={<GamepadIcon width={19} height={19} />}
+        >
           {/* Play shipped with its screen wired up but nothing anywhere calling
               setShowPlay — the whole feature was unreachable from the running
-              app. This is that entry point. */}
-          <div className="field-hint">A game with a friend, played turn by turn inside Meera.</div>
-          <button onClick={() => setShowPlay(true)} className="pill-btn">
-            Play
+              app. This is that entry point. The description stays outside the
+              button so the button's accessible name is the word on it. */}
+          <p className="field-hint">A game with a friend, played turn by turn inside Meera.</p>
+          <button onClick={() => setShowPlay(true)} className="pc-nav">
+            <span className="pc-nav-icon" aria-hidden="true">
+              <GamepadIcon width={19} height={19} />
+            </span>
+            <span className="pc-nav-title">Play</span>
+            <span className="pc-nav-go" aria-hidden="true">
+              <ArrowIcon width={17} height={17} />
+            </span>
           </button>
         </SettingsGroup>
 
@@ -417,17 +521,29 @@ export default function Profile({ onBack, openPlay = false, onPlayOpened }) {
           eyebrow="Notifications"
           title="Being reached"
           hint="Meera never puts message content on your lock screen — only who it's from."
+          icon={<BellIcon width={19} height={19} />}
         >
-          <div className="field-hint">
-            {pushBlocked ?? 'Get alerted for messages and calls even when Meera is closed.'}
+          <div className="pc-state">
+            <span className="pc-nav-icon" aria-hidden="true">
+              <BellIcon width={19} height={19} />
+            </span>
+            <div className="pc-state-main">
+              <div className="pc-state-title">Push notifications</div>
+              <div className="pc-state-sub">Per device — each browser is separate.</div>
+            </div>
+            <span className={`pc-chip${pushOn && !pushBlocked ? ' on' : ''}`}>
+              {pushBlocked ? 'Unavailable' : pushOn ? 'On' : 'Off'}
+            </span>
           </div>
+          <p className="field-hint">
+            {pushBlocked ?? 'Get alerted for messages and calls even when Meera is closed.'}
+          </p>
           {!pushBlocked && (
             <>
               <button
-                className="btn-dark"
+                className={pushOn ? 'pc-outline' : 'btn-dark'}
                 onClick={togglePush}
                 disabled={pushSave.busy}
-                style={pushOn ? { background: 'var(--lime)', color: 'var(--ink)' } : undefined}
               >
                 <BellIcon width={17} height={17} />
                 {pushSave.busy ? 'One sec…' : pushOn ? 'Notifications on — turn off' : 'Turn on notifications'}
@@ -449,6 +565,7 @@ export default function Profile({ onBack, openPlay = false, onPlayOpened }) {
           eyebrow="Privacy and lock"
           title="Who gets in"
           hint="The passcode deters someone holding your phone. Blocking is enforced by the server."
+          icon={<ShieldIcon width={19} height={19} />}
         >
           <div className="pc-label">App passcode</div>
           {/* This used to be a bare pill with no explanation. It swaps the whole
@@ -461,25 +578,42 @@ export default function Profile({ onBack, openPlay = false, onPlayOpened }) {
               So there is no "no passcode" state to describe and no way to remove
               one — only to change it. */}
           {usingDefault && (
-            <div className="pin-default-warn" role="status">
-              <strong>You are still using the default passcode.</strong>
-              <span>
-                It ships with the app, so anyone who knows Meera knows it. Change it
-                and it becomes yours — stored only on this phone, and only as a hash.
+            <div className="pin-default-warn pc-warn" role="status">
+              <span className="pc-warn-icon" aria-hidden="true">
+                <AlertIcon width={20} height={20} />
+              </span>
+              <span className="pc-warn-text">
+                <strong>You are still using the default passcode.</strong>
+                <span>
+                  It ships with the app, so anyone who knows Meera knows it. Change it
+                  and it becomes yours — stored only on this phone, and only as a hash.
+                </span>
               </span>
             </div>
           )}
-          <div className="field-hint">
+          <p className="field-hint">
             Meera asks for your 4-digit passcode on every cold open. Three wrong
             tries hide the app for 15 minutes behind a decoy screen. The code is
             stored only on this phone, as a hash — nobody, including us, can read
             it back, and setting it on another device is a separate passcode.
-          </div>
-          <button onClick={() => setPinSetup(true)} className="pill-btn">
-            Change passcode
+          </p>
+          <button onClick={() => setPinSetup(true)} className="pc-nav">
+            <span className="pc-nav-icon" aria-hidden="true">
+              <KeyIcon width={19} height={19} />
+            </span>
+            <span className="pc-nav-title">Change passcode</span>
+            <span className="pc-nav-go" aria-hidden="true">
+              <ArrowIcon width={17} height={17} />
+            </span>
           </button>
-          <button onClick={() => setConfirmLock(true)} className="pill-btn">
-            Lock app
+          <button onClick={() => setConfirmLock(true)} className="pc-nav">
+            <span className="pc-nav-icon" aria-hidden="true">
+              <LockIcon width={19} height={19} />
+            </span>
+            <span className="pc-nav-title">Lock app</span>
+            <span className="pc-nav-go" aria-hidden="true">
+              <ArrowIcon width={17} height={17} />
+            </span>
           </button>
           <SaveState
             state={pinSave.state}
@@ -499,34 +633,52 @@ export default function Profile({ onBack, openPlay = false, onPlayOpened }) {
           eyebrow="Account and data"
           title="Your account"
           hint="Recovery, devices, what Meera is holding, and the way out."
+          icon={<KeyIcon width={19} height={19} />}
         >
-          <div className="pc-label">Security question</div>
-          <div className="field-hint">
+          <div className="pc-label-row">
+            <div className="pc-label">Password recovery</div>
+            {storedQ ? <span className="pc-chip">Set</span> : null}
+          </div>
+          <p className="field-hint">
             Set this so you can recover your account if you forget your password. There is no
             email on file — Meera never asked for one — so this is the only way back in.
-          </div>
+          </p>
+          {/* Which one is on file, when we can say. Saving replaces it, and the
+              old screen opened on the first question in the list either way. */}
+          {storedQ ? (
+            <div className="pc-empty">
+              <strong>On file: {storedQ}</strong>
+              Saving below replaces it. Your answer is never shown back — it is stored
+              as a hash, so nothing here can read it.
+            </div>
+          ) : storedQ === null ? (
+            <div className="pc-empty">
+              <strong>You haven't set one yet.</strong>
+              Without it, a forgotten password cannot be recovered.
+            </div>
+          ) : null}
+          <label className="pc-label" htmlFor="pc-secq">Security question</label>
           <select
+            id="pc-secq"
             className="auth-select"
             value={secQ}
             onChange={(e) => setSecQ(e.target.value)}
-            style={{ marginBottom: 8 }}
-            aria-label="Security question"
           >
             {SECURITY_QUESTIONS.map((q) => (
               <option key={q} value={q}>{q}</option>
             ))}
           </select>
+          <label className="pc-label" htmlFor="pc-seca">Your answer</label>
           <input
+            id="pc-seca"
             value={secA}
             onChange={(e) => setSecA(e.target.value)}
             placeholder="your answer"
             autoComplete="off"
             className="field"
-            aria-label="Security answer"
           />
           <button
             className="btn-dark"
-            style={{ marginTop: 12 }}
             disabled={securitySave.busy || !secA.trim()}
             onClick={saveSecurity}
           >

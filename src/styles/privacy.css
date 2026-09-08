@@ -1,23 +1,66 @@
 /* ==========================================================================
-   Privacy Centre — Profile.jsx
-   Follows the ABC language already codified in index.css: vibrant cards used
-   as full backgrounds, oversized light-weight headings, pill chips for
-   metadata, dark circular/pill actions. Everything here is built from the
-   existing custom properties so a token change still reaches this screen.
+   Privacy Centre — Profile.jsx and the components under it.
+
+   Follows the ABC language codified in index.css: vibrant fills used as whole
+   card backgrounds, oversized light-weight headings, pill chips for metadata,
+   near-black circular actions. Everything here is built from the existing
+   custom properties, so a token change still reaches this screen and nothing
+   below invents a spacing or type step of its own.
+
+   Colour has one job per hue on this screen and never two:
+     lavender — you (the identity hero, an active location share)
+     lime     — credit, i.e. the number the Plans screen is about
+     indigo   — what Meera is holding for you (storage)
+     coral    — danger and nothing else (default passcode, deletion)
    ========================================================================== */
 
 /* --------------------------------------------------------------------------
-   Groups. The screen is six sections now, and a section label the same size
-   and weight as everything around it does not group anything — it just adds
-   another line. An eyebrow over a light display heading is what the reference
-   does, and it survives being read at arm's length on a phone.
+   Screen chrome
    -------------------------------------------------------------------------- */
+/* "Profile & privacy" at the shell's clamp(28px, 8.5vw, 34px) ellipsised on a
+   320px phone, between a back circle and a log-out circle. Two calm lines beat
+   one truncated one. */
+.pc-head h1 {
+  font-size: var(--fs-h1);
+  white-space: normal;
+  line-height: 1.06;
+}
+
+/* --------------------------------------------------------------------------
+   Sections. Six groups of identical weight is the same problem an undifferen-
+   tiated list of chat rows had: nothing to aim at. An eyebrow over a light
+   display heading, a hairline between sections, and one indent for the header
+   and its controls — those had been 28px and 12px respectively, so every
+   heading on the screen hung left of the thing it named.
+   -------------------------------------------------------------------------- */
+.pc-section {
+  padding: 0 var(--sp-1);
+  margin-top: var(--sp-5);
+}
+.pc-section + .pc-section {
+  border-top: 1px solid var(--hairline);
+  padding-top: var(--sp-6);
+  margin-top: var(--sp-6);
+}
+
 .pc-group {
-  margin: var(--sp-6) var(--sp-4) var(--sp-3);
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-3);
+  margin: 0 0 var(--sp-4);
 }
-.pc-group:first-of-type {
-  margin-top: var(--sp-4);
+.pc-group-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  background: var(--card);
+  color: var(--ink);
+  margin-top: 2px;
 }
+.pc-group-text { flex: 1; min-width: 0; }
 .pc-group-eyebrow {
   font-size: var(--fs-eyebrow);
   font-weight: 600;
@@ -36,19 +79,105 @@
   font-size: var(--fs-meta);
   color: var(--muted);
   line-height: 1.5;
-  margin-top: var(--sp-2);
+  margin: var(--sp-2) 0 0;
 }
 
-/* A quieter label for the individual controls inside a group. */
+/* One rhythm for everything inside a group. The controls used to carry their
+   own margins — 8px here, 10px there, a 22px inline style on one button — so
+   the vertical spacing depended on which order things happened to be built in.
+   The gap owns it now, and a label opens a little more air above itself. */
+.pc-group-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+/* Hints are <p>, so they arrive with a 1em UA margin on top of the gap. */
+.pc-group-body > .field-hint,
+.pc-more .field-hint { margin: 0; }
+.pc-group-body > .pill-btn,
+.pc-group-body > .btn-dark,
+.pc-group-body > .credit-tile { margin-top: 0; }
+.pc-group-body > .pc-row { margin-bottom: 0; }
+
+/* A quieter label for one control inside a group. */
 .pc-label {
+  display: block;
   font-size: var(--fs-sm);
   font-weight: 600;
   letter-spacing: -0.01em;
-  margin: var(--sp-5) 0 var(--sp-2);
+  margin: var(--sp-3) 0 0;
 }
-.pc-label:first-child {
-  margin-top: 0;
+.pc-group-body > .pc-label:first-child { margin-top: 0; }
+
+/* Label with a count or a state on the right — "Blocked · 2", "3 devices". */
+.pc-label-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin: var(--sp-3) 0 0;
 }
+.pc-group-body > .pc-label-row:first-child { margin-top: 0; }
+.pc-label-row .pc-label { margin: 0; flex: 1; min-width: 0; }
+
+/* --------------------------------------------------------------------------
+   Identity hero. The screen opened on a white column with a small avatar in
+   it; the reference opens on a colour field with the one fact the page is
+   about. Snap score and friends live inside it as figures rather than as two
+   more cards, so Identity reads as one object.
+   -------------------------------------------------------------------------- */
+.pc-hero {
+  background: var(--lavender);
+  color: var(--ink);
+  border-radius: var(--r-card);
+  padding: var(--sp-4);
+}
+.pc-hero-top {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+.pc-hero-id { min-width: 0; }
+.pc-hero-name {
+  font-size: var(--fs-h2);
+  font-weight: 300;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+  overflow-wrap: anywhere;
+}
+.pc-hero-handle {
+  font-size: var(--fs-meta);
+  margin-top: 5px;
+  opacity: 0.72;
+  overflow-wrap: anywhere;
+}
+.pc-hero-stats {
+  display: flex;
+  gap: var(--sp-2);
+  margin-top: var(--sp-4);
+}
+.pc-figure {
+  flex: 1 1 0;
+  min-width: 0;
+  background: rgba(255, 255, 255, 0.55);
+  border-radius: var(--r-row);
+  padding: var(--sp-3);
+}
+.pc-figure-num {
+  font-size: 30px;
+  font-weight: 300;
+  letter-spacing: -0.03em;
+  line-height: 1;
+  overflow-wrap: anywhere;
+}
+.pc-figure-label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: var(--fs-micro);
+  margin-top: 7px;
+  opacity: 0.8;
+}
+.pc-figure-label svg { flex: 0 0 auto; }
 
 /* --------------------------------------------------------------------------
    Cards
@@ -56,7 +185,6 @@
 .pc-card {
   border-radius: var(--r-card);
   padding: var(--sp-4);
-  margin-bottom: var(--sp-3);
   background: var(--card);
   color: var(--ink);
 }
@@ -64,7 +192,20 @@
 .pc-card.lime { background: var(--lime); }
 .pc-card.coral { background: var(--coral); }
 .pc-card.indigo { background: var(--indigo); color: #fff; }
+/* The global focus ring is indigo, which disappears on an indigo card. */
+.pc-card.indigo :focus-visible { outline-color: #fff; }
 
+.pc-card-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: var(--fs-micro);
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  opacity: 0.75;
+  margin-bottom: var(--sp-3);
+}
 .pc-card-title {
   font-size: var(--fs-lead);
   font-weight: 500;
@@ -92,35 +233,104 @@
   margin-top: var(--sp-3);
 }
 .pc-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   font-size: var(--fs-micro);
   font-weight: 500;
   padding: 5px 11px;
   border-radius: var(--r-pill);
-  background: rgba(22, 22, 26, 0.1);
+  background: rgba(22, 22, 26, 0.09);
   color: inherit;
   white-space: nowrap;
+  flex: 0 0 auto;
 }
-.pc-card.indigo .pc-chip {
-  background: rgba(255, 255, 255, 0.18);
+.pc-card.indigo .pc-chip { background: rgba(255, 255, 255, 0.18); }
+/* A chip that reports a live state rather than a quantity. */
+.pc-chip.on { background: var(--ink); color: #fff; }
+
+/* --------------------------------------------------------------------------
+   Navigation rows — Memories, Play, the passcode actions. The dark circle is
+   the reference's primary action, and putting it in the row makes each of
+   these a 56px target instead of a line of text.
+   -------------------------------------------------------------------------- */
+.pc-nav {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  width: 100%;
+  min-height: 56px;
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-row);
+  background: var(--card);
+  text-align: left;
+  color: var(--ink);
+}
+.pc-nav:active { background: var(--card-press); }
+.pc-nav-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  background: #fff;
+  color: var(--ink);
+}
+.pc-nav-title {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--fs-body);
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+.pc-nav-go {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  background: var(--ink);
+  color: #fff;
+}
+
+/* A state read-out that is not a control: "Push notifications — off". */
+.pc-state {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3);
+  border-radius: var(--r-row);
+  background: var(--card);
+}
+.pc-state-main { flex: 1; min-width: 0; }
+.pc-state-title {
+  font-size: var(--fs-body);
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+.pc-state-sub {
+  font-size: var(--fs-micro);
+  color: var(--muted);
+  margin-top: 3px;
 }
 
 /* --------------------------------------------------------------------------
-   Rows — devices, blocked contacts. Same light-grey rounded card as .row in
-   index.css, with a trailing action that is a real touch target.
+   Rows — devices, blocked contacts.
    -------------------------------------------------------------------------- */
 .pc-row {
   display: flex;
   align-items: center;
   gap: var(--sp-3);
   padding: var(--sp-3);
-  margin-bottom: var(--sp-2);
   background: var(--card);
   border-radius: var(--r-row);
+  width: 100%;
+  text-align: left;
+  color: var(--ink);
 }
-.pc-row-main {
-  flex: 1;
-  min-width: 0;
-}
+.pc-row-main { flex: 1; min-width: 0; }
 .pc-row-name {
   font-size: var(--fs-body);
   font-weight: 500;
@@ -134,17 +344,19 @@
   color: var(--muted);
   margin-top: 3px;
 }
+/* 36px was under the touch minimum; the pill keeps its compact look and gets
+   the height back through padding. */
 .pc-row-action {
   flex: 0 0 auto;
-  min-height: 36px;
-  padding: 8px 14px;
+  min-height: 44px;
+  padding: 0 var(--sp-3);
   border-radius: var(--r-pill);
   background: #fff;
   font-size: var(--fs-micro);
   font-weight: 600;
   color: var(--ink);
 }
-.pc-row-action:active { opacity: 0.7; }
+.pc-row-action:active { background: var(--card-press); }
 .pc-row-action:disabled { opacity: 0.4; }
 
 /* "This device" earns a marker; without it the list is a set of near-identical
@@ -156,11 +368,64 @@
   margin-left: var(--sp-2);
 }
 
+/* --------------------------------------------------------------------------
+   The four things a panel can be doing: loading, failed, empty, or fine. The
+   first three used to share one grey line of text, which made "we could not
+   ask" indistinguishable from "there is nothing" — on a privacy screen the
+   difference is the whole point.
+   -------------------------------------------------------------------------- */
 .pc-empty {
-  font-size: var(--fs-sm);
+  font-size: var(--fs-meta);
   color: var(--muted);
   line-height: 1.5;
-  padding: var(--sp-3) 0 var(--sp-1);
+  background: var(--card);
+  border-radius: var(--r-row);
+  padding: var(--sp-3) var(--sp-4);
+}
+.pc-empty strong { display: block; color: var(--ink); font-weight: 600; margin-bottom: 2px; }
+
+.pc-loading {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+.pc-loading::before {
+  content: '';
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+  background: var(--muted);
+  animation: pc-pulse 1.2s ease-in-out infinite;
+}
+
+/* A failed read says so, in coral, and offers the retry that the silent
+   fallback never did. */
+.pc-fail {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2) var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  border-radius: var(--r-row);
+  border: 1.5px solid var(--coral);
+  background: #fff;
+  font-size: var(--fs-meta);
+  color: var(--ink);
+  line-height: 1.5;
+}
+.pc-fail-text { flex: 1 1 160px; min-width: 0; }
+.pc-fail-text strong { display: block; font-weight: 600; }
+.pc-fail-text span { color: var(--muted); overflow-wrap: anywhere; }
+.pc-retry {
+  flex: 0 0 auto;
+  min-height: 44px;
+  padding: 0 var(--sp-4);
+  border-radius: var(--r-pill);
+  background: var(--ink);
+  color: #fff;
+  font-size: var(--fs-meta);
+  font-weight: 600;
 }
 
 /* --------------------------------------------------------------------------
@@ -198,13 +463,14 @@
   align-items: center;
   gap: 7px;
   min-height: 20px;
-  margin-top: var(--sp-2);
   font-size: var(--fs-micro);
   font-weight: 500;
   color: var(--muted);
+  line-height: 1.4;
 }
 .pc-save.saved { color: var(--ink); }
-.pc-save.error { color: var(--coral); }
+/* `is-error`, because index.css turns a bare `.error` into an alert card. */
+.pc-save.is-error { color: var(--coral); }
 .pc-save-dot {
   width: 8px;
   height: 8px;
@@ -212,35 +478,107 @@
   flex: 0 0 auto;
   background: var(--muted);
 }
-.pc-save.saved .pc-save-dot { background: var(--lime); }
-.pc-save.error .pc-save-dot { background: var(--coral); }
+.pc-save.saving .pc-save-dot { animation: pc-pulse 1.2s ease-in-out infinite; }
+.pc-save.saved .pc-save-dot { background: #2fbf71; }
+.pc-save.is-error .pc-save-dot { background: var(--coral); }
 
 /* --------------------------------------------------------------------------
-   Danger. Deletion is the one irreversible control on the screen and it should
-   not look like the others.
+   Escalation. Three weights, and a control's weight is what it costs you:
+   grey pill (routine) → ink outline (wide-reaching but recoverable) → coral
+   outline (irreversible). Nothing irreversible is ever a filled button.
    -------------------------------------------------------------------------- */
+.pc-outline,
 .pc-danger {
   width: 100%;
-  margin-top: var(--sp-3);
   min-height: 48px;
-  padding: 14px;
+  padding: 13px;
   border-radius: var(--r-pill);
   background: transparent;
-  border: 1.5px solid var(--coral);
-  color: var(--coral);
   font-weight: 600;
   font-size: var(--fs-body);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
 }
+.pc-outline {
+  border: 1.5px solid var(--ink);
+  color: var(--ink);
+}
+.pc-outline:active { background: var(--card); }
+.pc-danger {
+  border: 1.5px solid var(--coral);
+  color: var(--coral);
+}
+.pc-danger:active { background: #fdf1ee; }
+.pc-outline:disabled,
 .pc-danger:disabled { opacity: 0.45; }
 
 .pc-loses {
-  margin: var(--sp-2) 0 var(--sp-4);
+  margin: 0;
   padding-left: 18px;
   font-size: var(--fs-meta);
   color: var(--muted);
-  line-height: 1.6;
+  line-height: 1.55;
 }
 .pc-loses li { margin-bottom: 6px; }
+.pc-loses li:last-child { margin-bottom: 0; }
+
+/* The default-passcode warning. It stays coral and it stays here — never on
+   the lock screen, where it would tell whoever is holding the phone that the
+   code is one they can look up. The icon is the only thing that changed. */
+.pin-default-warn.pc-warn {
+  flex-direction: row;
+  align-items: flex-start;
+  gap: var(--sp-3);
+  margin-bottom: 0;
+}
+.pc-warn-icon { flex: 0 0 auto; margin-top: 1px; }
+.pc-warn-text { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+
+/* --------------------------------------------------------------------------
+   Disclosure. The long, honest explanations are worth keeping in full and are
+   not worth six lines of grey text each on first open — the rare reader can
+   ask for them. Native <details>, so it needs no script and no motion.
+   -------------------------------------------------------------------------- */
+.pc-more {
+  background: var(--card);
+  border-radius: var(--r-row);
+}
+.pc-more > summary {
+  list-style: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-height: 44px;
+  padding: var(--sp-2) var(--sp-3);
+  font-size: var(--fs-meta);
+  font-weight: 600;
+  color: var(--ink);
+}
+.pc-more > summary::-webkit-details-marker { display: none; }
+.pc-more > summary::after {
+  content: '';
+  width: 7px;
+  height: 7px;
+  margin-left: auto;
+  flex: 0 0 auto;
+  border-right: 1.6px solid var(--muted);
+  border-bottom: 1.6px solid var(--muted);
+  transform: rotate(45deg) translate(-2px, -2px);
+  transition: transform 160ms ease;
+}
+.pc-more[open] > summary::after { transform: rotate(-135deg) translate(-2px, -2px); }
+.pc-more > summary:focus-visible { outline: 3px solid var(--indigo); outline-offset: -3px; }
+.pc-more-body {
+  padding: 0 var(--sp-3) var(--sp-3);
+  font-size: var(--fs-meta);
+  color: var(--muted);
+  line-height: 1.55;
+}
+.pc-more-body p { margin: 0 0 var(--sp-2); }
+.pc-more-body p:last-child { margin-bottom: 0; }
 
 /* Sheet bodies for picking someone to block and for confirming deletion. */
 .pc-sheet-title {
@@ -254,4 +592,36 @@
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   margin-top: var(--sp-2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+/* --------------------------------------------------------------------------
+   Motion. One keyframe, one-shot-free: it only ever marks something that is
+   genuinely still happening, and it is off entirely under reduced motion.
+   -------------------------------------------------------------------------- */
+@keyframes pc-pulse {
+  0%, 100% { opacity: 0.35; }
+  50% { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pc-loading::before,
+  .pc-save.saving .pc-save-dot { animation: none; }
+  .pc-more > summary::after { transition: none; }
+}
+
+/* --------------------------------------------------------------------------
+   320px. The real constraint — an iPhone SE in a case, which is what this was
+   drawn against. The hero avatar and the emoji grid are the two things that
+   run out of room first.
+   -------------------------------------------------------------------------- */
+@media (max-width: 359px) {
+  .pc-head h1 { font-size: var(--fs-h2); }
+  .pc-hero { padding: var(--sp-3); }
+  .pc-hero-top { gap: var(--sp-2); }
+  .pc-hero .avatar.lg { width: 66px; height: 66px; font-size: 26px; }
+  .pc-figure-num { font-size: 26px; }
+  .pc-nav { gap: var(--sp-2); }
+  .pc-group { gap: var(--sp-2); }
 }

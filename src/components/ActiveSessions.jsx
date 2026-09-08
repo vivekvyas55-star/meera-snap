@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import Confirm from './Confirm'
 import SaveState from './SaveState'
+import { DeviceIcon } from './Icons'
 import { deviceKey, forgetDevice, listMyDevices, recordThisDevice, signOutEverywhere, trackDeviceSessions } from '../lib/devices'
 import { useSaveState } from '../lib/useSaveState'
 
@@ -27,26 +28,31 @@ const fmt = (iso) => {
 }
 
 export default function ActiveSessions() {
+  // null = still loading. A failed read leaves it null and sets loadError, so
+  // "we could not ask" never renders as a list.
   const [devices, setDevices] = useState(null)
   const [loadError, setLoadError] = useState(null)
   const [confirmGlobal, setConfirmGlobal] = useState(false)
   const [forgetting, setForgetting] = useState(null)
   const here = deviceKey()
   const save = useSaveState()
+  const globalSave = useSaveState()
 
-  useEffect(() => {
-    let alive = true
+  const load = useCallback(() => {
+    setLoadError(null)
+    setDevices(null)
     // Record before listing, so this device is in the list it is looking at
     // rather than appearing only on the second visit. See the note in
     // lib/devices.js about why this cannot happen at sign-in yet.
     trackDeviceSessions()
-    recordThisDevice()
+    return recordThisDevice()
       .catch(() => {})
       .then(listMyDevices)
-      .then((rows) => { if (alive) setDevices(rows) })
-      .catch((err) => { if (alive) { setDevices([]); setLoadError(err.message) } })
-    return () => { alive = false }
+      .then(setDevices)
+      .catch((err) => setLoadError(err?.message || 'Could not reach the server'))
   }, [])
+
+  useEffect(() => { load() }, [load])
 
   const forget = async (id) => {
     setForgetting(id)
@@ -57,28 +63,63 @@ export default function ActiveSessions() {
     setForgetting(null)
   }
 
+  const rows = devices ?? []
+  const forgettable = rows.some((d) => d.device_key !== here)
+
   return (
     <>
-      <div className="pc-label">Where you're signed in</div>
-      <div className="field-hint">
-        Meera can't sign one specific device out from here — Supabase gives the app no way to
-        reach another device's session, and a button that pretended otherwise would be worse
-        than not having one. Signing out everywhere is what's actually available, and it
-        includes this phone.
+      <div className="pc-label-row">
+        <div className="pc-label">Where you're signed in</div>
+        {devices ? (
+          <span className="pc-chip">
+            {rows.length} device{rows.length === 1 ? '' : 's'}
+          </span>
+        ) : null}
       </div>
+      <p className="field-hint">
+        Meera can't sign one specific device out from here. Signing out everywhere is what's
+        actually available, and it includes this phone.
+      </p>
+      <details className="pc-more">
+        <summary>Why not just this one?</summary>
+        <div className="pc-more-body">
+          <p>
+            Supabase gives the app no way to reach another device's session, and a button that
+            pretended otherwise would be worse than not having one.
+          </p>
+          <p>
+            What you see below is every browser that has opened this screen while signed in — not
+            a list of live sessions, because a browser client cannot be shown one.
+          </p>
+        </div>
+      </details>
 
-      {devices === null && <div className="pc-empty">Loading…</div>}
-      {loadError && <div className="pc-empty">Couldn't load your devices: {loadError}</div>}
+      {devices === null && !loadError && (
+        <div className="pc-empty pc-loading">Looking for your devices…</div>
+      )}
 
-      {devices?.length === 0 && !loadError && (
+      {loadError && (
+        <div className="pc-fail" role="alert">
+          <div className="pc-fail-text">
+            <strong>Couldn't load your devices</strong>
+            <span>{loadError}</span>
+          </div>
+          <button className="pc-retry" onClick={load}>Try again</button>
+        </div>
+      )}
+
+      {devices?.length === 0 && (
         <div className="pc-empty">
           Only this device so far. A browser appears here the first time it opens this screen
           while signed in.
         </div>
       )}
 
-      {(devices ?? []).map((d) => (
+      {rows.map((d) => (
         <div className="pc-row" key={d.id}>
+          <span className="pc-nav-icon" aria-hidden="true">
+            <DeviceIcon width={18} height={18} />
+          </span>
           <div className="pc-row-main">
             <div className="pc-row-name">
               {d.label}
@@ -91,24 +132,33 @@ export default function ActiveSessions() {
               className="pc-row-action"
               onClick={() => forget(d.id)}
               disabled={forgetting === d.id}
+              aria-label={`Forget ${d.label}`}
             >
-              {forgetting === d.id ? '…' : 'Forget'}
+              {forgetting === d.id ? 'Working…' : 'Forget'}
             </button>
           )}
         </div>
       ))}
 
-      {(devices ?? []).length > 1 && (
-        <div className="field-hint" style={{ marginTop: 4 }}>
+      {forgettable && (
+        <p className="field-hint">
           Forget only removes the row from this list. It does not sign that device out.
-        </div>
+        </p>
       )}
 
       <SaveState state={save.state} error={save.error} savedLabel="Removed from the list" />
 
-      <button className="btn-dark" onClick={() => setConfirmGlobal(true)}>
+      {/* Wide-reaching but recoverable, so it takes the middle weight: an ink
+          outline, not the filled button it used to share with "Save profile". */}
+      <button className="pc-outline" onClick={() => setConfirmGlobal(true)}>
         Sign out everywhere
       </button>
+      <SaveState
+        state={globalSave.state}
+        error={globalSave.error}
+        savedLabel="Signed out everywhere"
+        savingLabel="Signing out…"
+      />
 
       {confirmGlobal && (
         <Confirm
@@ -117,7 +167,16 @@ export default function ActiveSessions() {
           confirmLabel="Sign out everywhere"
           onCancel={() => setConfirmGlobal(false)}
           onConfirm={async () => {
-            await signOutEverywhere()
+            // Confirm does not catch a rejected onConfirm: a failed global
+            // sign-out used to become an unhandled rejection with nothing on
+            // screen, which reads exactly like a sign-out that worked. Run it
+            // through the save state instead, and leave the sheet open so the
+            // decision is still there to retry.
+            const ok = await globalSave.run(async () => {
+              await signOutEverywhere()
+              return true
+            })
+            if (ok) setConfirmGlobal(false)
           }}
         />
       )}

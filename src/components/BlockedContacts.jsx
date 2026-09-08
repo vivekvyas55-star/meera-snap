@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import Avatar from './Avatar'
 import Confirm from './Confirm'
 import Portal from './Portal'
 import Sheet from './Sheet'
 import SaveState from './SaveState'
+import { ShieldIcon } from './Icons'
 import { blockUser, listBlocks, unblockUser } from '../lib/privacy'
 import { listFriendsWithProfiles } from '../lib/db'
 import { useSaveState } from '../lib/useSaveState'
@@ -19,23 +20,33 @@ import { useSaveState } from '../lib/useSaveState'
 // topics, the push relay. A block that left the row in place would stop the
 // messages and let the phone keep ringing.
 export default function BlockedContacts({ me }) {
+  // Three states that must never be confused: null = still asking, loadError
+  // set = we could not ask, [] = we asked and there is nobody. The catch used
+  // to fall back to [], so a failed RPC told you "You haven't blocked anyone"
+  // — a claim about your safety that the app had no basis for.
   const [blocked, setBlocked] = useState(null)
+  const [loadError, setLoadError] = useState(null)
   const [friends, setFriends] = useState([])
   const [picking, setPicking] = useState(false)
   const [confirmTarget, setConfirmTarget] = useState(null)
   const save = useSaveState()
 
-  const load = () =>
-    listBlocks()
-      .then(setBlocked)
-      .catch(() => setBlocked([]))
+  const load = useCallback(
+    () =>
+      listBlocks()
+        .then((rows) => { setBlocked(rows ?? []); setLoadError(null) })
+        .catch((err) => { setBlocked(null); setLoadError(err?.message || 'Could not reach the server') }),
+    []
+  )
+
+  const retry = useCallback(() => { setLoadError(null); setBlocked(null); load() }, [load])
 
   useEffect(() => {
     load()
     listFriendsWithProfiles(me)
       .then((rows) => setFriends(rows.filter((r) => r.status === 'accepted')))
       .catch(() => {})
-  }, [me])
+  }, [me, load])
 
   const doBlock = async (profile) => {
     setConfirmTarget(null)
@@ -54,22 +65,39 @@ export default function BlockedContacts({ me }) {
     })
   }
 
-  const blockedIds = new Set((blocked ?? []).map((b) => b.user_id))
+  const rows = blocked ?? []
+  const blockedIds = new Set(rows.map((b) => b.user_id))
   const candidates = friends.filter((f) => !blockedIds.has(f.profile.id))
 
   return (
     <>
-      <div className="pc-label">Blocked</div>
-      <div className="field-hint">
+      <div className="pc-label-row">
+        <div className="pc-label">Blocked</div>
+        {blocked && rows.length > 0 ? <span className="pc-chip">{rows.length}</span> : null}
+      </div>
+      <p className="field-hint">
         A blocked person can't message you or send you a friend request — that's refused by the
         database, not hidden by the app. Blocking also ends the friendship, so they lose your
         stories, your online dot, calls and notifications. They are not told.
-      </div>
+      </p>
 
-      {blocked === null && <div className="pc-empty">Loading…</div>}
+      {blocked === null && !loadError && (
+        <div className="pc-empty pc-loading">Checking your block list…</div>
+      )}
+
+      {loadError && (
+        <div className="pc-fail" role="alert">
+          <div className="pc-fail-text">
+            <strong>Couldn't load your block list</strong>
+            <span>{loadError}</span>
+          </div>
+          <button className="pc-retry" onClick={retry}>Try again</button>
+        </div>
+      )}
+
       {blocked?.length === 0 && <div className="pc-empty">You haven't blocked anyone.</div>}
 
-      {(blocked ?? []).map((b) => (
+      {rows.map((b) => (
         <div className="pc-row" key={b.user_id}>
           <Avatar profile={{ ...b, id: b.user_id }} size="sm" />
           <div className="pc-row-main">
@@ -80,6 +108,7 @@ export default function BlockedContacts({ me }) {
             className="pc-row-action"
             onClick={() => doUnblock(b.user_id)}
             disabled={save.busy}
+            aria-label={`Unblock @${b.username}`}
           >
             Unblock
           </button>
@@ -89,6 +118,7 @@ export default function BlockedContacts({ me }) {
       <SaveState state={save.state} error={save.error} savedLabel="Block list updated" />
 
       <button className="pill-btn" onClick={() => setPicking(true)}>
+        <ShieldIcon width={17} height={17} />
         Block someone
       </button>
 
@@ -107,7 +137,6 @@ export default function BlockedContacts({ me }) {
                 <button
                   className="pc-row"
                   key={profile.id}
-                  style={{ width: '100%', textAlign: 'left' }}
                   onClick={() => setConfirmTarget(profile)}
                 >
                   <Avatar profile={profile} size="sm" />

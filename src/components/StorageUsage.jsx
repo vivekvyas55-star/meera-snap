@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { LayersIcon } from './Icons'
 import { formatBytes, getStorageUsage } from '../lib/privacy'
 
 // How much of the bucket is yours.
@@ -19,12 +20,14 @@ export default function StorageUsage() {
     getStorageUsage()
       .then((row) => { if (alive) setUsage(row) })
       // Fails open, like billing: a missing migration should leave the tile
-      // absent rather than confidently reporting zero.
+      // absent rather than confidently reporting zero. This is the one panel
+      // on the screen with no error state, because an absent tile claims
+      // nothing — where "0 B" would.
       .catch(() => { if (alive) setUsage(null) })
     return () => { alive = false }
   }, [])
 
-  if (usage === undefined) return <div className="pc-empty">Loading…</div>
+  if (usage === undefined) return <div className="pc-empty pc-loading">Adding up your files…</div>
   if (usage === null) return null
 
   const parts = [
@@ -37,7 +40,13 @@ export default function StorageUsage() {
   return (
     <>
       <div className="pc-label">Storage</div>
-      <div className="pc-card lime">
+      {/* Indigo, and the only indigo card on the screen: this is the one panel
+          that answers "what is Meera holding of mine". */}
+      <div className="pc-card indigo">
+        <div className="pc-card-head">
+          <LayersIcon width={15} height={15} />
+          What Meera is holding
+        </div>
         <div className="pc-card-num">{formatBytes(usage.bytes) ?? '—'}</div>
         <div className="pc-card-sub">
           {usage.objects} file{usage.objects === 1 ? '' : 's'} you've uploaded
@@ -52,10 +61,10 @@ export default function StorageUsage() {
           </div>
         )}
       </div>
-      <div className="field-hint">
+      <p className="field-hint">
         Snaps and chats are deleted on Meera's own schedule, so this falls on its own. Stories go
         after 48 hours; Memories are yours until you delete them.
-      </div>
+      </p>
     </>
   )
 }

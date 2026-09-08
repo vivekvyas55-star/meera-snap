@@ -2,6 +2,7 @@ import { useState } from 'react'
 import Portal from './Portal'
 import Sheet from './Sheet'
 import SaveState from './SaveState'
+import { DownloadIcon, TrashIcon } from './Icons'
 import { DELETION_LOSES, deleteMyAccount, downloadJson, exportMyData } from '../lib/privacy'
 import { supabase } from '../lib/supabase'
 import { useSaveState } from '../lib/useSaveState'
@@ -15,7 +16,8 @@ import { useSaveState } from '../lib/useSaveState'
 //
 // Deletion is the only irreversible control in the app, so it asks for the
 // username to be typed rather than a single tap on a red button, and it states
-// what goes rather than asking "are you sure?".
+// what goes rather than asking "are you sure?". It is also the only coral
+// control on the screen: on this screen coral means danger and nothing else.
 export default function AccountData({ username }) {
   const [confirming, setConfirming] = useState(false)
   const [typed, setTyped] = useState('')
@@ -48,24 +50,26 @@ export default function AccountData({ username }) {
   return (
     <>
       <div className="pc-label">Your data</div>
-      <div className="field-hint">
+      <p className="field-hint">
         A JSON file of your account, your friendships, the messages you sent and everything you
         have set here. Messages your friends sent you are not in it — those are theirs, and
         they're meant to disappear.
-      </div>
+      </p>
       <button className="pill-btn" onClick={runExport} disabled={exportSave.busy}>
+        <DownloadIcon width={17} height={17} />
         {exportSave.busy ? 'Preparing…' : 'Download my data'}
       </button>
       <SaveState state={exportSave.state} error={exportSave.error} savedLabel="Downloaded" savingLabel="Preparing…" />
 
       <div className="pc-label">Delete account</div>
-      <div className="field-hint">This cannot be undone and there is no grace period. It removes:</div>
+      <p className="field-hint">This cannot be undone and there is no grace period. It removes:</p>
       <ul className="pc-loses">
         {DELETION_LOSES.map((line) => (
           <li key={line}>{line}</li>
         ))}
       </ul>
       <button className="pc-danger" onClick={() => { setTyped(''); setDeleteError(null); setConfirming(true) }}>
+        <TrashIcon width={17} height={17} />
         Delete my account
       </button>
 
