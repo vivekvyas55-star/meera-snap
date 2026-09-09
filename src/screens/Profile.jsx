@@ -26,6 +26,7 @@ import {
   CoinIcon,
   FlameIcon,
   GamepadIcon,
+  HeartIcon,
   ImageIcon,
   KeyIcon,
   LockIcon,
@@ -41,6 +42,7 @@ import { usingDefaultPin } from '../lib/pinStore'
 import { useBackLayer } from '../hooks/useBackLayer'
 import PinSetup from '../components/PinSetup'
 import Memories from './Memories'
+import Together from './Together'
 import { SECURITY_QUESTIONS } from '../lib/securityQuestions'
 import { blockedReason, disablePush, enablePush, isEnabled } from '../lib/push'
 import SettingsGroup from '../components/SettingsGroup'
@@ -97,6 +99,7 @@ export default function Profile({ onBack, openPlay = false, onPlayOpened }) {
   const [friendCount, setFriendCount] = useState(null)
   const [score, setScore] = useState(null)
   const [showMemories, setShowMemories] = useState(false)
+  const [showTogether, setShowTogether] = useState(false)
   const [confirmLock, setConfirmLock] = useState(false)
   const [pinSetup, setPinSetup] = useState(false)
   // Shown here and NOWHERE else. On the lock screen it would tell whoever is
@@ -270,6 +273,7 @@ export default function Profile({ onBack, openPlay = false, onPlayOpened }) {
   }
 
   const closeMemories = useCallback(() => setShowMemories(false), [])
+  const closeTogether = useCallback(() => setShowTogether(false), [])
   const closePlans = useCallback(() => setShowPlans(false), [])
   const closePlay = useCallback(() => setShowPlay(false), [])
 
@@ -277,10 +281,12 @@ export default function Profile({ onBack, openPlay = false, onPlayOpened }) {
   // Memories, Plans or Play closed the whole Profile behind them — one press
   // skipping two screens.
   useBackLayer(showMemories, closeMemories)
+  useBackLayer(showTogether, closeTogether)
   useBackLayer(showPlans, closePlans)
   useBackLayer(showPlay, closePlay)
 
   if (showMemories) return <Memories me={me} onBack={closeMemories} />
+  if (showTogether) return <Together me={me} onBack={closeTogether} />
   if (showPlans) return <Plans onBack={closePlans} />
   if (showPlay) return <PlayTogether onBack={closePlay} />
 
@@ -502,6 +508,26 @@ export default function Profile({ onBack, openPlay = false, onPlayOpened }) {
               <ImageIcon width={19} height={19} />
             </span>
             <span className="pc-nav-title">Open Memories</span>
+            <span className="pc-nav-go" aria-hidden="true">
+              <ArrowIcon width={17} height={17} />
+            </span>
+          </button>
+
+          {/* Together lives in this group rather than a seventh one: "Shared
+              moments" is already where the shared-and-kept surfaces live
+              (Memories sits directly above it), and the screen is deliberately
+              six groups. Chat's friend sheet would be the other natural door,
+              but that header has no spare width and the sheet is already three
+              features deep. */}
+          <div className="pc-label">Together</div>
+          <p className="field-hint">
+            A shared timeline and scrapbook for one friendship. Off until you both turn it on.
+          </p>
+          <button onClick={() => setShowTogether(true)} className="pc-nav">
+            <span className="pc-nav-icon" aria-hidden="true">
+              <HeartIcon width={19} height={19} />
+            </span>
+            <span className="pc-nav-title">Open Together</span>
             <span className="pc-nav-go" aria-hidden="true">
               <ArrowIcon width={17} height={17} />
             </span>

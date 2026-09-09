@@ -380,12 +380,17 @@ export default function Chat({ friend, onBack, onOpenPlay }) {
         if (entry.intersectionRatio < 0.7 && !tall) continue
         const id = entry.target.dataset.messageId
         const m = messages.find(row => row.id === id)
-        if (m && ['chat', 'sticker'].includes(m.kind)) recordSeen(id)
+        // 'snap' belongs here for messages YOU sent: leave_seen_messages has a
+        // `(kind='snap' and sender_id=auth.uid())` branch that was unreachable
+        // because no snap id ever arrived, so your own snaps sat for the full
+        // 31 days instead of clearing after three visits. The recipient's copy
+        // is governed by the open count, not this.
+        if (m && (['chat', 'sticker'].includes(m.kind) || (m.kind === 'snap' && m.sender_id === me))) recordSeen(id)
       }
     }, { root, threshold: [0.35, 0.7] })
     root.querySelectorAll('[data-message-id]').forEach(el => observer.observe(el))
     return () => observer.disconnect()
-  }, [messages, recordSeen])
+  }, [messages, recordSeen, me])
 
   const submit = (e) => {
     e.preventDefault()

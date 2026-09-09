@@ -642,8 +642,11 @@ export async function setStatusNote(me, body) {
     {
       user_id: me,
       body: text.slice(0, 80),
-      created_at: new Date().toISOString(),
-      expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+      // NOT created_at/expires_at from this device. together.sql already
+      // defaults both server-side, and the read policy compares against server
+      // now() — so a phone whose clock is a day behind wrote a note that saved
+      // successfully and was then invisible to everyone including its author,
+      // permanently, with no error anywhere.
     },
     { onConflict: 'user_id' }
   )

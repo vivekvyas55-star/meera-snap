@@ -77,7 +77,11 @@ export default function SnapMap({ onBack }) {
   const load = useCallback(async () => {
     const map = mapRef.current
     if (!map) return
-    const locs = await getVisibleLocations().catch(() => [])
+    // A failed fetch must not render an empty map — that is indistinguishable
+    // from every friend being in Ghost Mode, which is a claim about THEIR
+    // privacy that we have no basis to make.
+    const locs = await getVisibleLocations().catch(() => null)
+    if (locs === null) return
     if (mapRef.current !== map) return // unmounted/re-inited during the await
     Object.values(markersRef.current).forEach((m) => m.remove())
     markersRef.current = {}

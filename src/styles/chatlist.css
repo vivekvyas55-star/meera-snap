@@ -9,15 +9,18 @@
      action  someone is waiting on you — lime, bright but not a warning
      quiet   ambient                   — the pressed-card grey, nearly silent
 
-   Tokens only: no new colours, radii or type sizes are invented here.
+   The pill SHAPE is the shared .chip in index.css — inline-flex, --r-pill,
+   --card — and this file no longer restates it. What is below is only what a
+   row signal does differently from a chip: it is smaller, it truncates, and it
+   carries a tone. Tokens only: no new colours, radii or type sizes here.
+
+   `action` and the emoji chips also appear in the fixed-light context list at
+   the top of index.css, so their ink is pinned when the ground goes dark.
    ========================================================================== */
 
 .row-signal {
-  display: inline-flex;
-  align-items: center;
   max-width: 92px;              /* at 320px the name gets what is left */
   padding: 2px var(--sp-2);
-  border-radius: var(--r-pill);
   font-size: var(--fs-micro);
   font-weight: 500;
   line-height: 1.6;
@@ -31,7 +34,7 @@
 
 /* The pill sits on a grey row, so the tones have to carry on --card. */
 .row-signal.urgent { background: var(--coral); color: #fff; }
-.row-signal.action { background: var(--lime); color: var(--ink); }
+.row-signal.action { background: var(--lime); }
 .row-signal.quiet { background: var(--card-press); color: var(--muted); }
 
 /* A note is the only signal whose text is the friend's own words, so it is

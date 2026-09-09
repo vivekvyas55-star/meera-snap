@@ -7,23 +7,86 @@
    ========================================================================== */
 
 :root {
-  /* Ground and surfaces */
+  /* ------------------------------------------------------------------------
+     GROUND AND SURFACES.
+
+     Every colour below is a *role*, not a swatch. The dark block near the end
+     of this section redefines these same names and nothing else — that is the
+     whole of dark mode. A rule that reaches for a literal hex is a rule dark
+     mode cannot follow, so new work names a token or adds one.
+     ------------------------------------------------------------------------ */
   --bg: #ffffff;
-  --card: #f1f1f3;          /* light-grey card fill; no border, no shadow */
-  --card-press: #e7e7ea;
+  --card: #f3f2f7;          /* light card fill; no border, no shadow */
+  --card-press: #e9e6f0;
+  --card-2: #e3e3e8;        /* one step in from --card: saved bubble, spent snap */
+  --surface: #ffffff;       /* a raised chip/box sitting ON a neutral card */
+  --surface-veil: rgba(255, 255, 255, 0.69);  /* wash over a --surface panel */
   --ink: #16161a;           /* near-black, never pure #000 */
-  --muted: #8a8a8e;
+  --muted: #686873;
   --hairline: #e4e4e8;
 
-  /* Accents, taken from the reference's cover cards. */
+  /* Accents, taken from the reference's cover cards. These four are the
+     identity and are the ONLY tokens that do not move between schemes: a
+     lavender card is lavender at night too. What changes is the ink on it —
+     see the "fixed-light context" block below. */
   --coral: #e2664a;
   --lime: #d6e85a;
   --indigo: #4a52c4;
   --lavender: #c4a5e8;
 
+  /* Indigo doing a different job: a rule, a glyph or a word ON the app ground
+     rather than a fill under white text. #4a52c4 is 7.4:1 on white and only
+     3.0:1 on a near-black ground, so the two uses cannot share one value. */
+  --accent: #4a52c4;
+  --lime-ink: #526000;      /* lime as a word, where the fill would shout */
+
+  /* Soft lavender wash — unread rows, the pin pad, the auth mark, empty-state
+     symbols. Four near-identical hexes had been typed out separately. */
+  --tint: #eeebfa;
+  --tint-press: #ded8f2;
+  --tint-line: #dad5f5;
+
+  /* Your own message. A lavender fill in daylight; deep lavender at night,
+     because a thread of bright blocks is the one thing a messaging app used in
+     bed must not do. */
+  --mine: #d9cff2;
+  --mine-press: #cbbeee;
+
+  /* Text fields. */
+  --field-bg: #faf9fc;
+  --field-line: #e8e5ee;
+
+  /* Floating near-black chrome: the tab bar, toasts, the offline bar, the
+     install banner, the jump pill. It is a *surface*, not the ink colour, and
+     conflating the two is what made the tab bar want to turn white at night. */
+  --chrome: #16161a;
+  --chrome-ink: #ffffff;
+  --chrome-muted: #c2c0cd;
+  --tab-on: #dcd6f5;        /* active tab pill — a light lavender in both schemes */
+  --tab-on-ink: #252036;
+
+  /* The primary filled action (dark circle, dark pill). The gesture is "the
+     highest-contrast object on this surface", so it inverts with the scheme
+     rather than staying literally black. */
+  --action: #16161a;
+  --action-press: #000000;
+  --action-ink: #ffffff;
+
+  /* Alerts. A soft card, never a full-strength coral shout. */
+  --danger-bg: #fff0ed;
+  --danger-line: #f3c9c0;
+  --danger-ink: #9c3024;
+  --danger-solid: #9c3024;  /* filled destructive confirm; always white text */
+  --warn-line: #dfbc8a;
+  --success: #2fbf71;
+
+  --wash: rgba(22, 22, 26, 0.09);   /* a tint of the ink onto its own ground */
+  --map-bg: #e6e6ea;        /* under OSM tiles, which are light in both schemes */
+  --shadow-1: rgba(22, 22, 26, 0.15);
+
   /* Status-icon triad. Shape and fill carry the meaning; these only tint it.
      Snapchat's red/blue/purple mapped onto the reference palette. */
-  --chat: var(--indigo);
+  --chat: var(--accent);
   --snap: var(--coral);
   --snap-audio: var(--lavender);
   --pending: #a8a8ad;
@@ -63,10 +126,152 @@
 
   --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 
-  color-scheme: light;
+  color-scheme: light dark;
   font-family: var(--font);
   color: var(--ink);
   -webkit-font-smoothing: antialiased;
+}
+
+/* ==========================================================================
+   DARK / LOW-LIGHT MODE
+
+   Only the tokens move. There is deliberately no second copy of any rule set
+   below this point: if a screen goes wrong at night the fix is a token, or a
+   rule that is still holding a literal hex.
+
+   Three things stay put on purpose:
+   • The camera and the snap/story viewers are already fullscreen black. They
+     are immersive surfaces, not themed ones, and they are unchanged here.
+   • The four vibrant fills do not move — they are the identity. The ink that
+     sits on them is pinned instead (see "fixed-light context").
+   • The PIN-lockout decoy (.mk, styles/decoy.css) uses no token at all and so
+     stays its own light finance app in both schemes. That is the point: a
+     decoy that follows Meera's theme is itself a tell.
+   ========================================================================== */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #101014;
+    --card: #1b1a22;
+    --card-press: #26242f;
+    --card-2: #24232d;
+    --surface: #26252f;
+    --surface-veil: rgba(16, 16, 20, 0.72);
+    --ink: #eceaf4;
+    --muted: #9b98a8;
+    --hairline: #2b2a35;
+
+    --accent: #a9aef5;
+    --lime-ink: #c6da55;
+
+    --tint: #221f33;
+    --tint-press: #322d4a;
+    --tint-line: #3a3552;
+
+    --mine: #352e4d;
+    --mine-press: #453b64;
+
+    --field-bg: #17161e;
+    --field-line: #33313e;
+
+    /* Lifted above the ground rather than inverted: a floating white tab bar
+       is a torch, and this app is used in the dark. */
+    --chrome: #26252f;
+    --chrome-muted: #a9a6b8;
+
+    --action: #ecebf5;
+    --action-press: #ffffff;
+    --action-ink: #16161a;
+
+    --danger-bg: #2b1512;
+    --danger-line: #5c2b23;
+    --danger-ink: #ffb2a2;
+    --danger-solid: #b8392b;
+    --warn-line: #7a5a2c;
+    --success: #3ad07f;
+
+    --wash: rgba(255, 255, 255, 0.12);
+    --map-bg: #1a1a20;
+    --shadow-1: rgba(0, 0, 0, 0.55);
+    --pending: #7d7b88;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   FIXED-LIGHT CONTEXT
+
+   A lavender / lime / coral card keeps its fill in both schemes, so everything
+   inside it lives in a permanently light world. Rather than write a second
+   copy of each card's contents for dark mode, the card re-declares the tokens
+   for its own subtree — custom properties inherit, so one block fixes every
+   descendant, including ones styled by another file.
+
+   This is also the reason an inline `style={{ background: 'var(--lavender)' }}`
+   is a dark-mode bug: it paints the fill without entering this context, so the
+   text inside stays on the themed --ink and disappears at night. Those are
+   listed out in the handover.
+   -------------------------------------------------------------------------- */
+.dq,
+.dq-chip.waiting,
+.qcard.mine,
+.qcard:not(.mine):has(.qcard-reply),
+.anniv-chip.celebrate,
+.auth-q,
+.pin-default-warn,
+.map-near,
+.map-chip-live,
+.story-add,
+.story-tile.is-new,
+.in-chat,
+.plan-note,
+.plan-card.best,
+.credit-tile,
+.game-invite,
+.game-banner-open,
+.game-status.your-turn,
+.play-card,
+.play-chip.play-your-turn,
+.play-chip.play-invited,
+.ttt-cell.mark-x,
+.ttt-cell.mark-o,
+.game-chat-bubble.mine,
+.row-signal.action,
+.qcards-badge,
+.pc-hero,
+.pc-card.lavender,
+.pc-card.lime,
+.pc-card.coral {
+  --ink: #16161a;
+  --muted: rgba(22, 22, 26, 0.62);
+  --hairline: rgba(22, 22, 26, 0.16);
+  --card: rgba(255, 255, 255, 0.55);
+  --card-press: rgba(255, 255, 255, 0.72);
+  --surface: #ffffff;
+  --wash: rgba(22, 22, 26, 0.09);
+  --accent: #3b41a8;
+  --action: #16161a;
+  --action-press: #000000;
+  --action-ink: #ffffff;
+  color: var(--ink);
+}
+
+/* --------------------------------------------------------------------------
+   FIXED-DARK CONTEXT — the indigo hero cards and the near-black chrome. Same
+   trick, other direction: white ink, translucent-white surfaces.
+   -------------------------------------------------------------------------- */
+.credit-hero,
+.pc-card.indigo,
+.install-body,
+.game-banner,
+.tabbar,
+.kept-preview {
+  --ink: #ffffff;
+  --muted: rgba(255, 255, 255, 0.7);
+  --hairline: rgba(255, 255, 255, 0.18);
+  --card: rgba(255, 255, 255, 0.16);
+  --card-press: rgba(255, 255, 255, 0.24);
+  --surface: rgba(255, 255, 255, 0.18);
+  --wash: rgba(255, 255, 255, 0.18);
+  --accent: #c3c7ff;
 }
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -150,31 +355,38 @@ input, textarea { font: inherit; }
    ========================================================================== */
 .header {
   display: flex; align-items: center; gap: 10px;
-  padding: calc(var(--safe-top) + 16px) 16px 12px;
+  /* 12px, then a later block said 16px. 16px won: it is what shipped. */
+  padding: calc(var(--safe-top) + 16px) 16px 16px;
   flex: 0 0 auto; background: var(--bg);
 }
 .header h1 {
   font-size: clamp(28px, 8.5vw, 34px);
-  font-weight: 300; letter-spacing: -0.03em; line-height: 1;
+  /* 300/-0.03em was the original; 450/-0.045em was applied on top later and
+     is what ships. One value now, not two rules fighting. */
+  font-weight: 450; letter-spacing: -0.045em; line-height: 1;
   margin: 0; flex: 1; min-width: 0;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-/* Tappable friend area (avatar + name) in the chat header → friend info sheet. */
+/* Tappable friend area (avatar + name) in the chat header → friend info sheet.
+   Tall enough to read, and (min-height) tall enough to hit. */
 .chat-peer {
   background: none; padding: 0; border: none; text-align: left;
   display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0;
+  min-height: 44px;
 }
 
 /* Circular button. `.dark` is the primary action; plain is a quiet one. */
 .circle {
   width: 40px; height: 40px; border-radius: 50%;
+  /* A 40px circle is under the touch minimum; the box grows, the ink does not. */
+  min-width: 44px; min-height: 44px;
   display: grid; place-items: center; flex: 0 0 auto;
   font-size: 17px; color: var(--ink);
   background: transparent;
 }
 .circle:active { background: var(--card); }
-.circle.dark { background: var(--ink); color: #fff; }
-.circle.dark:active { background: #000; }
+.circle.dark { background: var(--action); color: var(--action-ink); }
+.circle.dark:active { background: var(--action-press); }
 .circle.filled { background: var(--card); }
 .circle.filled:active { background: var(--card-press); }
 
@@ -202,7 +414,10 @@ input, textarea { font: inherit; }
 .list {
   flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch;
   padding: 4px 12px calc(var(--safe-bottom) + 108px);
+  /* Nothing in a scrolling column may shift it sideways. */
+  overflow-x: hidden;
 }
+.list > * { max-width: 100%; }
 
 .row {
   display: flex; align-items: center; gap: 12px;
@@ -225,7 +440,7 @@ input, textarea { font: inherit; }
   display: inline-block;
 }
 .presence-dot.live {
-  background: #2fbf71;
+  background: var(--success);
   box-shadow: 0 0 0 2px rgba(47, 191, 113, 0.22);
 }
 .presence-dot.off { background: var(--hairline); }
@@ -236,7 +451,7 @@ input, textarea { font: inherit; }
   position: relative;
   z-index: 1;
   margin: -10px 0 0 10px;
-  background: #fff;
+  background: var(--surface);
   border: 1px solid var(--hairline);
   border-radius: 999px;
   padding: 2px 8px;
@@ -248,7 +463,6 @@ input, textarea { font: inherit; }
    rode up over the bubble's top-right corner, half-clipped. It now sits in
    flow, tucked under the bubble's bottom edge on the correct side. */
 .msg.mine .msg-reactions { margin: -10px 10px 0 0; }
-.msg.mine { display: flex; flex-direction: column; align-items: flex-end; }
 .msg.mine > .msg-body, .msg.mine > .msg-photo, .msg.mine > .msg-sticker,
 .msg.mine > .msg-voice, .msg.mine > .msg-call { width: 100%; }
 
@@ -280,6 +494,7 @@ input, textarea { font: inherit; }
 .row-sub {
   display: flex; align-items: center; gap: 5px;
   font-size: var(--fs-meta); color: var(--muted); margin-top: 2px;
+  line-height: 1.45;
 }
 .row-sub.unread { color: var(--ink); font-weight: 600; }
 .row-right {
@@ -288,25 +503,49 @@ input, textarea { font: inherit; }
 .row-time { font-size: 12px; color: var(--muted); }
 .row-streak { font-size: 12px; color: var(--muted); font-weight: 500; white-space: nowrap; }
 
-/* Small grey chip, e.g. "Beginner", "220". */
-.chip {
+/* Small grey chip, e.g. "Beginner", "220" — the reference's metadata pill.
+   .row-signal (chat-list) and .pc-chip (Privacy Centre) were each written as a
+   fresh copy of this shape; they share it now and state only their deltas, in
+   styles/chatlist.css and styles/privacy.css. */
+.chip, .row-signal, .pc-chip {
   display: inline-flex; align-items: center; gap: 5px;
   background: var(--card); border-radius: var(--r-pill);
   padding: 5px 11px; font-size: 12.5px; color: var(--ink);
 }
 
-/* Vibrant stat card (ABC design language): light-weight big number + label. */
+/* Vibrant stat card (ABC design language): light-weight big number + label.
+   Long numbers must shrink the card, not overflow it. */
 .stat-card {
-  flex: 1; border-radius: var(--r-card); padding: 16px 16px 14px;
+  flex: 1; min-width: 0; border-radius: var(--r-card); padding: 16px 16px 14px;
   color: var(--ink); text-align: left;
 }
-.stat-num { font-size: 30px; font-weight: 300; letter-spacing: -0.03em; line-height: 1; }
+.stat-card svg { opacity: 0.7; margin-bottom: var(--sp-1); }
+.stat-num {
+  font-size: 30px; font-weight: 300; letter-spacing: -0.03em; line-height: 1;
+  overflow-wrap: anywhere;
+}
 .stat-label { font-size: 12.5px; margin-top: 6px; opacity: 0.75; }
 
 .empty {
-  padding: 60px 34px; text-align: center;
+  /* 60px/34px was the first pass; 38px/24px was applied on top and is what
+     ships — the taller version pushed the call to action below the fold. */
+  padding: 38px 24px; text-align: center;
   color: var(--muted); font-size: 15px; line-height: 1.55;
 }
+.empty h2 {
+  color: var(--ink); font-size: 23px; line-height: 1.2;
+  font-weight: 500; letter-spacing: -0.035em; margin: 16px 0 10px;
+}
+.empty p { margin: 0 0 20px; font-size: 14px; }
+.empty .btn-dark { font-size: 14px; }
+/* An empty state carries a symbol everywhere else in the app. */
+.empty-symbol {
+  width: 68px; height: 68px; margin: auto;
+  display: grid; place-items: center;
+  border-radius: 24px; background: var(--tint); color: var(--accent);
+  font-size: 32px;
+}
+.empty-symbol svg { width: 30px; height: 30px; }
 
 /* ==========================================================================
    Conversation
@@ -320,7 +559,10 @@ input, textarea { font: inherit; }
 }
 
 .msg { margin-bottom: 10px; max-width: 84%; position: relative; }
-.msg.mine { margin-left: auto; }
+.msg.mine {
+  margin-left: auto;
+  display: flex; flex-direction: column; align-items: flex-end;
+}
 .msg-who {
   font-size: 10.5px; font-weight: 600; letter-spacing: 0.06em;
   text-transform: uppercase; color: var(--muted);
@@ -332,11 +574,11 @@ input, textarea { font: inherit; }
    here that bar sits on the reference's rounded card. */
 .msg-body {
   background: var(--card); border-radius: var(--r-row);
-  border-left: 3px solid var(--indigo);
+  border-left: 3px solid var(--accent);
   padding: 10px 13px; font-size: var(--fs-body); line-height: 1.4;
   overflow-wrap: anywhere;
 }
-.msg.saved .msg-body { background: #e3e3e8; }
+.msg.saved .msg-body { background: var(--card-2); }
 .msg.pending .msg-body { opacity: 0.55; }
 .msg-pending-tag {
   font-size: 11.5px; color: var(--muted);
@@ -351,7 +593,7 @@ input, textarea { font: inherit; }
 }
 .msg-reply-quote {
   font-size: 12.5px; color: var(--muted);
-  border-left: 2px solid var(--indigo); padding: 2px 8px; margin-bottom: 3px;
+  border-left: 2px solid var(--accent); padding: 2px 8px; margin-bottom: 3px;
   max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .msg-reply-who { font-weight: 600; margin-right: 5px; color: var(--ink); }
@@ -359,10 +601,10 @@ input, textarea { font: inherit; }
   display: flex; align-items: center; gap: 10px;
   padding: 8px 14px; margin: 0 10px -2px;
   background: var(--card); border-radius: var(--r-row) var(--r-row) 0 0;
-  border-left: 3px solid var(--indigo);
+  border-left: 3px solid var(--accent);
 }
 .reply-bar-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-.reply-bar-who { font-size: 12px; color: var(--indigo); font-weight: 600; }
+.reply-bar-who { font-size: 12px; color: var(--accent); font-weight: 600; }
 .reply-bar-preview {
   font-size: 13.5px; color: var(--muted);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
@@ -411,7 +653,7 @@ input, textarea { font: inherit; }
   display: grid; place-items: center;
   background: var(--coral); color: #fff;
 }
-.msg-photo.opened .pt-thumb { background: #e7e7ec; color: var(--muted); }
+.msg-photo.opened .pt-thumb { background: var(--card-2); color: var(--muted); }
 .msg-photo .pt-text { flex: 1; display: flex; flex-direction: column; min-width: 0; }
 .msg-photo .pt-title { font-weight: 600; font-size: 14.5px; color: var(--ink); }
 .msg-photo .pt-sub { font-size: 12px; color: var(--muted); margin-top: 2px; display: flex; align-items: center; gap: 5px; }
@@ -420,7 +662,8 @@ input, textarea { font: inherit; }
 /* Snap Map */
 .map-wrap { flex: 1; position: relative; overflow: hidden; }
 .map-canvas { position: absolute; inset: 0; }
-.leaflet-container { background: #e6e6ea; font-family: var(--font); }
+/* Under OSM tiles, which are light in both schemes. */
+.leaflet-container { background: var(--map-bg); font-family: var(--font); }
 .map-avatar {
   width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center;
   font-size: 18px; font-weight: 700; color: #16161a;
@@ -428,8 +671,10 @@ input, textarea { font: inherit; }
 }
 .map-panel {
   position: absolute; left: 12px; right: 12px; bottom: calc(var(--safe-bottom) + 16px); z-index: 1000;
-  background: var(--bg); border-radius: var(--r-card); padding: 16px 18px;
-  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.2); display: flex; flex-direction: column; gap: 12px;
+  background: var(--bg); border-radius: var(--r-card);
+  /* 16px/18px + a 12px gap first, then the token steps. Tokens won. */
+  padding: var(--sp-4); gap: var(--sp-3);
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.2); display: flex; flex-direction: column;
 }
 .map-panel-txt { font-size: 14px; color: var(--ink); line-height: 1.45; }
 
@@ -439,7 +684,7 @@ input, textarea { font: inherit; }
   background: var(--card); border-radius: var(--r-row); padding: 10px 13px;
   font-size: 14px; font-weight: 500; color: var(--ink);
 }
-.msg-call svg { color: var(--indigo); flex: 0 0 auto; }
+.msg-call svg { color: var(--accent); flex: 0 0 auto; }
 .msg-meta { font-size: 11px; color: var(--muted); margin: 3px 0 0 4px; }
 .msg.mine .msg-meta { text-align: right; margin: 3px 4px 0 0; }
 
@@ -452,14 +697,14 @@ input, textarea { font: inherit; }
 .msg-voice {
   display: flex; align-items: center; gap: 10px; width: 100%;
   background: var(--card); border-radius: var(--r-row);
-  border-left: 3px solid var(--indigo); padding: 11px 14px;
+  border-left: 3px solid var(--accent); padding: 11px 14px;
 }
 .voice-play {
   width: 30px; height: 30px; border-radius: 50%; flex: 0 0 auto;
-  background: var(--ink); color: #fff; display: grid; place-items: center; font-size: 12px;
+  background: var(--action); color: var(--action-ink); display: grid; place-items: center; font-size: 12px;
 }
 .voice-wave { display: flex; align-items: center; gap: 3px; flex: 1; }
-.voice-wave i { width: 3px; background: var(--indigo); border-radius: 2px; opacity: 0.55; }
+.voice-wave i { width: 3px; background: var(--accent); border-radius: 2px; opacity: 0.55; }
 
 /* Recording state in the composer. */
 .recording-pill {
@@ -493,7 +738,7 @@ input, textarea { font: inherit; }
   border-radius: var(--r-pill); font-size: 14px; font-weight: 600;
   color: var(--muted);
 }
-.seg button.on { background: var(--ink); color: #fff; }
+.seg button.on { background: var(--action); color: var(--action-ink); }
 
 /* Snapcode — a scannable QR of your add-me deep link */
 .snapcode {
@@ -501,12 +746,13 @@ input, textarea { font: inherit; }
   text-align: center; gap: 10px; padding: 2px 0;
 }
 .snapcode-tile {
+  /* Stays white in both schemes: a QR on a dark tile does not scan. */
   background: #fff; border-radius: 24px; padding: 16px;
   width: 232px; height: 232px; display: grid; place-items: center;
   box-shadow: 0 6px 22px rgba(0, 0, 0, 0.1);
 }
 .snapcode-tile img { width: 100%; height: 100%; display: block; }
-.snapcode-loading { color: #8a8a8e; font-size: 26px; }
+.snapcode-loading { color: var(--muted); font-size: 26px; }
 .snapcode-name { font-size: 18px; font-weight: 600; color: var(--ink); }
 .snapcode-hint { font-size: 13px; color: var(--muted); max-width: 32ch; line-height: 1.4; }
 .snapcode-share { margin-top: 6px; }
@@ -528,7 +774,7 @@ input, textarea { font: inherit; }
   left: 0; right: 0; z-index: 3; padding: 0 12px;
   display: flex; justify-content: center; gap: 8px; flex-wrap: wrap;
 }
-.pill.danger { background: var(--coral); color: #fff; }
+.viewer .pill.danger { background: var(--coral); color: #fff; }
 
 /* Snap editor — draw & text over a captured photo */
 .snap-edit { position: absolute; inset: 0; touch-action: none; }
@@ -601,8 +847,10 @@ input, textarea { font: inherit; }
 .call-ctl.on { background: #fff; color: #16161a; }
 
 /* Composer — pill input plus a dark circular send button */
+/* The composer grew a multi-line textarea, so the row aligns to its bottom
+   edge rather than its centre. */
 .composer {
-  display: flex; align-items: center; gap: 9px;
+  display: flex; align-items: flex-end; gap: 9px;
   padding: 10px 12px calc(var(--safe-bottom) + 12px);
   background: var(--bg); flex: 0 0 auto;
 }
@@ -650,6 +898,28 @@ input, textarea { font: inherit; }
   color: #fff; text-align: center; font-size: 15px; line-height: 1.55;
   background: rgba(0, 0, 0, 0.7); padding: 20px; border-radius: var(--r-card);
 }
+/* The message/help/retry stack inside it. These were written in
+   styles/capture.css, which only Stories.jsx imports — so the card that tells
+   you why the camera failed was itself unstyled unless you had opened Stories
+   first. They belong with the card they sit in. */
+.cam-error-msg { margin: 0; font-weight: 500; }
+.cam-error-help {
+  margin: var(--sp-2) 0 0;
+  font-size: var(--fs-meta); line-height: 1.55;
+  color: rgba(255, 255, 255, 0.72);
+}
+/* White pill on the black card: the primary action on this surface, matching
+   the dark circular button's role everywhere else. It is on a fullscreen black
+   surface, so it does not follow --action. */
+.cam-error-retry {
+  margin-top: var(--sp-3);
+  padding: 11px var(--sp-5);
+  border-radius: var(--r-pill);
+  background: #fff; color: #16161a;
+  font-size: var(--fs-sm); font-weight: 500;
+}
+.cam-error-retry:active { background: #e7e7ea; }
+.cam-error-retry:disabled { opacity: 0.5; }
 
 /* Tray over a captured still */
 .cam-filtered { position: absolute; inset: 0; }
@@ -661,28 +931,37 @@ input, textarea { font: inherit; }
 }
 .cam-filters::-webkit-scrollbar { display: none; }
 .cam-filter {
-  flex: 0 0 auto; padding: 10px 15px; border-radius: var(--r-pill);
+  flex: 0 0 auto; min-height: 44px; padding: 10px 15px; border-radius: var(--r-pill);
   background: rgba(0, 0, 0, 0.4); color: #fff; font-size: 13px; font-weight: 500;
   -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
 }
 .cam-filter.on { background: #fff; color: var(--ink); }
 
-.tray {
+/* Scoped to .camera. `.tray` on its own is a name any component might reach
+   for, and this rule would rip it out of flow and pin it above the tab bar. */
+.camera .tray {
   position: absolute; left: 0; right: 0;
   bottom: calc(var(--safe-bottom) + 96px);
   display: flex; align-items: center; gap: 10px; padding: 0 14px; z-index: 3;
 }
-.pill {
+/* The camera tray / media-viewer pill. It lives ONLY on a fullscreen black
+   surface — white ink over a translucent white — so it is emphatically NOT a
+   general-purpose button: unscoped, `.pill` on a white card is invisible text
+   on an invisible background. Scoped to the two surfaces that own it.
+   41-43px tall was under the 44px touch minimum. */
+.camera .pill, .viewer .pill {
   display: inline-flex; align-items: center; gap: 7px;
   background: rgba(255, 255, 255, 0.18); color: #fff;
   backdrop-filter: blur(8px);
   border-radius: var(--r-pill); padding: 13px 19px;
+  min-height: 44px; white-space: nowrap; min-width: 0;
   font-weight: 500; font-size: 15px;
 }
-.pill.send { background: #fff; color: var(--ink); margin-left: auto; }
-.pill:disabled { opacity: 0.5; }
+.camera .pill.send { background: #fff; color: var(--ink); margin-left: auto; }
+.camera .pill:disabled, .viewer .pill:disabled { opacity: 0.5; }
 
-.caption-input {
+/* Scoped for the same reason as .tray. (Nothing renders it today.) */
+.camera .caption-input {
   position: absolute; left: 0; right: 0; top: 45%;
   background: rgba(0, 0, 0, 0.42); border: none; outline: none;
   color: #fff; text-align: center; font-size: 17px; padding: 14px; z-index: 3;
@@ -735,20 +1014,25 @@ input, textarea { font: inherit; }
   background: rgba(255, 255, 255, 0.18); backdrop-filter: blur(8px);
   display: grid; place-items: center; font-size: 20px; line-height: 1;
 }
-.timer {
+/* .timer / .progress / .tapzone are three of the most generic names in the
+   file and every one of them is `position: absolute` with white ink. Scoped to
+   .viewer, which is the only place any of them is rendered, so a future
+   <span className="timer"> in a settings row cannot fly to the corner of the
+   screen in white-on-white. */
+.viewer .timer {
   position: absolute; top: calc(var(--safe-top) + 16px); right: 60px;
   color: #fff; font-weight: 500; font-size: 15px; z-index: 3;
 }
-.progress {
+.viewer .progress {
   position: absolute; top: calc(var(--safe-top) + 6px); left: 12px; right: 12px;
   display: flex; gap: 4px; z-index: 3;
 }
-.progress span { flex: 1; height: 2.5px; background: rgba(255, 255, 255, 0.32); border-radius: 2px; }
-.progress span i { display: block; height: 100%; background: #fff; border-radius: 2px; }
+.viewer .progress span { flex: 1; height: 2.5px; background: rgba(255, 255, 255, 0.32); border-radius: 2px; }
+.viewer .progress span i { display: block; height: 100%; background: #fff; border-radius: 2px; }
 
-.tapzone { position: absolute; top: 0; bottom: 0; z-index: 1; background: transparent; }
-.tapzone.back { left: 0; width: 33%; }
-.tapzone.fwd { right: 0; width: 67%; }
+.viewer .tapzone { position: absolute; top: 0; bottom: 0; z-index: 1; background: transparent; }
+.viewer .tapzone.back { left: 0; width: 33%; }
+.viewer .tapzone.fwd { right: 0; width: 67%; }
 
 /* ==========================================================================
    PIN lock
@@ -790,11 +1074,11 @@ input, textarea { font: inherit; }
 .pin-dots.shake { animation: shake 0.4s; }
 .pin-dot {
   width: 14px; height: 14px; border-radius: 50%;
-  border: 1.5px solid #c9c7d4; background: transparent;
+  border: 1.5px solid var(--tint-line); background: transparent;
   transition: background 140ms ease, border-color 140ms ease, transform 140ms ease;
 }
 .pin-dot.filled {
-  background: var(--indigo); border-color: var(--indigo);
+  background: var(--accent); border-color: var(--accent);
   transform: scale(1.12);
 }
 
@@ -806,19 +1090,13 @@ input, textarea { font: inherit; }
   width: 76px; height: 76px; border-radius: 50%;
   font-size: 27px; font-weight: 300; letter-spacing: -0.02em;
   /* var(--card) on white was almost invisible; the keys did not read as keys. */
-  background: #efedf6; color: var(--ink);
+  background: var(--tint); color: var(--ink);
   display: grid; place-items: center;
   transition: background 120ms ease, transform 120ms ease;
 }
-.pin-key:active { background: #ded8f2; transform: scale(0.94); }
+.pin-key:active { background: var(--tint-press); transform: scale(0.94); }
 .pin-back { background: transparent; font-size: 21px; color: var(--muted); }
-.pin-back:active { background: #efedf6; }
-
-@media (prefers-reduced-motion: reduce) {
-  .pin-dot, .pin-key { transition: none; }
-  .pin-dot.filled { transform: none; }
-  .pin-key:active { transform: none; }
-}
+.pin-back:active { background: var(--tint); }
 
 /* Short phones: keep the whole pad on screen without scrolling. */
 @media (max-height: 700px) {
@@ -839,37 +1117,73 @@ input, textarea { font: inherit; }
    ========================================================================== */
 .auth {
   height: 100dvh; background: var(--bg);
-  display: flex; flex-direction: column; justify-content: center;
-  padding: 32px 22px calc(var(--safe-bottom) + 32px);
+  display: flex; flex-direction: column;
+  /* centred, then changed to a scrolling column with flexible top/bottom
+     spacers so a keyboard cannot strand the submit button. The later
+     definition won; both used to run. */
+  justify-content: flex-start; overflow-y: auto;
+  padding: max(32px, var(--safe-top)) 26px calc(var(--safe-bottom) + 28px);
 }
+.auth::before, .auth::after { content: ''; flex: 1 0 12px; }
+.auth > * { flex-shrink: 0; }
 .auth h1 {
-  font-size: clamp(38px, 12vw, 50px);
-  font-weight: 300; letter-spacing: -0.04em; line-height: 1;
-  margin: 0 0 10px;
+  /* clamp(38,12vw,50)/300 first, then a flat 38px/450. The flat one ships. */
+  font-size: 38px; max-width: 320px;
+  font-weight: 450; letter-spacing: -0.04em; line-height: 1.08;
+  margin: 0 0 14px;
 }
-.auth p { margin: 0 0 28px; font-size: 15px; color: var(--muted); line-height: 1.5; }
+.auth p { margin: 0 0 24px; font-size: 14px; color: var(--muted); line-height: 1.5; }
+.auth-brand {
+  background: var(--tint); width: 58px; height: 58px; border-radius: 20px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 37px; font-weight: 500; letter-spacing: -5px;
+  margin-bottom: 22px; color: var(--accent); padding-right: 5px;
+}
+.auth-brand span { color: var(--coral); }
+.eyebrow {
+  text-transform: uppercase; letter-spacing: 0.12em; color: var(--muted);
+  font-size: 10px; font-weight: 650; margin-bottom: 12px;
+}
+.field-label {
+  display: block; color: var(--ink); font-size: 12px; font-weight: 600;
+  margin: 4px 0 8px;
+}
 .auth input {
-  width: 100%; padding: 16px 18px; margin-bottom: 10px;
-  border: none; border-radius: var(--r-row);
-  font-size: 16px; background: var(--card); outline: none; color: var(--ink);
+  width: 100%; margin-bottom: 10px;
+  /* 16px/18px + borderless + var(--card) first; the outlined field on
+     --field-bg replaced it. */
+  border: 1px solid var(--field-line); border-radius: 14px;
+  padding: 14px 16px;
+  font-size: 16px; background: var(--field-bg); outline: none; color: var(--ink);
 }
 .auth input::placeholder { color: var(--muted); }
+.password-control { position: relative; }
+.password-control input { padding-right: 72px; }
+.password-toggle {
+  position: absolute; right: 5px; top: 3px;
+  min-height: 44px; min-width: 60px;
+  font-size: 12px; font-weight: 600; color: var(--accent); border-radius: 10px;
+}
 .auth button.primary {
   width: 100%; padding: 17px; border-radius: var(--r-pill);
-  background: var(--ink); color: #fff;
+  background: var(--action); color: var(--action-ink);
   font-weight: 500; font-size: 16px; margin-top: 8px;
 }
 .auth button.primary:disabled { opacity: 0.4; }
-.auth .switch { margin-top: 20px; text-align: center; font-size: 14.5px; color: var(--muted); }
-.auth .error {
-  background: var(--coral); color: #fff;
-  padding: 12px 15px; border-radius: var(--r-row); font-size: 14px; margin-bottom: 12px;
+.auth .switch {
+  /* 20px top margin first, 8px + a 44px target later. */
+  margin-top: 8px; min-height: 44px; text-align: center;
+  font-size: 14.5px; color: var(--muted);
 }
+/* A full-strength coral shout first; the soft alert card replaced it, and is
+   the same treatment .error and .thread-error use. */
+.auth .error { margin-bottom: 12px; }
 /* Security-question controls (used in Auth signup/reset and the Profile screen). */
 .auth-select {
-  width: 100%; padding: 16px 44px 16px 18px; margin-bottom: 10px;
-  border: none; border-radius: var(--r-row);
-  font-size: 16px; background-color: var(--card); color: var(--ink); outline: none;
+  width: 100%; margin-bottom: 10px;
+  border: 1px solid var(--field-line); border-radius: 14px;
+  padding: 14px 40px 14px 16px;
+  font-size: 16px; background-color: var(--field-bg); color: var(--ink); outline: none;
   -webkit-appearance: none; appearance: none;
   background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%238a8a8e' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'/></svg>");
   background-repeat: no-repeat; background-position: right 16px center;
@@ -887,17 +1201,24 @@ input, textarea { font: inherit; }
   position: absolute; z-index: 20;
   left: 14px; right: 14px;
   bottom: calc(var(--safe-bottom) + 12px);
-  display: flex; align-items: center;
-  background: var(--ink); border-radius: 26px;
-  padding: 9px 6px;
+  display: flex; align-items: center; gap: 5px;
+  background: var(--chrome); border-radius: 26px;
+  /* 9px 6px, then 7px on top. 7px won. */
+  padding: 7px;
+  box-shadow: 0 8px 24px var(--shadow-1);
 }
 .tabbar button {
-  flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px;
-  font-size: 9.5px; font-weight: 500; letter-spacing: 0.01em;
-  color: rgba(255, 255, 255, 0.5);
-  padding: 3px 0;
+  flex: 1; display: flex; flex-direction: column; align-items: center;
+  justify-content: center; gap: 3px;
+  /* 9.5px + rgba(255,255,255,.5), overridden later to 11px + #c2c0cd. */
+  font-size: 11px; font-weight: 500; letter-spacing: 0.01em;
+  color: var(--chrome-muted);
+  min-height: 52px; border-radius: 20px; padding: 3px 0;
+  transition: background 160ms, color 160ms;
 }
-.tabbar button.active { color: #fff; }
+/* The second definition set a filled lavender pill; plain #fff never shipped. */
+.tabbar button.active { background: var(--tab-on); color: var(--tab-on-ink); }
+.tabbar button:focus-visible { outline-color: var(--lavender); }
 .tabbar .glyph { display: grid; place-items: center; height: 22px; }
 
 /* ==========================================================================
@@ -929,18 +1250,27 @@ input, textarea { font: inherit; }
      is behind it; each notification takes its own events back. */
   pointer-events: none;
 }
-.notif-stack > * { pointer-events: auto; max-width: 100%; }
+.notif-stack > * {
+  pointer-events: auto; max-width: 100%;
+  animation: bar-down 240ms ease-out;
+}
+@keyframes bar-down { from { transform: translateY(-100%); } }
 
+/* A toast that blinks into existence mid-screen reads as a glitch; it arrives
+   from the edge it is anchored to, like the sheets. The translateX is part of
+   the toast's own centring, so the keyframe has to carry it. */
 .toast {
-  background: var(--ink); color: #fff;
+  background: var(--chrome); color: var(--chrome-ink);
   padding: 12px 19px; border-radius: var(--r-pill); font-size: 14px;
   max-width: 88vw; text-align: center;
+  animation: toast-in 200ms ease-out;
 }
+@keyframes toast-in { from { opacity: 0; transform: translateX(-50%) translateY(10px); } }
 /* Offline and schema drift: statements about the app rather than about a thing
    you did, so they read as a bar rather than a toast — but they live in the
    same strip and obey the same ordering. */
 .notif-bar {
-  background: var(--ink); color: #fff;
+  background: var(--chrome); color: var(--chrome-ink);
   padding: 10px 16px; border-radius: var(--r-pill);
   font-size: 12.5px; font-weight: 500; text-align: center;
 }
@@ -967,37 +1297,35 @@ input, textarea { font: inherit; }
 .install { width: 100%; }
 .install-body {
   display: flex; align-items: center; gap: 12px;
-  background: var(--ink); color: #fff;
+  background: var(--chrome); color: var(--chrome-ink);
   border-radius: var(--r-card); padding: 12px 14px;
   box-shadow: 0 12px 34px rgba(0, 0, 0, 0.28);
 }
 .install-icon { border-radius: 11px; flex: 0 0 auto; }
 .install-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .install-text strong { font-size: 14px; font-weight: 500; }
-.install-text span { font-size: 12.5px; color: rgba(255, 255, 255, 0.66); line-height: 1.35; }
+.install-text span { font-size: 12.5px; color: var(--muted); line-height: 1.35; }
 .install-cta {
-  flex: 0 0 auto; background: #fff; color: var(--ink);
+  flex: 0 0 auto; background: var(--chrome-ink); color: var(--chrome);
   border-radius: var(--r-pill); padding: 10px 16px;
   font-size: 14px; font-weight: 500;
 }
+/* The dismiss must be a real target, and it sits BESIDE the Install action
+   rather than replacing it. (30px + a dimmed white was the first pass.) */
 .install-close {
-  flex: 0 0 auto; width: 30px; height: 30px; border-radius: 50%;
-  color: rgba(255, 255, 255, 0.6); font-size: 14px;
+  flex: 0 0 auto; min-width: 44px; min-height: 44px;
   display: grid; place-items: center;
+  color: inherit; opacity: 0.75; font-size: 14px;
 }
 
 /* Full-width dark pill, the reference's "Know" / "Learn" button. */
 .btn-dark {
   width: 100%; padding: 16px; border-radius: var(--r-pill);
-  background: var(--ink); color: #fff;
+  background: var(--action); color: var(--action-ink);
   font-weight: 500; font-size: 15.5px;
   display: flex; align-items: center; justify-content: center; gap: 8px;
 }
 .btn-dark:disabled { opacity: 0.4; }
-
-@media (prefers-reduced-motion: reduce) {
-  .pager { transition: none; }
-}
 
 /* ==========================================================================
    Decoy markets screen (shown during a PIN lockout — see PinLock.jsx)
@@ -1072,11 +1400,18 @@ input, textarea { font: inherit; }
 }
 
 /* ==========================================================================
-   Status note on a chat-list row
+   Status note on a chat-list row. Their note is colour, not information, so a
+   line icon keeps it quieter than the speech-bubble emoji it used to lead with.
    ========================================================================== */
 .row-note {
+  display: flex; align-items: center; gap: 5px;
   margin-top: 3px; font-size: 12.5px; color: var(--muted);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.row-note svg { flex: 0 0 auto; opacity: 0.55; }
+.row-note b {
+  font-weight: 400; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 
 /* ==========================================================================
@@ -1102,7 +1437,7 @@ input, textarea { font: inherit; }
   font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; opacity: 0.7;
 }
 .dq-close {
-  background: rgba(0, 0, 0, 0.12); border: none; color: var(--ink);
+  background: var(--wash); border: none; color: var(--ink);
   width: 24px; height: 24px; border-radius: 50%; font-size: 12px;
   display: grid; place-items: center;
 }
@@ -1133,71 +1468,56 @@ input, textarea { font: inherit; }
   background: rgba(255, 255, 255, 0.35); border-radius: 14px;
 }
 
-/* Everyday polish: quiet lavender surfaces, legible controls, clear states. */
-:root { --muted: #686873; --card: #f3f2f7; --card-press: #e9e6f0; }
+/* Everyday polish: quiet lavender surfaces, legible controls, clear states.
+   (The --muted / --card / --card-press values this block used to re-declare
+   won, and now live in the token block at the top of the file.) */
 button, a, input, textarea, select { touch-action: manipulation; }
 button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible {
-  outline: 3px solid var(--indigo); outline-offset: 3px;
+  outline: 3px solid var(--accent); outline-offset: 3px;
 }
 button:disabled { cursor: not-allowed; }
-.header { padding-bottom: 16px; }
-.header h1 { font-weight: 450; letter-spacing: -0.045em; }
-.circle { min-width: 44px; min-height: 44px; }
 .screen-subtitle { color: var(--muted); font-size: 13px; line-height: 1.5; margin: 0 0 16px; }
 .chat-tools { padding: 0 16px 14px; }
 .search-field input {
   width: 100%; min-height: 46px; padding: 12px 16px; border-radius: 16px;
-  border: 1px solid var(--hairline); background: #faf9fc; color: var(--ink); font-size: 16px;
+  border: 1px solid var(--hairline); background: var(--field-bg);
+  color: var(--ink); font-size: 16px;
 }
 .search-field input::placeholder { color: var(--muted); }
 .chat-row { min-height: 80px; border: 1px solid transparent; transition: background 150ms; }
-.chat-row.is-unread { background: #eeecfc; border-color: #dad5f5; }
+.chat-row.is-unread { background: var(--tint); border-color: var(--tint-line); }
 .chat-row.is-unread .row-name { font-weight: 650; }
-.chat-row.is-unread .row-time { color: var(--indigo); font-weight: 600; }
-.row-sub { line-height: 1.45; }
+.chat-row.is-unread .row-time { color: var(--accent); font-weight: 600; }
 .story-subtitle { margin: -2px 16px 16px; }
-.empty { padding: 38px 24px; }
-.empty h2 { color: var(--ink); font-size: 23px; line-height: 1.2; font-weight: 500; letter-spacing: -0.035em; margin: 16px 0 10px; }
-.empty p { margin: 0 0 20px; font-size: 14px; }
-.empty-symbol { width: 68px; height: 68px; margin: auto; display: grid; place-items: center; border-radius: 24px; background: #eeebfa; color: var(--indigo); font-size: 32px; }
-.empty .btn-dark { font-size: 14px; }
-.tabbar { padding: 7px; box-shadow: 0 8px 24px #16161a26; gap: 5px; }
-.tabbar button { min-height: 52px; border-radius: 20px; justify-content: center; font-size: 11px; color: #c2c0cd; transition: background 160ms, color 160ms; }
-.tabbar button.active { background: #dcd6f5; color: #252036; }
-.tabbar button:focus-visible { outline-color: var(--lavender); }
-.auth { overflow-y: auto; justify-content: flex-start; padding: max(32px, var(--safe-top)) 26px calc(var(--safe-bottom) + 28px); background: #fff; }
-.auth::before { content: ''; flex: 1 0 12px; }
-.auth::after { content: ''; flex: 1 0 12px; }
-.auth > * { flex-shrink: 0; }
-.auth-brand { background: #ece8fa; width: 58px; height: 58px; border-radius: 20px; display: flex; align-items: center; justify-content: center; font-size: 37px; font-weight: 500; letter-spacing: -5px; margin-bottom: 22px; color: #494078; padding-right: 5px; }
-.auth-brand span { color: var(--coral); }
-.eyebrow { text-transform: uppercase; letter-spacing: 0.12em; color: var(--muted); font-size: 10px; font-weight: 650; margin-bottom: 12px; }
-.auth h1 { font-size: 38px; font-weight: 450; line-height: 1.08; max-width: 320px; margin-bottom: 14px; }
-.auth p { font-size: 14px; margin-bottom: 24px; }
-.field-label { display: block; color: var(--ink); font-size: 12px; font-weight: 600; margin: 4px 0 8px; }
-.auth input, .auth-select { border: 1px solid #e8e5ee; background-color: #f7f6fa; padding: 14px 16px; border-radius: 14px; }
-.auth-select { padding-right: 40px; }
-.password-control { position: relative; }
-.password-control input { padding-right: 72px; }
-.password-toggle { position: absolute; right: 5px; top: 3px; min-height: 44px; min-width: 60px; font-size: 12px; font-weight: 600; color: var(--indigo); border-radius: 10px; }
-.auth .switch { margin-top: 8px; min-height: 44px; color: #51476d; }
-.auth .error { background: #fff0ed; color: #9c3024; border: 1px solid #f3c9c0; line-height: 1.45; }
-.msg.mine .msg-body { background: #d9cff2; }
-.msg.mine .msg-sticker, .msg.mine .msg-voice { background: #d9cff2; }
-.msg.mine.saved .msg-body { background: #cbbeee; }
+/* Your own message, and the one you saved out of the vanish rules. */
+.msg.mine .msg-body,
+.msg.mine .msg-sticker,
+.msg.mine .msg-voice { background: var(--mine); }
+.msg.mine.saved .msg-body { background: var(--mine-press); }
 @media (hover: hover) {
   .row:hover { background: var(--card-press); }
   .circle:hover { background: var(--card); }
-  .circle.dark:hover { background: #34313e; }
-  .tabbar button:not(.active):hover { background: #ffffff16; }
-}
-@media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
+  .circle.dark:hover { background: var(--action-press); }
+  .tabbar button:not(.active):hover { background: rgba(255, 255, 255, 0.09); }
 }
 
-/* A failed conversation load used to render as unstyled black text with a bare
-   inline Retry — and it printed the raw Postgres error at the user. */
-.thread-error {
+/* ==========================================================================
+   The alert card — ONE treatment, three names.
+
+   A failed conversation load used to render as unstyled black text with a bare
+   inline Retry, printing the raw Postgres error at the user; the chat list and
+   Stories did the same; and the auth screen shouted it in full-strength coral.
+   The soft card won, and .error / .thread-error / .auth .error are now one
+   rule rather than three copies that had already drifted apart.
+
+   NOTE the landmine: `.error` is a bare, extremely generic name, and this rule
+   turns ANY element carrying it into a padded alert card. Components that mean
+   "this bit of text is in an error state" must say `is-error` instead — see
+   .pc-save.is-error in styles/privacy.css and components/SaveState.jsx.
+   ========================================================================== */
+.error,
+.thread-error,
+.auth .error {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
@@ -1205,13 +1525,18 @@ button:disabled { cursor: not-allowed; }
   margin: 12px 4px;
   padding: 18px;
   border-radius: var(--r-card);
-  /* Matches the soft error treatment used on the auth screen — a full-strength
-     coral card shouted next to everything else on this surface. */
-  background: #fff0ed;
-  border: 1px solid #f3c9c0;
-  color: #9c3024;
+  background: var(--danger-bg);
+  border: 1px solid var(--danger-line);
+  color: var(--danger-ink);
   font-size: 15px;
   line-height: 1.45;
+}
+.error button,
+.thread-error button {
+  min-height: 44px; padding: 0 18px;
+  border-radius: var(--r-pill);
+  background: var(--action); color: var(--action-ink);
+  font-size: 14.5px; font-weight: 500;
 }
 
 /* A queued message is a state, not an error: a pill chip plus quiet actions,
@@ -1221,7 +1546,7 @@ button:disabled { cursor: not-allowed; }
   padding: 0 10px;
   font-size: 13px;
   font-weight: 500;
-  color: var(--indigo);
+  color: var(--accent);
 }
 
 /* Reverse-privacy: your own older chats render reversed. Mark it as a state
@@ -1285,11 +1610,7 @@ button:disabled { cursor: not-allowed; }
   display: grid;
   place-items: center;
 }
-.emoji-grid button.on { background: var(--ink); color: #fff; }
-
-/* Long numbers must shrink the card, not overflow it. */
-.stat-card { min-width: 0; }
-.stat-num { overflow-wrap: anywhere; }
+.emoji-grid button.on { background: var(--action); color: var(--action-ink); }
 
 /* Profile and Memories are overlays with no tab bar under them, so they don't
    need the list's tab-bar clearance — that was 108px of dead space at the
@@ -1317,7 +1638,6 @@ button:disabled { cursor: not-allowed; }
   outline: none;
   color: var(--ink);
 }
-.composer { align-items: flex-end; }
 
 /* Day dividers — older messages used to repeat their full date on every row. */
 .day-sep {
@@ -1330,17 +1650,21 @@ button:disabled { cursor: not-allowed; }
   padding: 4px 12px; border-radius: var(--r-pill);
 }
 
-/* A message arriving while you're scrolled back used to land silently. */
+/* A message arriving while you're scrolled back used to land silently.
+   It sat at a fixed offset from the bottom and landed on top of the composer
+   as soon as the draft wrapped to a second line, so it is anchored above the
+   composer (.composer-wrap) instead. */
 .jump-latest {
   position: absolute; left: 50%; transform: translateX(-50%);
-  bottom: calc(var(--safe-bottom) + 78px);
+  bottom: auto; top: -46px;
   z-index: 3;
   min-height: 40px; padding: 0 16px;
   border-radius: var(--r-pill);
-  background: var(--ink); color: #fff;
+  background: var(--chrome); color: var(--chrome-ink);
   font-size: 13.5px; font-weight: 500;
-  box-shadow: 0 6px 20px #16161a33;
+  box-shadow: 0 6px 20px var(--shadow-1);
 }
+.composer-wrap { position: relative; flex: 0 0 auto; }
 
 .thread-loading {
   text-align: center; padding: 8px 0 4px;
@@ -1361,10 +1685,6 @@ button:disabled { cursor: not-allowed; }
   0%, 60%, 100% { opacity: 0.3; transform: translateY(0); }
   30% { opacity: 1; transform: translateY(-3px); }
 }
-@media (prefers-reduced-motion: reduce) {
-  .typing-dots i { animation: none; opacity: 0.6; }
-}
-
 /* iOS gives <input type="date"> an intrinsic min-width from its date format
    that width:100% does not override, so it pushed the Profile column wider
    than the viewport — every label then rendered clipped at the left edge.
@@ -1376,9 +1696,6 @@ button:disabled { cursor: not-allowed; }
   max-width: 100%;
   text-align: left;
 }
-/* Nothing in a scrolling column should be able to shift it sideways. */
-.list { overflow-x: hidden; }
-.list > * { max-width: 100%; }
 
 /* The chip looked like a status line, not a control. */
 .dq-chip-more {
@@ -1386,7 +1703,7 @@ button:disabled { cursor: not-allowed; }
   flex: 0 0 auto;
   font-size: 12px;
   font-weight: 500;
-  color: var(--indigo);
+  color: var(--accent);
   white-space: nowrap;
 }
 .dq-chip.waiting .dq-chip-more { color: var(--ink); }
@@ -1398,13 +1715,18 @@ button:disabled { cursor: not-allowed; }
   gap: 6px;
   margin-top: 12px;
 }
+/* Kept Together is a gallery, so a tile must also open with keyboard and
+   touch. The preview stays within the sheet: a quick look, not a second
+   navigation layer that loses the reader's place in the chat. */
 .kept-tile {
   position: relative;
   aspect-ratio: 1;
   border-radius: var(--r-tile);
   overflow: hidden;
   background: var(--card);
+  border: 0; padding: 0; cursor: zoom-in;
 }
+.kept-tile:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
 .kept-tile img, .kept-tile video {
   width: 100%; height: 100%; object-fit: cover; display: block;
 }
@@ -1432,13 +1754,16 @@ button:disabled { cursor: not-allowed; }
   padding: 0 12px 4px;
   flex: 0 0 auto;
   /* Even expanded, the questions sit alongside the conversation rather than
-     replacing it. */
-  max-height: 34vh;
+     replacing it. The cap is set once, with .dq-panel, below. */
   overflow-y: auto;
 }
+/* The collapse control is the only way out of the questions panel, so the
+   head must not scroll away behind a day's cards. */
 .qcards-head {
   display: flex; align-items: center; gap: 8px;
   padding: 6px 2px 8px;
+  position: sticky; top: 0; z-index: 1;
+  background: var(--bg);
 }
 .qcards-title {
   font-size: 11px; font-weight: 600; letter-spacing: 0.06em;
@@ -1449,16 +1774,16 @@ button:disabled { cursor: not-allowed; }
   max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   font-size: 11.5px; color: var(--muted);
 }
-.qcards-status.needs-you { color: #526000; font-weight: 600; }
+.qcards-status.needs-you { color: var(--lime-ink); font-weight: 600; }
 .qcards-badge { background: var(--lime); color: var(--ink); font-size: 11px; }
 .qcards-close {
-  min-width: 32px; min-height: 32px;
+  min-width: 44px; min-height: 44px;
   display: grid; place-items: center;
   border-radius: 50%; color: var(--muted);
 }
 .qcards-close:active { background: var(--card); }
 .qcards-ask {
-  margin-left: auto; min-height: 34px; padding: 0 12px;
+  margin-left: auto; min-height: 40px; padding: 0 12px;
   display: flex; align-items: center; gap: 6px;
   border-radius: var(--r-pill); background: var(--card);
   font-size: 12.5px; font-weight: 500; color: var(--ink);
@@ -1469,7 +1794,7 @@ button:disabled { cursor: not-allowed; }
   background: var(--card); border-radius: var(--r-card);
   padding: 12px 14px; margin-bottom: 7px;
 }
-.qcard:focus-within { outline: 2px solid rgba(74, 82, 196, 0.38); outline-offset: 2px; }
+.qcard:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
 /* One vibrant colour per card: yours lavender, theirs neutral, so a run of
    each is readable at a glance. */
 .qcard.mine { background: var(--lavender); }
@@ -1480,7 +1805,7 @@ button:disabled { cursor: not-allowed; }
 .qcard-q { font-size: 15.5px; line-height: 1.35; }
 .qcard-a {
   margin-top: 10px; padding: 10px 12px;
-  background: #ffffffb8; border-radius: var(--r-row);
+  background: var(--surface); border-radius: var(--r-row);
   font-size: 15px; line-height: 1.4;
 }
 .qcard-a-who {
@@ -1494,18 +1819,24 @@ button:disabled { cursor: not-allowed; }
   width: 100%; resize: none; border: none; outline: none;
   border-radius: var(--r-row); padding: 11px 13px;
   font-family: inherit; font-size: 16px; line-height: 1.35;
-  background: #fff; color: var(--ink);
+  background: var(--surface); color: var(--ink);
 }
 .qcard .btn-dark { min-height: 44px; padding: 12px; font-size: 14.5px; }
 
 /* One questions surface: the shared daily prompt and the questions you write
    to each other scroll together, capped so the conversation is never pushed
    off screen (two open cards used to take half the phone). */
+/* vh ignores the Android keyboard (interactive-widget=resizes-content shrinks
+   the layout viewport but not vh), which pushed the composer below the fold —
+   so this is dvh, and it is stated once rather than in three places. */
 .dq-panel {
   flex: 0 0 auto;
-  max-height: 46vh;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
+}
+.qcards, .dq-panel { max-height: min(40dvh, 320px); }
+@media (max-height: 640px) {
+  .qcards, .dq-panel { max-height: 32dvh; }
 }
 .dq-panel .qcards { max-height: none; overflow: visible; padding-top: 8px; }
 
@@ -1527,15 +1858,10 @@ button:disabled { cursor: not-allowed; }
    doing, so it carries the accent rather than sitting in the neutral card. */
 .qcard:not(.mine):has(.qcard-reply) { background: var(--lime); }
 
-/* Kept Together is a gallery, so a tile must also open with keyboard and touch.
-   The preview remains within the sheet: it is a quick look, not a second
-   navigation layer that loses the reader's place in the chat. */
-.kept-tile { border: 0; padding: 0; cursor: zoom-in; }
-.kept-tile:focus-visible { outline: 3px solid var(--indigo); outline-offset: 3px; }
 .kept-preview {
   position: relative; margin-top: 14px; min-height: 180px; max-height: 48dvh;
   display: grid; place-items: center; overflow: hidden;
-  border-radius: var(--r-card); background: var(--ink);
+  border-radius: var(--r-card); background: var(--chrome);
 }
 .kept-preview img, .kept-preview video { width: 100%; max-height: 48dvh; display: block; object-fit: contain; }
 .kept-preview-close {
@@ -1580,58 +1906,19 @@ button:disabled { cursor: not-allowed; }
 .fp-row-input:active { background: var(--card); }
 .fp-row-icon {
   width: 38px; height: 38px; flex: 0 0 auto;
-  border-radius: 12px; background: #fff;
+  border-radius: 12px; background: var(--surface);
   display: grid; place-items: center; color: var(--ink);
 }
 .fp-row-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .fp-row-title { font-size: 15px; font-weight: 500; }
 .fp-row-sub { font-size: 12.5px; color: var(--muted); }
-.fp-row-go { color: var(--muted); font-size: 20px; line-height: 1; }
-.fp-row-input .field { margin-top: 6px; background: #fff; }
-
-/* The install banner's dismiss must be a real target, and it now sits beside
-   the Install action rather than replacing it. */
-.install-close {
-  min-width: 44px; min-height: 44px;
-  display: grid; place-items: center;
-  color: inherit; opacity: 0.75; flex: 0 0 auto;
-}
-
-/* .error outside the auth screen had no rule at all: the chat list and stories
-   printed raw Postgres text with a borderless "Retry" and no alert role. Reuse
-   the treatment the thread already got. */
-.error {
-  display: flex; flex-direction: column; align-items: flex-start; gap: 12px;
-  margin: 12px 4px; padding: 18px;
-  border-radius: var(--r-card);
-  background: #fff0ed; border: 1px solid #f3c9c0; color: #9c3024;
-  font-size: 15px; line-height: 1.45;
-}
-.error button {
-  min-height: 44px; padding: 0 18px;
-  border-radius: var(--r-pill);
-  background: var(--ink); color: #fff;
-  font-size: 14.5px; font-weight: 500;
-}
+.fp-row-go { color: var(--muted); font-size: 20px; line-height: 1; display: grid; place-items: center; }
+.fp-row-input .field { margin-top: 6px; background: var(--surface); }
 
 /* The chat-list "asked you a question" marker had no rule. */
 .qotd-dot { font-size: 13px; line-height: 1; }
 
-/* The collapse control is the only way out of the questions panel, so it must
-   not scroll away behind a day's cards. */
-.qcards-head {
-  position: sticky; top: 0; z-index: 1;
-  background: var(--bg);
-}
-.qcards-close { min-width: 44px; min-height: 44px; }
-.qcards-ask { min-height: 40px; }
 
-/* vh ignores the Android keyboard (interactive-widget=resizes-content shrinks
-   the layout viewport but not vh), which pushed the composer below the fold. */
-.qcards, .dq-panel { max-height: min(40dvh, 320px); }
-@media (max-height: 640px) {
-  .qcards, .dq-panel { max-height: 32dvh; }
-}
 
 /* The header name is the first thing to lose when the two call buttons and the
    back circle take their 44px each — at 320px that left about five characters,
@@ -1652,15 +1939,13 @@ button:disabled { cursor: not-allowed; }
   overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
 }
 
-/* The jump pill sat at a fixed offset and landed on top of the composer as
-   soon as the draft wrapped to a second line. Anchor it above the composer. */
-.jump-latest { bottom: auto; top: -46px; left: 50%; position: absolute; }
-.composer-wrap { position: relative; flex: 0 0 auto; }
 
 .confirm-actions { display: flex; gap: 10px; margin-top: 16px; }
 .confirm-actions .pill-btn { margin-top: 0; flex: 1; }
 .confirm-actions .btn-dark { flex: 1; min-height: 48px; }
-.confirm-danger { background: #9c3024; }
+/* Filled destructive confirm: it is a .btn-dark, whose ink follows --action-ink,
+   so the white has to be restated or it inverts at night. */
+.confirm-danger { background: var(--danger-solid); color: #fff; }
 
 /* Offline: every action other than a text chat fails with a raw toast, so the
    app should at least say why. */
@@ -1685,7 +1970,7 @@ button:disabled { cursor: not-allowed; }
 .plan-card.best { background: var(--lavender); }
 .plan-top { display: flex; align-items: center; gap: 8px; }
 .plan-name { font-size: 13px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; opacity: 0.7; }
-.plan-badge { background: var(--ink); color: #fff; font-size: 11px; }
+.plan-badge { background: var(--action); color: var(--action-ink); font-size: 11px; }
 .plan-price { font-size: 40px; font-weight: 300; letter-spacing: -0.03em; line-height: 1.1; margin-top: 6px; }
 .plan-cadence { font-size: 15px; font-weight: 400; opacity: 0.65; margin-left: 4px; }
 .plan-sub { font-size: 13px; opacity: 0.7; margin-top: 2px; }
@@ -1713,7 +1998,7 @@ button:disabled { cursor: not-allowed; }
   overflow-wrap: anywhere;
 }
 .credit-hero-chips { display: flex; flex-wrap: wrap; gap: 7px; }
-.credit-chip { background: rgba(255, 255, 255, 0.16); color: #fff; }
+.credit-chip { background: var(--wash); color: var(--ink); }
 .credit-hero-sub { font-size: 13.5px; line-height: 1.45; opacity: 0.82; margin-top: 12px; }
 
 /* The ledger extract. Deliberately plain: it is a receipt, not a feature. */
@@ -1754,13 +2039,13 @@ button:disabled { cursor: not-allowed; }
 .dino-best { opacity: 0.75; }
 .dino-stage {
   position: relative; display: block; width: 100%; height: 124px;
-  border-radius: var(--r-row); background: #fff; overflow: hidden; padding: 0;
+  border-radius: var(--r-row); background: var(--surface); overflow: hidden; padding: 0;
 }
 .dino-canvas { width: 100%; height: 100%; display: block; }
 .dino-overlay {
   position: absolute; inset: 0;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
-  gap: 3px; pointer-events: none; background: #ffffffb0;
+  gap: 3px; pointer-events: none; background: var(--surface-veil);
 }
 .dino-overlay strong { font-size: 16px; font-weight: 500; }
 .dino-overlay em { font-style: normal; font-size: 12.5px; color: var(--muted); }
@@ -1769,7 +2054,7 @@ button:disabled { cursor: not-allowed; }
 .play-grid { display: flex; flex-direction: column; gap: 12px; margin-top: 4px; }
 .play-intro { margin: 2px 2px 0; color: var(--muted); font-size: 13.5px; line-height: 1.45; }
 .play-card-game { flex-wrap: wrap; }
-.play-card-game select { flex: 1 1 140px; min-height: 42px; padding: 0 12px; border: 1px solid rgba(22,22,26,.14); border-radius: 12px; background: rgba(255,255,255,.52); color: var(--ink); }
+.play-card-game select { flex: 1 1 140px; min-height: 42px; padding: 0 12px; border: 1px solid var(--hairline); border-radius: 12px; background: var(--card); color: var(--ink); }
 .play-card-game .btn-dark { min-height: 42px; padding: 0 15px; }
 .play-empty { flex: 1 1 100%; margin-top: 2px; }
 /* The relationship strip under the chat header. Play sits here rather than in
@@ -1791,7 +2076,7 @@ button:disabled { cursor: not-allowed; }
 .play-btn.play-your-turn .play-dot,
 .play-btn.play-invited .play-dot { background: var(--coral); animation: pulse-dot 1.6s ease-in-out infinite; }
 .play-btn.play-rematch .play-dot { background: var(--lime); }
-.play-btn.play-resume .play-dot { background: var(--indigo); }
+.play-btn.play-resume .play-dot { background: var(--accent); }
 @media (max-width: 360px) {
   .chat-actions .circle { width: 34px; height: 34px; }
   .chat-actions { gap: 6px; }
@@ -1808,19 +2093,19 @@ button:disabled { cursor: not-allowed; }
 .play-your-turn .play-chip-dot { background: var(--ink); animation: pulse-dot 1.6s ease-in-out infinite; }
 .play-invited { background: var(--lavender); font-weight: 650; }
 .play-invited .play-chip-dot { background: var(--ink); }
-.play-resume .play-chip-dot { background: var(--indigo); }
+.play-resume .play-chip-dot { background: var(--accent); }
 .play-waiting .play-chip-dot, .play-away .play-chip-dot { background: var(--muted); }
 @keyframes pulse-dot { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
 
-.game-banner { width: 100%; display: flex; align-items: center; gap: 10px; padding: 12px 12px 12px 15px; border-radius: 18px; background: var(--ink); color: #fff; box-shadow: 0 12px 30px rgba(22,22,26,.24); }
+.game-banner { width: 100%; display: flex; align-items: center; gap: 10px; padding: 12px 12px 12px 15px; border-radius: 18px; background: var(--chrome); color: var(--chrome-ink); box-shadow: 0 12px 30px rgba(22,22,26,.24); }
 .game-banner-copy { min-width: 0; flex: 1; font-size: 13px; line-height: 1.25; }
 .game-banner-copy strong { margin-right: 4px; }
-.game-banner-copy span { display: block; margin-top: 3px; color: #c2c0cd; font-size: 11px; }
+.game-banner-copy span { display: block; margin-top: 3px; color: var(--chrome-muted); font-size: 11px; }
 .game-banner-open { min-height: 38px; padding: 0 14px; border-radius: 12px; background: var(--lime); color: var(--ink); font-size: 12px; font-weight: 650; }
-.game-banner-dismiss { width: 30px; height: 30px; border-radius: 50%; color: #c2c0cd; font-size: 22px; }
+.game-banner-dismiss { width: 30px; height: 30px; border-radius: 50%; color: var(--chrome-muted); font-size: 22px; }
 .game-invite { display: flex; flex-direction: column; gap: 12px; padding: 15px; margin-bottom: 12px; background: var(--lime); border-radius: var(--r-card); line-height: 1.35; }
 .game-invite strong { margin-right: 5px; }
-.game-invite span { display: block; margin-top: 4px; color: rgba(22,22,26,.65); font-size: 12px; }
+.game-invite span { display: block; margin-top: 4px; color: var(--muted); font-size: 12px; }
 .game-invite-actions { display: flex; gap: 8px; }
 .game-invite-actions button { flex: 1; justify-content: center; }
 .game-room { padding: 4px 2px 24px; }
@@ -1843,24 +2128,26 @@ button:disabled { cursor: not-allowed; }
 .ttt-cell { aspect-ratio: 1; border-radius: 18px; background: var(--card); font-size: clamp(34px, 12vw, 54px); font-weight: 300; color: var(--ink); transition: transform 120ms, background 120ms; }
 .ttt-cell:not(:disabled):active { transform: scale(.94); background: var(--card-press); }
 .ttt-cell.mark-x { color: var(--indigo); background: var(--lavender); }
+/* A coral-tinted fill; it keeps its own light context (see the fixed-light
+   block at the top of the file), so both values stay literal. */
 .ttt-cell.mark-o { color: #9b4737; background: #f5d8ce; }
-.game-chat { margin: 18px 0 12px; border: 1px solid rgba(22,22,26,.1); border-radius: 18px; background: var(--card); overflow: hidden; }
+.game-chat { margin: 18px 0 12px; border: 1px solid var(--hairline); border-radius: 18px; background: var(--card); overflow: hidden; }
 .game-chat-toggle { width: 100%; min-height: 48px; padding: 0 14px; display: flex; align-items: center; justify-content: space-between; color: var(--ink); font-weight: 550; text-align: left; }
 .game-chat-unread { min-width: 22px; height: 22px; padding: 0 6px; display: inline-flex; align-items: center; justify-content: center; border-radius: 999px; background: var(--indigo); color: white; font-size: 11px; }
 .game-chat-messages { max-height: 180px; padding: 4px 12px 10px; display: flex; flex-direction: column; gap: 6px; overflow-y: auto; overscroll-behavior: contain; }
 .game-chat-empty { padding: 14px 4px; color: var(--muted); font-size: 12.5px; text-align: center; }
-.game-chat-bubble { align-self: flex-start; max-width: 82%; padding: 8px 11px; border-radius: 13px 13px 13px 4px; background: white; font-size: 13px; line-height: 1.35; overflow-wrap: anywhere; }
+.game-chat-bubble { align-self: flex-start; max-width: 82%; padding: 8px 11px; border-radius: 13px 13px 13px 4px; background: var(--surface); font-size: 13px; line-height: 1.35; overflow-wrap: anywhere; }
 .game-chat-bubble.mine { align-self: flex-end; border-radius: 13px 13px 4px 13px; background: var(--lavender); }
 .game-chat-quick { display: flex; gap: 6px; padding: 0 9px 9px; overflow-x: auto; scrollbar-width: none; }
 .game-chat-quick::-webkit-scrollbar { display: none; }
-.game-chat-quick button { flex: 0 0 auto; padding: 7px 10px; border-radius: 999px; background: rgba(255,255,255,.82); color: var(--ink); font-size: 11.5px; }
+.game-chat-quick button { flex: 0 0 auto; padding: 7px 10px; border-radius: 999px; background: var(--surface); color: var(--ink); font-size: 11.5px; }
 .game-chat-quick button:disabled { opacity: .4; }
-.game-chat-compose { display: flex; gap: 7px; padding: 9px; border-top: 1px solid rgba(22,22,26,.08); background: rgba(255,255,255,.62); }
-.game-chat-compose input { min-width: 0; flex: 1; height: 39px; padding: 0 11px; border: 1px solid rgba(22,22,26,.12); border-radius: 12px; background: white; color: var(--ink); }
-.game-chat-compose button { height: 39px; padding: 0 13px; border-radius: 12px; background: var(--ink); color: white; font-weight: 550; }
+.game-chat-compose { display: flex; gap: 7px; padding: 9px; border-top: 1px solid var(--hairline); background: var(--surface-veil); }
+.game-chat-compose input { min-width: 0; flex: 1; height: 39px; padding: 0 11px; border: 1px solid var(--hairline); border-radius: 12px; background: var(--surface); color: var(--ink); }
+.game-chat-compose button { height: 39px; padding: 0 13px; border-radius: 12px; background: var(--action); color: var(--action-ink); font-weight: 550; }
 .game-chat-compose button:disabled { opacity: .38; }
 .game-legend { display: flex; justify-content: center; gap: 18px; color: var(--muted); font-size: 13px; margin-bottom: 18px; }
-.game-legend .mark-x { color: var(--indigo); font-weight: 600; }
+.game-legend .mark-x { color: var(--accent); font-weight: 600; }
 .play-card {
   display: flex; align-items: center; gap: 12px; width: 100%;
   padding: 16px; border-radius: var(--r-card); text-align: left; color: var(--ink);
@@ -1921,12 +2208,6 @@ button:disabled { cursor: not-allowed; }
 }
 .greeting span { display: block; font-size: var(--fs-meta); color: var(--muted); margin-top: 3px; }
 
-/* Their status note is colour, not information — a line icon keeps it quieter
-   than the speech-bubble emoji it used to lead with. */
-.row-note { display: flex; align-items: center; gap: 5px; }
-.row-note svg { flex: 0 0 auto; opacity: 0.55; }
-.row-note b { font-weight: 400; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
 /* ==========================================================================
    Stories
    ========================================================================== */
@@ -1957,8 +2238,31 @@ button:disabled { cursor: not-allowed; }
   background: var(--lavender); border-radius: var(--r-card);
   padding: 14px var(--sp-4) var(--sp-3);
 }
-.map-panel { gap: var(--sp-3); padding: var(--sp-4) var(--sp-4); }
 .map-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+
+/* The panel's readout. Also moved out of styles/capture.css, which SnapMap
+   does not import. */
+.map-until {
+  margin-top: var(--sp-2);
+  font-size: var(--fs-sm); font-weight: 500; color: var(--ink);
+}
+.map-updated { margin-top: 2px; font-size: var(--fs-meta); color: var(--muted); }
+/* "Sharing" is a state worth spotting at a glance, so it takes the lime fill
+   rather than the neutral chip grey the count beside it uses. */
+.map-chip-live { background: var(--lime); font-weight: 500; }
+.map-ghost-title { font-size: var(--fs-lead); font-weight: 500; letter-spacing: -0.02em; }
+.map-ghost-sub {
+  margin-top: var(--sp-1);
+  font-size: var(--fs-meta); color: var(--muted); line-height: 1.5;
+}
+/* "Turn on live updates" sits inside a sentence, so it reads as a link rather
+   than competing with Share / Go Ghost for the eye. */
+.map-enable-live {
+  background: none; border: 0; padding: 0; font: inherit;
+  color: var(--accent); font-weight: 600;
+  text-decoration: underline; text-underline-offset: 3px;
+  min-height: 44px;
+}
 
 /* ==========================================================================
    Chat header, friend sheet, profile
@@ -1976,27 +2280,12 @@ button:disabled { cursor: not-allowed; }
   background: var(--lavender); color: var(--ink);
   box-shadow: 0 0 0 2px var(--bg);
 }
-.fp-row-go { display: grid; place-items: center; }
 
-/* Profile's stat cards were built before the friend sheet's, and drifted:
-   emoji labels against the friend sheet's line icons. One pattern now. */
-.stat-card svg { opacity: 0.7; margin-bottom: var(--sp-1); }
-
-/* An empty state carries an icon everywhere else in the app. */
-.empty-symbol svg { width: 30px; height: 30px; }
-
-/* The camera tray is three labelled pills across the narrowest phone; without
-   this "Send to" wrapped onto a second line and pushed its arrow outside the
-   pill. */
-.tray .pill { white-space: nowrap; min-width: 0; }
 @media (max-width: 359px) {
-  .tray { gap: var(--sp-2); padding: 0 10px; }
-  .tray .pill { padding: 12px 13px; font-size: var(--fs-sm); }
+  .camera .tray { gap: var(--sp-2); padding: 0 10px; }
+  .camera .tray .pill { padding: 12px 13px; font-size: var(--fs-sm); }
 }
 
-/* 41-43px tall: under the 44px touch minimum on the two surfaces that use it
-   (the camera tray and the memory viewer's actions). */
-.pill { min-height: 44px; }
 
 /* The chat list opens your profile by tapping your own avatar — a 34px target
    in the corner of the screen, and the only way in to settings. */
@@ -2009,28 +2298,16 @@ button:disabled { cursor: not-allowed; }
   margin-left: -5px;
 }
 
-/* Both of these were tall enough to read and too short to hit: the friend-info
-   area in the chat header, and the camera's filter chips. */
-.chat-peer { min-height: 44px; }
-.cam-filter { min-height: 44px; }
-
-/* A toast that blinks into existence mid-screen reads as a glitch; it should
-   arrive from the same edge it is anchored to, like the sheets. The translateX
-   is part of the toast's own centring, so the keyframe has to carry it. */
-.toast { animation: toast-in 200ms ease-out; }
-@keyframes toast-in { from { opacity: 0; transform: translateX(-50%) translateY(10px); } }
-.notif-stack > * { animation: bar-down 240ms ease-out; }
-@keyframes bar-down { from { transform: translateY(-100%); } }
 .game-status { display: grid; gap: 6px; padding: 16px; margin: 18px 0; border-radius: 18px; background: var(--card); }
 .game-status.your-turn { background: var(--lavender); }
 .game-status strong { font-size: 18px; }
 .game-status span, .game-connection { font-size: 13px; line-height: 1.5; }
-.game-connection { padding: 12px; border: 1px solid #dfbc8a; border-radius: 14px; margin-bottom: 16px; display: grid; gap: 10px; }
+.game-connection { padding: 12px; border: 1px solid var(--warn-line); border-radius: 14px; margin-bottom: 16px; display: grid; gap: 10px; }
 .game-room-actions { display: grid; justify-items: center; gap: 14px; margin-top: 20px; text-align: center; }
 .game-resume-list { display: grid; gap: 10px; }
 .game-resume-list h2 { font-size: 20px; margin: 0 0 4px; }
-.game-resume-card { display: flex; align-items: center; justify-content: space-between; gap: 14px; text-align: left; width: 100%; padding: 16px; border: 1px solid var(--line, #e8e4ee); border-radius: 18px; background: #faf8fd; font: inherit; cursor: pointer; }
+.game-resume-card { display: flex; align-items: center; justify-content: space-between; gap: 14px; text-align: left; width: 100%; padding: 16px; border: 1px solid var(--hairline); border-radius: 18px; background: var(--tint); font: inherit; cursor: pointer; }
 .game-resume-card small { display: block; margin-top: 5px; color: var(--muted); }
 .game-resume-card > span:last-child { font-size: 13px; white-space: nowrap; }
 .ttt-cell:disabled:empty { opacity: .55; cursor: default; }
-.ttt-cell:focus-visible, .game-resume-card:focus-visible { outline: 3px solid #7965b8; outline-offset: 3px; }
+.ttt-cell:focus-visible, .game-resume-card:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }

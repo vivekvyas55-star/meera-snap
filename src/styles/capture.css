@@ -112,75 +112,9 @@
   }
 }
 
-/* --------------------------------------------------------------------------
-   Camera failure card. .cam-error itself lives in index.css; this is the
-   message/help/retry stack inside it.
-   -------------------------------------------------------------------------- */
-.cam-error-msg {
-  margin: 0;
-  font-weight: 500;
-}
-
-.cam-error-help {
-  margin: var(--sp-2) 0 0;
-  font-size: var(--fs-meta);
-  line-height: 1.55;
-  color: rgba(255, 255, 255, 0.72);
-}
-
-/* White pill on the black card: the primary action on this surface, matching
-   the dark circular button's role everywhere else. */
-.cam-error-retry {
-  margin-top: var(--sp-3);
-  padding: 11px var(--sp-5);
-  border-radius: var(--r-pill);
-  background: #fff;
-  color: var(--ink);
-  font-size: var(--fs-sm);
-  font-weight: 500;
-}
-
-.cam-error-retry:active {
-  background: #e7e7ea;
-}
-
-.cam-error-retry:disabled {
-  opacity: 0.5;
-}
-
-/* --------------------------------------------------------------------------
-   Map panel readout.
-   -------------------------------------------------------------------------- */
-.map-until {
-  margin-top: var(--sp-2);
-  font-size: var(--fs-sm);
-  font-weight: 500;
-  color: var(--ink);
-}
-
-.map-updated {
-  margin-top: 2px;
-  font-size: var(--fs-meta);
-  color: var(--muted);
-}
-
-/* "Sharing" is a state worth spotting at a glance, so it takes the lime fill
-   rather than the neutral chip grey the count beside it uses. */
-.map-chip-live {
-  background: var(--lime);
-  font-weight: 500;
-}
-
-.map-ghost-title {
-  font-size: var(--fs-lead);
-  font-weight: 500;
-  letter-spacing: -0.02em;
-}
-
-.map-ghost-sub {
-  margin-top: var(--sp-1);
-  font-size: var(--fs-meta);
-  color: var(--muted);
-  line-height: 1.5;
-}
-
+/* The camera-failure stack (.cam-error-*) and the Snap Map readout (.map-*)
+   used to live here, but they are rendered by components/CameraError.jsx and
+   screens/SnapMap.jsx — neither of which imports this file. They were styled
+   only if Stories happened to have been opened first, and unstyled otherwise.
+   Both now sit in index.css beside the .cam-error / .map-panel rules they
+   extend. What is left here is genuinely Stories-only. */

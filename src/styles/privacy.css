@@ -158,7 +158,7 @@
 .pc-figure {
   flex: 1 1 0;
   min-width: 0;
-  background: rgba(255, 255, 255, 0.55);
+  background: var(--card);      /* the hero pins this to a white wash */
   border-radius: var(--r-row);
   padding: var(--sp-3);
 }
@@ -225,7 +225,8 @@
   line-height: 1.5;
 }
 
-/* Metadata pills — the reference's "45s" / "Pre-intermediate" chips. */
+/* Metadata pills — the reference's "45s" / "Pre-intermediate" chips.
+   The pill SHAPE is the shared .chip in index.css; only the deltas are here. */
 .pc-chips {
   display: flex;
   flex-wrap: wrap;
@@ -233,21 +234,17 @@
   margin-top: var(--sp-3);
 }
 .pc-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
   font-size: var(--fs-micro);
   font-weight: 500;
-  padding: 5px 11px;
-  border-radius: var(--r-pill);
-  background: rgba(22, 22, 26, 0.09);
+  background: var(--wash);
   color: inherit;
   white-space: nowrap;
   flex: 0 0 auto;
 }
-.pc-card.indigo .pc-chip { background: rgba(255, 255, 255, 0.18); }
+/* (An indigo card re-declares --wash for its own subtree, so the chip on it
+   needs no rule of its own any more.) */
 /* A chip that reports a live state rather than a quantity. */
-.pc-chip.on { background: var(--ink); color: #fff; }
+.pc-chip.on { background: var(--action); color: var(--action-ink); }
 
 /* --------------------------------------------------------------------------
    Navigation rows — Memories, Play, the passcode actions. The dark circle is
@@ -274,7 +271,7 @@
   flex: 0 0 auto;
   display: grid;
   place-items: center;
-  background: #fff;
+  background: var(--surface);
   color: var(--ink);
 }
 .pc-nav-title {
@@ -291,8 +288,8 @@
   flex: 0 0 auto;
   display: grid;
   place-items: center;
-  background: var(--ink);
-  color: #fff;
+  background: var(--action);
+  color: var(--action-ink);
 }
 
 /* A state read-out that is not a control: "Push notifications — off". */
@@ -351,7 +348,7 @@
   min-height: 44px;
   padding: 0 var(--sp-3);
   border-radius: var(--r-pill);
-  background: #fff;
+  background: var(--surface);
   font-size: var(--fs-micro);
   font-weight: 600;
   color: var(--ink);
@@ -364,7 +361,7 @@
 .pc-row-here {
   font-size: var(--fs-micro);
   font-weight: 600;
-  color: var(--indigo);
+  color: var(--accent);
   margin-left: var(--sp-2);
 }
 
@@ -409,7 +406,7 @@
   padding: var(--sp-3) var(--sp-4);
   border-radius: var(--r-row);
   border: 1.5px solid var(--coral);
-  background: #fff;
+  background: var(--surface);
   font-size: var(--fs-meta);
   color: var(--ink);
   line-height: 1.5;
@@ -422,8 +419,8 @@
   min-height: 44px;
   padding: 0 var(--sp-4);
   border-radius: var(--r-pill);
-  background: var(--ink);
-  color: #fff;
+  background: var(--action);
+  color: var(--action-ink);
   font-size: var(--fs-meta);
   font-weight: 600;
 }
@@ -448,8 +445,8 @@
   color: var(--ink);
 }
 .pc-choice.on {
-  background: var(--ink);
-  color: #fff;
+  background: var(--action);
+  color: var(--action-ink);
 }
 .pc-choice:disabled { opacity: 0.4; }
 
@@ -479,7 +476,7 @@
   background: var(--muted);
 }
 .pc-save.saving .pc-save-dot { animation: pc-pulse 1.2s ease-in-out infinite; }
-.pc-save.saved .pc-save-dot { background: #2fbf71; }
+.pc-save.saved .pc-save-dot { background: var(--success); }
 .pc-save.is-error .pc-save-dot { background: var(--coral); }
 
 /* --------------------------------------------------------------------------
@@ -510,7 +507,7 @@
   border: 1.5px solid var(--coral);
   color: var(--coral);
 }
-.pc-danger:active { background: #fdf1ee; }
+.pc-danger:active { background: var(--danger-bg); }
 .pc-outline:disabled,
 .pc-danger:disabled { opacity: 0.45; }
 
@@ -570,7 +567,7 @@
   transition: transform 160ms ease;
 }
 .pc-more[open] > summary::after { transform: rotate(-135deg) translate(-2px, -2px); }
-.pc-more > summary:focus-visible { outline: 3px solid var(--indigo); outline-offset: -3px; }
+.pc-more > summary:focus-visible { outline: 3px solid var(--accent); outline-offset: -3px; }
 .pc-more-body {
   padding: 0 var(--sp-3) var(--sp-3);
   font-size: var(--fs-meta);

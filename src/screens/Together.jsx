@@ -1,0 +1,531 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import Avatar from '../components/Avatar'
+import Confirm from '../components/Confirm'
+import Portal from '../components/Portal'
+import PrivateBadge from '../components/PrivateBadge'
+import VoicePlayer from '../components/VoicePlayer'
+import {
+  ArrowIcon, BackIcon, CalendarIcon, FlameIcon, HeartIcon,
+  ImageIcon, MicIcon, NoteIcon, TrashIcon, UsersIcon,
+} from '../components/Icons'
+import { useAudioRecorder } from '../hooks/useAudioRecorder'
+import { useBackLayer } from '../hooks/useBackLayer'
+import { useToast } from '../hooks/useToast'
+import { istToday, listFriendsWithProfiles, signedUrl } from '../lib/db'
+import {
+  addNote, addPhoto, addVoice, getTogetherStatus, listOnThisDay,
+  listScrapbook, listTimeline, removeScrapbookItem, setTogetherOptIn,
+} from '../lib/together'
+import {
+  NOTE_MAX, canDelete, fullPath, gridPath, groupTimelineByYear, isFutureDate,
+  optInCopy, optInState, scrapbookCounts, scrapbookDateLabel, yearsAgoLabel,
+} from '../lib/togetherState'
+import '../styles/together.css'
+
+const nameOf = (p) => p?.display_name || p?.username || 'them'
+
+const TIMELINE_ICON = {
+  friends: <UsersIcon width={17} height={17} />,
+  anniversary: <HeartIcon width={17} height={17} />,
+  anniversary_start: <HeartIcon width={17} height={17} />,
+  streak: <FlameIcon width={17} height={17} />,
+  first_kept: <ImageIcon width={17} height={17} />,
+  kept: <ImageIcon width={17} height={17} />,
+  scrapbook_photo: <ImageIcon width={17} height={17} />,
+  scrapbook_voice: <MicIcon width={17} height={17} />,
+  scrapbook_note: <NoteIcon width={17} height={17} />,
+}
+
+// A thumbnail that never asks for the original. `gridPath` prefers thumb_path
+// and only falls back to the full object when the ~400px encode failed at
+// upload — see the egress note in lib/togetherState.js.
+function Thumb({ item, onOpen, label }) {
+  const [url, setUrl] = useState(null)
+  const path = gridPath(item)
+  useEffect(() => {
+    if (!path) return undefined
+    let alive = true
+    signedUrl(path).then((u) => alive && setUrl(u)).catch(() => {})
+    return () => { alive = false }
+  }, [path])
+  return (
+    <button type="button" className="tg-thumb" onClick={onOpen} aria-label={label}>
+      {url
+        ? <img src={url} alt="" loading="lazy" decoding="async" />
+        : <span className="tg-thumb-ph" aria-hidden="true" />}
+    </button>
+  )
+}
+
+function PhotoViewer({ item, onClose }) {
+  const [url, setUrl] = useState(null)
+  const path = fullPath(item)
+  useEffect(() => {
+    let alive = true
+    if (!path) { onClose(); return undefined }
+    signedUrl(path).then((u) => alive && setUrl(u)).catch(() => alive && onClose())
+    return () => { alive = false }
+  }, [path]) // eslint-disable-line react-hooks/exhaustive-deps
+  return (
+    <Portal>
+      <div className="viewer">
+        {url ? <img src={url} alt={item.body || 'Scrapbook photo'} /> : <div className="viewer-loading">Loading…</div>}
+        <div className="viewer-top">
+          <button className="viewer-close" onClick={onClose} aria-label="Close">×</button>
+        </div>
+        {item.body ? <div className="viewer-caption">{item.body}</div> : null}
+        <div className="viewer-privacy-note">Private to you both · {scrapbookDateLabel(item.on_date)}</div>
+      </div>
+    </Portal>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Panes
+// ---------------------------------------------------------------------------
+function TimelinePane({ rows, loading }) {
+  const groups = useMemo(() => groupTimelineByYear(rows), [rows])
+  return (
+    <section className="tg-pane" aria-label="Timeline">
+      <PrivateBadge />
+      {loading && !rows.length ? <p className="field-hint">Reading your history…</p> : null}
+      {!loading && !groups.length ? (
+        <div className="empty">
+          <div className="empty-symbol" aria-hidden="true"><CalendarIcon /></div>
+          <h2>Nothing on the timeline yet.</h2>
+          <p>Set a “together since” date in the chat, keep a snap, or add something to the scrapbook.</p>
+        </div>
+      ) : null}
+      {groups.map((group) => (
+        <div key={group.year} className="tg-year">
+          <h3 className="tg-year-head">{group.year}</h3>
+          <ol className="tg-line">
+            {group.entries.map((entry, i) => (
+              <li key={`${entry.kind}-${entry.ref || entry.on_date || i}`} className="tg-line-row">
+                <span className="tg-line-icon" aria-hidden="true">{TIMELINE_ICON[entry.kind] ?? <NoteIcon width={17} height={17} />}</span>
+                <span className="tg-line-text">
+                  <strong>{entry.title}</strong>
+                  <small>{scrapbookDateLabel(entry.on_date)}{entry.detail ? ` · ${entry.detail}` : ''}</small>
+                </span>
+              </li>
+            ))}
+          </ol>
+        </div>
+      ))}
+    </section>
+  )
+}
+
+function OnThisDayPane({ capsules, loading, onOpen }) {
+  return (
+    <section className="tg-pane" aria-label="On this day">
+      <PrivateBadge note="turns over at your midnight" />
+      {loading && !capsules.length ? <p className="field-hint">Looking back…</p> : null}
+      {!loading && !capsules.length ? (
+        <div className="empty">
+          <div className="empty-symbol" aria-hidden="true"><CalendarIcon /></div>
+          <h2>Nothing from this day yet.</h2>
+          <p>Add a scrapbook entry with the date it actually happened and it will come back on this day next year.</p>
+        </div>
+      ) : null}
+      {capsules.map((capsule) => (
+        <article key={`${capsule.source}-${capsule.id}`} className="tg-capsule">
+          <span className="tg-chip">{yearsAgoLabel(capsule.years_ago)}</span>
+          <div className="tg-capsule-body">
+            {capsule.thumb_path
+              ? <Thumb item={capsule} onOpen={() => onOpen(capsule)} label="Open this memory" />
+              : null}
+            <div>
+              <strong>{capsule.source === 'kept' ? 'A snap you both kept' : 'From your scrapbook'}</strong>
+              {capsule.body ? <p>{capsule.body}</p> : null}
+              <small>{scrapbookDateLabel(capsule.on_date)}</small>
+            </div>
+          </div>
+        </article>
+      ))}
+    </section>
+  )
+}
+
+function Composer({ friendName, busy, onNote, onPhoto, onVoice }) {
+  const [mode, setMode] = useState('note')
+  const [text, setText] = useState('')
+  const [day, setDay] = useState(istToday())
+  const [file, setFile] = useState(null)
+  const [clip, setClip] = useState(null)
+  const recorder = useAudioRecorder()
+  const toast = useToast()
+  const today = istToday()
+
+  // The mic must never be left hot because the screen went away mid-recording.
+  useEffect(() => () => { recorder.stop(true) }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const dated = isFutureDate(day, today) ? today : day
+
+  const submit = async (event) => {
+    event.preventDefault()
+    if (busy) return
+    if (isFutureDate(day, today)) { toast('A memory cannot be dated in the future.'); return }
+    if (mode === 'note') { await onNote(text, dated); setText(''); return }
+    if (mode === 'photo') {
+      if (!file) { toast('Choose a photo first.'); return }
+      await onPhoto(file, text, dated); setFile(null); setText('')
+      return
+    }
+    if (!clip) { toast('Record something first.'); return }
+    await onVoice(clip, text, dated); setClip(null); setText('')
+  }
+
+  const toggleRecording = async () => {
+    if (recorder.recording) {
+      const blob = await recorder.stop()
+      if (blob) setClip(blob)
+      else toast('Nothing was recorded.')
+      return
+    }
+    setClip(null)
+    const started = await recorder.start()
+    if (!started && recorder.error) toast(recorder.error)
+  }
+
+  return (
+    <form className="tg-composer" onSubmit={submit}>
+      <PrivateBadge />
+      <div className="tg-modes" role="group" aria-label="What to add">
+        {[['note', 'Note', <NoteIcon key="n" width={16} height={16} />],
+          ['photo', 'Photo', <ImageIcon key="p" width={16} height={16} />],
+          ['voice', 'Voice', <MicIcon key="v" width={16} height={16} />]].map(([value, label, icon]) => (
+          <button
+            key={value}
+            type="button"
+            className={`pill-btn pill-inline ${mode === value ? 'on' : ''}`}
+            aria-pressed={mode === value}
+            onClick={() => setMode(value)}
+          >
+            {icon} {label}
+          </button>
+        ))}
+      </div>
+
+      {mode === 'photo' ? (
+        <label className="tg-file">
+          <ImageIcon width={17} height={17} aria-hidden="true" />
+          <span>{file ? file.name : 'Choose a photo'}</span>
+          <input
+            type="file"
+            accept="image/*"
+            aria-label="Photo for the scrapbook"
+            onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+          />
+        </label>
+      ) : null}
+
+      {mode === 'voice' ? (
+        <button type="button" className={`tg-record ${recorder.recording ? 'on' : ''}`} onClick={toggleRecording}>
+          <MicIcon width={17} height={17} aria-hidden="true" />
+          {recorder.recording ? 'Stop recording' : clip ? 'Recorded — tap to redo' : 'Record a voice note'}
+        </button>
+      ) : null}
+
+      <label className="field-label" htmlFor="tg-text">
+        {mode === 'note' ? 'Your note' : 'Caption (optional)'}
+      </label>
+      <textarea
+        id="tg-text"
+        className="field tg-text"
+        rows={mode === 'note' ? 3 : 2}
+        maxLength={NOTE_MAX}
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        placeholder={mode === 'note' ? `Something you want to keep with ${friendName}` : 'A line about this'}
+      />
+
+      <label className="field-label" htmlFor="tg-date">The day this happened</label>
+      <p className="field-hint">Backdate it and it comes back on this day, every year.</p>
+      <input
+        id="tg-date"
+        type="date"
+        className="field"
+        max={today}
+        value={day}
+        onChange={(e) => setDay(e.target.value)}
+      />
+
+      <button className="btn-dark" type="submit" disabled={busy || (mode === 'note' && !text.trim())}>
+        {busy ? 'Saving…' : 'Add to scrapbook'}
+      </button>
+    </form>
+  )
+}
+
+function ScrapbookPane({ items, loading, me, friendName, busy, canAdd, onOpen, onDelete, onNote, onPhoto, onVoice }) {
+  const counts = scrapbookCounts(items)
+  const photos = items.filter((i) => i.kind === 'photo')
+  const rest = items.filter((i) => i.kind !== 'photo')
+  return (
+    <section className="tg-pane" aria-label="Scrapbook">
+      <PrivateBadge note={counts.total ? `${counts.total} kept` : null} />
+      {loading && !items.length ? <p className="field-hint">Opening the scrapbook…</p> : null}
+      {!loading && !items.length ? (
+        <div className="empty">
+          <div className="empty-symbol" aria-hidden="true"><ImageIcon /></div>
+          <h2>The scrapbook is empty.</h2>
+          <p>Photos, voice notes and notes you both keep. Nothing here disappears.</p>
+        </div>
+      ) : null}
+
+      {photos.length ? (
+        <div className="tg-grid">
+          {photos.map((item) => (
+            <Thumb key={item.id} item={item} onOpen={() => onOpen(item)} label={`Open photo from ${scrapbookDateLabel(item.on_date)}`} />
+          ))}
+        </div>
+      ) : null}
+
+      {rest.map((item) => (
+        <article key={item.id} className={`tg-entry ${item.kind}`}>
+          <div className="tg-entry-head">
+            <span className="tg-chip">{scrapbookDateLabel(item.on_date)}</span>
+            {canDelete(item, me) ? (
+              <button type="button" className="tg-remove" onClick={() => onDelete(item)} aria-label="Remove this entry">
+                <TrashIcon width={16} height={16} />
+              </button>
+            ) : null}
+          </div>
+          {item.kind === 'voice'
+            ? <VoicePlayer message={item} bar="var(--indigo)" />
+            : null}
+          {item.body ? <p className="tg-entry-body">{item.body}</p> : null}
+        </article>
+      ))}
+
+      {canAdd ? (
+        <Composer friendName={friendName} busy={busy} onNote={onNote} onPhoto={onPhoto} onVoice={onVoice} />
+      ) : (
+        <p className="field-hint tg-locked">
+          Adding needs both of you to have Together on. What is already here stays readable.
+        </p>
+      )}
+    </section>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Screen
+// ---------------------------------------------------------------------------
+export default function Together({ me, onBack }) {
+  const toast = useToast()
+  const [friends, setFriends] = useState(null)
+  const [friend, setFriend] = useState(null)
+  const [status, setStatus] = useState(null)
+  const [tab, setTab] = useState('timeline')
+  const [timeline, setTimeline] = useState([])
+  const [capsules, setCapsules] = useState([])
+  const [items, setItems] = useState([])
+  const [loading, setLoading] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [viewing, setViewing] = useState(null)
+  const [removing, setRemoving] = useState(null)
+  const [error, setError] = useState(null)
+  const actionRef = useRef(false)
+
+  const clearFriend = useCallback(() => setFriend(null), [])
+  // Android Back walks out of the conversation before it walks out of the
+  // screen, so one press never skips two levels.
+  useBackLayer(Boolean(friend), clearFriend)
+  useBackLayer(Boolean(viewing), () => setViewing(null))
+
+  useEffect(() => {
+    let alive = true
+    listFriendsWithProfiles(me)
+      .then((rows) => {
+        if (!alive) return
+        setFriends(rows.filter((f) => f.status === 'accepted' && f.profile).map((f) => f.profile))
+      })
+      .catch((err) => alive && setError(err.message))
+    return () => { alive = false }
+  }, [me])
+
+  const load = useCallback(async (otherId) => {
+    setLoading(true)
+    try {
+      const next = await getTogetherStatus(otherId)
+      setStatus(next)
+      setError(null)
+      // The scrapbook is readable to the pair whatever the opt-in says, so it
+      // loads either way; the timeline and the capsules are opt-in gated
+      // server-side and would come back empty, so they are not even asked for.
+      const [book, line, caps] = await Promise.all([
+        listScrapbook(me, otherId),
+        next.active ? listTimeline(otherId) : Promise.resolve([]),
+        next.active ? listOnThisDay(otherId) : Promise.resolve([]),
+      ])
+      setItems(book)
+      setTimeline(line)
+      setCapsules(caps)
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setLoading(false)
+    }
+  }, [me])
+
+  useEffect(() => {
+    if (!friend) return
+    setTimeline([]); setCapsules([]); setItems([]); setStatus(null)
+    load(friend.id)
+  }, [friend, load])
+
+  const state = optInState(status)
+  const friendName = nameOf(friend)
+  const copy = optInCopy(state, friendName)
+
+  const toggleOptIn = async () => {
+    if (actionRef.current || !friend) return
+    actionRef.current = true; setBusy(true)
+    try {
+      const next = await setTogetherOptIn(friend.id, !status?.mine)
+      setStatus(next)
+      await load(friend.id)
+    } catch (err) {
+      toast(err.message || 'Could not change that. Try again.')
+    } finally {
+      actionRef.current = false; setBusy(false)
+    }
+  }
+
+  const guardedAdd = async (fn, done) => {
+    if (actionRef.current || !friend) return
+    actionRef.current = true; setBusy(true)
+    try {
+      await fn()
+      await load(friend.id)
+      toast(done)
+    } catch (err) {
+      toast(err.message || 'Could not save that. Try again.')
+    } finally {
+      actionRef.current = false; setBusy(false)
+    }
+  }
+
+  const onNote = (text, day) => guardedAdd(() => addNote(friend.id, text, day), 'Added to your scrapbook')
+  const onPhoto = (file, caption, day) => guardedAdd(() => addPhoto(me, friend.id, file, caption, day), 'Photo added')
+  const onVoice = (blob, caption, day) => guardedAdd(() => addVoice(me, friend.id, blob, caption, day), 'Voice note added')
+
+  const confirmRemove = async () => {
+    const item = removing
+    setRemoving(null)
+    await guardedAdd(() => removeScrapbookItem(item), 'Removed')
+  }
+
+  if (!friend) {
+    return (
+      <div className="app tg-app">
+        <div className="header">
+          <button className="circle filled" onClick={onBack} aria-label="Back"><BackIcon /></button>
+          <h1>Together</h1>
+        </div>
+        <div className="list profile-list">
+          <PrivateBadge />
+          <p className="field-hint">
+            A shared timeline and scrapbook for one friendship. It stays off until you both turn it on.
+          </p>
+          {error ? <div className="error" role="alert"><span>{error}</span></div> : null}
+          {friends === null ? <p className="field-hint">Loading your people…</p> : null}
+          {friends?.length === 0 ? (
+            <div className="empty">
+              <div className="empty-symbol" aria-hidden="true"><UsersIcon /></div>
+              <h2>No friends yet.</h2>
+              <p>Together needs two people. Add someone first.</p>
+            </div>
+          ) : null}
+          {friends?.map((p) => (
+            <button key={p.id} type="button" className="tg-friend" onClick={() => setFriend(p)}>
+              <Avatar profile={p} size="sm" />
+              <span className="tg-friend-text">
+                <strong>{nameOf(p)}</strong>
+                <small>@{p.username}</small>
+              </span>
+              <span className="tg-go" aria-hidden="true"><ArrowIcon width={17} height={17} /></span>
+            </button>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="app tg-app">
+      <div className="header">
+        <button className="circle filled" onClick={clearFriend} aria-label="Back"><BackIcon /></button>
+        <h1>Together</h1>
+      </div>
+      <div className="list profile-list">
+        <div className="tg-hero">
+          <PrivateBadge />
+          <h2 className="tg-hero-title">{copy.title}</h2>
+          <p className="tg-hero-body">{copy.body}</p>
+          {status?.started_on ? (
+            <span className="tg-chip">Together since {scrapbookDateLabel(status.started_on)}</span>
+          ) : null}
+          {copy.action ? (
+            <button type="button" className="btn-dark" onClick={toggleOptIn} disabled={busy}>
+              {busy ? 'Saving…' : copy.action}
+            </button>
+          ) : null}
+        </div>
+
+        {error ? <div className="error" role="alert"><span>{error}</span><button onClick={() => load(friend.id)}>Retry</button></div> : null}
+
+        <div className="tg-tabs" role="tablist" aria-label="Together">
+          {[['timeline', 'Timeline'], ['scrapbook', 'Scrapbook'], ['onthisday', 'On this day']].map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              role="tab"
+              aria-selected={tab === value}
+              className={`tg-tab ${tab === value ? 'on' : ''}`}
+              onClick={() => setTab(value)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {state === 'on' && tab === 'timeline' ? <TimelinePane rows={timeline} loading={loading} /> : null}
+        {state === 'on' && tab === 'onthisday' ? <OnThisDayPane capsules={capsules} loading={loading} onOpen={setViewing} /> : null}
+        {/* Reading the scrapbook stays open whatever the toggle says: if
+            opting out hid the rows, either person could hold the other's
+            memories behind a switch. Only WRITING is gated, which is what
+            opt-in is actually for — and the server enforces the same line. */}
+        {tab === 'scrapbook' ? (
+          <ScrapbookPane
+            items={items} loading={loading} me={me} friendName={friendName} busy={busy}
+            canAdd={state === 'on'}
+            onOpen={setViewing} onDelete={setRemoving}
+            onNote={onNote} onPhoto={onPhoto} onVoice={onVoice}
+          />
+        ) : null}
+        {state !== 'on' && tab !== 'scrapbook' ? (
+          <section className="tg-pane" aria-label="Together is off">
+            <PrivateBadge />
+            <p className="field-hint">
+              The timeline and “on this day” open once you have both turned Together on.
+            </p>
+          </section>
+        ) : null}
+      </div>
+
+      {viewing ? <PhotoViewer item={viewing} onClose={() => setViewing(null)} /> : null}
+      {removing ? (
+        <Confirm
+          title="Remove this from the scrapbook?"
+          body="It goes for both of you and the file is deleted. This can't be undone."
+          confirmLabel="Remove"
+          onCancel={() => setRemoving(null)}
+          onConfirm={confirmRemove}
+        />
+      ) : null}
+    </div>
+  )
+}

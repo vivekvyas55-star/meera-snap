@@ -59,17 +59,23 @@ function GameChat({ me, friend }) {
     return () => { alive = false; clearInterval(timer); supabase.removeChannel(channel) }
   }, [me, friend.id])
 
+  // ONE read session per visit to the room, fired from this component's unmount
+  // cleanup only — the same rule Chat.jsx follows. Keyed on `open` it minted a
+  // fresh visit uuid every time the panel was toggled and ran the leave RPC on
+  // every close, so opening the chat three times during a single game took
+  // view_leaves 1→2→3 and put the reader into cleared_by[]: the message was gone
+  // for good without them ever leaving the game.
   const readSession = useRef(null)
   useEffect(() => {
-    if (!open) return
-    setUnread(0)
     const session = { visit: crypto.randomUUID(), seen: new Set(), pending: [] }
     readSession.current = session
     return () => {
       readSession.current = null
       Promise.allSettled(session.pending).then(() => clearViewedChats(me, friend.id, [...session.seen], session.visit)).catch(() => {})
     }
-  }, [open, me, friend.id])
+  }, [me, friend.id])
+  // Opening the panel is what clears the badge; it is not a new visit.
+  useEffect(() => { if (open) setUnread(0) }, [open])
 
   useEffect(() => {
     if (!open || !scroll.current || !readSession.current || typeof IntersectionObserver === 'undefined') return

@@ -355,7 +355,7 @@ function StoryViewer({ group, author, me, onClose, onNextAuthor }) {
             onClick={async (e) => {
               e.stopPropagation()
               setPaused(true)
-              setViewers(await listStoryViewers(story.id, me).catch(() => []))
+              setViewers(await listStoryViewers(story.id, me).catch(() => null))
             }}
           >
             Seen by
@@ -400,9 +400,14 @@ function StoryViewer({ group, author, me, onClose, onNextAuthor }) {
           }}
         >
           <div className="seen-body" onClick={(e) => e.stopPropagation()}>
-            <h3>Seen by {viewers.length}</h3>
-            {viewers.length === 0 && <div className="empty">No views yet.</div>}
-            {viewers.map((v) => (
+            {/* null means the fetch FAILED. Rendering "Seen by 0 / No views yet"
+                there tells an author nobody watched their story when the truth
+                is that we could not find out — the same class of lie as the
+                blocked list and Ghost Mode. */}
+            <h3>{viewers === null ? 'Seen by' : `Seen by ${viewers.length}`}</h3>
+            {viewers === null && <div className="empty">Could not load who has seen this.</div>}
+            {viewers !== null && viewers.length === 0 && <div className="empty">No views yet.</div>}
+            {(viewers ?? []).map((v) => (
               <div className="row" key={v.viewer_id} style={{ background: 'transparent' }}>
                 <Avatar profile={v.profile} size="sm" />
                 <div className="row-main">

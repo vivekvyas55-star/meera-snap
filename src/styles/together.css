@@ -1,0 +1,292 @@
+/* ==========================================================================
+   The Together layer.
+
+   ABC language throughout: vibrant full-card fills, oversized light-weight
+   display headings, pill chips for metadata, a dark circular/pill primary
+   action, thin-line icons. Every colour, radius, space and size below names a
+   token from index.css — a literal hex is a rule dark mode cannot follow.
+   ========================================================================== */
+
+.tg-app {
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+}
+
+/* --------------------------------------------------------------------------
+   The badge. One phrase, one look, on every surface in this layer.
+   -------------------------------------------------------------------------- */
+.tg-private {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin: 0 0 var(--sp-3);
+  color: var(--muted);
+}
+.tg-private svg { flex: 0 0 auto; }
+.tg-private em {
+  font-style: normal;
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 500;
+  opacity: 0.85;
+}
+/* On a lavender card the eyebrow's muted grey falls apart; ink is the rule for
+   text on a vibrant fill. */
+.tg-hero .tg-private { color: var(--ink); opacity: 0.72; }
+
+/* --------------------------------------------------------------------------
+   Friend picker
+   -------------------------------------------------------------------------- */
+.tg-friend {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+  width: 100%;
+  text-align: left;
+  background: var(--card);
+  border: none;
+  border-radius: var(--r-row);
+  padding: var(--sp-3) var(--sp-4);
+  margin-bottom: var(--sp-2);
+  color: var(--ink);
+}
+.tg-friend:active { background: var(--card-press); }
+.tg-friend .avatar { margin-bottom: 0; }
+.tg-friend-text { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.tg-friend-text strong { font-weight: 550; font-size: var(--fs-body); }
+.tg-friend-text small { color: var(--muted); font-size: var(--fs-meta); }
+
+/* --------------------------------------------------------------------------
+   Hero — the opt-in card. Vibrant fill, light display heading, ink on colour.
+   -------------------------------------------------------------------------- */
+.tg-hero {
+  background: var(--lavender);
+  border-radius: var(--r-card);
+  padding: var(--sp-5);
+  margin-bottom: var(--sp-4);
+  color: var(--ink);
+}
+.tg-hero-title {
+  margin: 0 0 var(--sp-2);
+  font-weight: 300;
+  font-size: var(--fs-h2);
+  letter-spacing: -0.01em;
+}
+.tg-hero-body {
+  margin: 0 0 var(--sp-3);
+  font-size: var(--fs-body);
+  line-height: 1.45;
+  opacity: 0.86;
+}
+.tg-hero .btn-dark { margin-top: var(--sp-2); }
+.tg-hero .tg-chip { background: var(--surface); color: var(--ink); margin-bottom: var(--sp-3); }
+
+.tg-chip {
+  display: inline-block;
+  background: var(--card);
+  color: var(--muted);
+  border-radius: var(--r-pill);
+  padding: 5px var(--sp-3);
+  font-size: var(--fs-meta);
+  font-weight: 550;
+}
+
+.tg-go { display: grid; place-items: center; color: var(--muted); flex: 0 0 auto; }
+
+/* --------------------------------------------------------------------------
+   Tabs
+   -------------------------------------------------------------------------- */
+.tg-tabs {
+  display: flex;
+  gap: var(--sp-1);
+  background: var(--card);
+  border-radius: var(--r-pill);
+  padding: var(--sp-1);
+  margin-bottom: var(--sp-4);
+}
+.tg-tab {
+  flex: 1;
+  min-height: 38px;
+  border: none;
+  background: transparent;
+  border-radius: var(--r-pill);
+  color: var(--muted);
+  font-size: var(--fs-meta);
+  font-weight: 550;
+}
+.tg-tab.on { background: var(--surface); color: var(--ink); }
+
+.tg-pane { margin-bottom: var(--sp-5); }
+.tg-locked {
+  background: var(--card);
+  border-radius: var(--r-row);
+  padding: var(--sp-3) var(--sp-4);
+  margin: var(--sp-3) 0 0;
+}
+
+/* --------------------------------------------------------------------------
+   Timeline
+   -------------------------------------------------------------------------- */
+.tg-year { margin-bottom: var(--sp-4); }
+.tg-year-head {
+  margin: 0 0 var(--sp-2);
+  font-weight: 300;
+  font-size: var(--fs-lead);
+  letter-spacing: -0.01em;
+}
+.tg-line { list-style: none; margin: 0; padding: 0; }
+.tg-line-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-3);
+  background: var(--card);
+  border-radius: var(--r-row);
+  padding: var(--sp-3) var(--sp-4);
+  margin-bottom: var(--sp-2);
+}
+.tg-line-icon {
+  display: grid;
+  place-items: center;
+  width: 30px; height: 30px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--accent);
+}
+.tg-line-text { display: flex; flex-direction: column; min-width: 0; }
+.tg-line-text strong { font-weight: 550; font-size: var(--fs-body); }
+.tg-line-text small { color: var(--muted); font-size: var(--fs-meta); margin-top: 2px; }
+
+/* --------------------------------------------------------------------------
+   On this day
+   -------------------------------------------------------------------------- */
+.tg-capsule {
+  background: var(--lime);
+  border-radius: var(--r-card);
+  padding: var(--sp-4);
+  margin-bottom: var(--sp-3);
+  color: var(--ink);
+}
+.tg-capsule .tg-chip { background: var(--surface); color: var(--ink); }
+.tg-capsule-body {
+  display: flex;
+  gap: var(--sp-4);
+  align-items: flex-start;
+  margin-top: var(--sp-3);
+}
+.tg-capsule-body strong { display: block; font-weight: 550; font-size: var(--fs-body); }
+.tg-capsule-body p { margin: var(--sp-1) 0 0; font-size: var(--fs-body); line-height: 1.45; }
+.tg-capsule-body small { display: block; margin-top: var(--sp-2); opacity: 0.7; font-size: var(--fs-meta); }
+.tg-capsule .tg-thumb { width: 76px; height: 76px; flex: 0 0 auto; }
+
+/* --------------------------------------------------------------------------
+   Scrapbook
+   -------------------------------------------------------------------------- */
+.tg-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-4);
+}
+.tg-thumb {
+  position: relative;
+  aspect-ratio: 1;
+  border: none;
+  padding: 0;
+  border-radius: var(--r-tile);
+  overflow: hidden;
+  background: var(--card);
+  width: 100%;
+}
+.tg-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.tg-thumb-ph { display: block; width: 100%; height: 100%; background: var(--card-2); }
+
+.tg-entry {
+  background: var(--card);
+  border-radius: var(--r-card);
+  padding: var(--sp-4);
+  margin-bottom: var(--sp-3);
+}
+.tg-entry-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-2);
+}
+.tg-entry-head .tg-chip { background: var(--surface); color: var(--muted); }
+.tg-entry-body { margin: var(--sp-2) 0 0; font-size: var(--fs-body); line-height: 1.5; white-space: pre-wrap; }
+.tg-remove {
+  width: 34px; height: 34px;
+  min-width: 34px; min-height: 34px;
+  display: grid; place-items: center;
+  border: none; border-radius: 50%;
+  background: var(--surface);
+  color: var(--muted);
+  flex: 0 0 auto;
+}
+.tg-remove:active { background: var(--card-press); }
+
+/* --------------------------------------------------------------------------
+   Composer
+   -------------------------------------------------------------------------- */
+.tg-composer {
+  background: var(--card);
+  border-radius: var(--r-card);
+  padding: var(--sp-4);
+  margin-top: var(--sp-4);
+}
+.tg-modes { display: flex; gap: var(--sp-2); margin-bottom: var(--sp-3); }
+.tg-modes .pill-btn {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  background: var(--surface);
+}
+.tg-modes .pill-btn.on { background: var(--action); color: var(--action-ink); }
+
+.tg-file {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  background: var(--surface);
+  border-radius: var(--r-row);
+  padding: var(--sp-3) var(--sp-4);
+  margin-bottom: var(--sp-3);
+  font-size: var(--fs-body);
+  color: var(--ink);
+}
+.tg-file span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tg-file input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+
+.tg-record {
+  width: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  min-height: 44px;
+  border: none;
+  border-radius: var(--r-pill);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: var(--fs-body);
+  margin-bottom: var(--sp-3);
+}
+.tg-record.on { background: var(--coral); color: #fff; }
+
+/* 16px minimum on anything typed into, or iOS zooms the whole page on focus. */
+.tg-text {
+  width: 100%;
+  font: inherit;
+  font-size: 16px;
+  resize: vertical;
+  line-height: 1.45;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .tg-capsule, .tg-hero { transition: none; }
+}
