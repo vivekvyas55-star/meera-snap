@@ -7,14 +7,19 @@ import react from '@vitejs/plugin-react'
 // something useful when the two disagree — the client shipping ahead of its
 // schema is how three features have now half-deployed, each presenting as
 // "the feature is broken" with nothing pointing at the cause.
-const newestMigration = readdirSync('supabase/migrations')
+const migrationFiles = readdirSync('supabase/migrations')
   .filter((f) => f.endsWith('.sql'))
   .sort()
-  .at(-1)
-  .replace(/\.sql$/, '')
+const newestMigration = migrationFiles.at(-1).replace(/\.sql$/, '')
 
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
-  define: { __SCHEMA_EXPECTED__: JSON.stringify(newestMigration) },
+  define: {
+    __SCHEMA_EXPECTED__: JSON.stringify(newestMigration),
+    // The count, because the newest id alone cannot see a gap in the middle:
+    // a database missing 0026 but holding 0028 reports the same maximum as one
+    // holding both.
+    __SCHEMA_COUNT__: migrationFiles.length,
+  },
 })

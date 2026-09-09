@@ -238,6 +238,13 @@ the one thing there granted to authenticated. `vite.config.js` stamps the
 newest migration in the repo into the bundle as `__SCHEMA_EXPECTED__`, and
 `SchemaDriftBar` compares them once after sign-in.
 
+- **Compare the COUNT, not just the newest id.** The first version compared
+  maxima only, and a migration missing from the MIDDLE is invisible that way:
+  production had 0028 but never 0026, both sides reported `202609090028`, and
+  the check said "match" on a database that was genuinely a migration short.
+  That is exactly the half-deployed state it exists to catch. `schema_state()`
+  returns `(newest, applied)` and the bundle carries the file count; a gap
+  changes the count even when it cannot change the maximum.
 - Ids sort **lexically**, which works because every migration is
   datestamped-then-named — the same order the SQL editor applies them in and the
   same one `tests/database.mjs` enumerates.

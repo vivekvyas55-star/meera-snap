@@ -22,3 +22,18 @@ test('only a database that is behind is worth saying anything about', () => {
   expect(driftMessage('database-ahead')).toBe(null)
   expect(driftMessage('match')).toBe(null)
 })
+
+test('a migration missing from the MIDDLE is drift, even though the maximum matches', () => {
+  // This is the case that got through: 0026 was never applied, 0028 was, and
+  // both sides reported "202609090028" — match, no warning, on a database that
+  // was genuinely a migration short.
+  expect(compareVersions('202609090028_bot_rotation', '202609090028_bot_rotation', 28, 29))
+    .toBe('database-behind')
+  // Same ids, same count, is a real match.
+  expect(compareVersions('202609090028_bot_rotation', '202609090028_bot_rotation', 29, 29))
+    .toBe('match')
+  // A database AHEAD by count is not behind — that is a deploy in flight.
+  expect(compareVersions('202609090029_x', '202609090028_y', 30, 29)).toBe('database-ahead')
+  // Counts unknown falls back to comparing ids, never to a false alarm.
+  expect(compareVersions('202609090028_a', '202609090028_a', null, null)).toBe('match')
+})
