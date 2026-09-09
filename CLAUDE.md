@@ -276,6 +276,24 @@ there: the baseline installs real pgcrypto **into the `extensions` schema**, and
 a preamble wrapper referencing it fails at creation time (the preamble runs
 first).
 
+**Bot quotes ROTATE, they are not drawn** (`202609090028_bot_rotation.sql`).
+The original picked with `order by md5(quote_id || user_id || date) limit 1` — a
+fresh uniform draw from the pool every morning. Uniform draws collide fast: with
+20 quotes the expected first repeat is about six days, and production agreed —
+34 bot messages had used only 17 distinct quotes, so half of everything the bots
+had ever said was a repeat. It now indexes the pool by (day number + a per-user
+phase), which is a cycle rather than a draw, so each person sees every quote
+before any of them comes round again. Same no-schedule-stored property the
+question of the day uses. **Adding quotes lengthens the cycle automatically; the
+pool size is read at run time.**
+
+**Bots are not users.** There are 5 seed bot accounts and (as of 9 Sep 2026)
+**3 real users** — so any query counting `profiles` without `where not is_bot`
+is wrong by 5. The signup-grant trigger and the founding grandfathering had both
+swept the bots in: 10 credit-ledger rows and 5 subscriptions for accounts that
+cannot log in, pay, or read a plan. Removed. A wrong denominator is how billing
+numbers start lying.
+
 **`recovery_hardening_2.sql`** — (1) `reset_password` changed the password but
 left `auth.sessions`/`auth.refresh_tokens` alone. GoTrue only checks the password
 at *sign-in*, never on refresh, so a session opened with the OLD password kept
