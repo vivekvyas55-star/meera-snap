@@ -32,8 +32,11 @@
   color: var(--muted);
 }
 
-/* The pill sits on a grey row, so the tones have to carry on --card. */
-.row-signal.urgent { background: var(--coral); color: #fff; }
+/* The pill sits on a grey row, so the tones have to carry on --card.
+   Coral carries INK, not white — that is the ABC rule for a coloured card,
+   and at 11px it is also the difference between 3.4:1 and 5.4:1. White on
+   coral stays where coral is a glyph tile rather than a word. */
+.row-signal.urgent { background: var(--coral); color: var(--ink); }
 .row-signal.action { background: var(--lime); }
 .row-signal.quiet { background: var(--card-press); color: var(--muted); }
 

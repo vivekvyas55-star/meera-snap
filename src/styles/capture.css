@@ -78,9 +78,12 @@
   max-width: calc(100% - 48px);
   padding: 9px var(--sp-4);
   border-radius: var(--r-pill);
-  background: rgba(0, 0, 0, 0.55);
+  /* The viewer's glass pill, from the shared tokens in index.css — four of
+     these had each picked their own black (0.42 / 0.45 / 0.5 / 0.55) while
+     sitting on the same screen. */
+  background: var(--glass);
   backdrop-filter: blur(10px);
-  color: rgba(255, 255, 255, 0.92);
+  color: var(--glass-ink);
   font-size: var(--fs-meta);
   line-height: 1.2;
   white-space: nowrap;
@@ -89,14 +92,14 @@
 
 .story-hint b {
   font-weight: 600;
-  color: #fff;
+  color: var(--on-fill);
 }
 
 .story-hint-dot {
   width: 3px;
   height: 3px;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.5);
+  background: var(--glass-line);
 }
 
 @keyframes story-hint-in {

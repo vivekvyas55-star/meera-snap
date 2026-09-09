@@ -1,4 +1,7 @@
-import { expect, test } from 'vitest'
+import { createElement } from 'react'
+import { afterEach, expect, test, vi } from 'vitest'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { CheckersBoard } from '../src/components/GameBoards'
 import {
   CELLS,
   applyPath,
@@ -14,6 +17,7 @@ import {
   movablePieces,
   ownerOf,
   pieceCounts,
+  renderOrder,
   resultAfter,
   rowOf,
   squaresOf,
@@ -213,4 +217,131 @@ test('a staged sequence knows when it is finished', () => {
 
   // An illegal hop is still illegal while staging.
   expect(stagePath(board, [at(5, 2), at(4, 1)], 'X').ok).toBe(false)
+})
+
+test('the board is turned around for O, and only on screen', () => {
+  // X's men start at the bottom and move up; O's start at the top and move
+  // down. Unflipped, the recipient sits behind the enemy line watching their
+  // own pieces march away from them. Reversing a row-major 8x8 is exactly a
+  // 180-degree rotation — the same board from the other side of the table.
+  const straight = renderOrder(false)
+  const flipped = renderOrder(true)
+  expect(straight).toHaveLength(CELLS)
+  expect(flipped).toHaveLength(CELLS)
+  expect(straight[0]).toBe(0)
+  expect(flipped[0]).toBe(CELLS - 1)
+  // Every square appears exactly once in either order: this is a permutation,
+  // not a filter, so nothing can be rendered twice or dropped.
+  expect([...flipped].sort((a, b) => a - b)).toEqual(straight)
+  // Turning it twice is the identity, which is what makes it a rotation.
+  expect([...flipped].reverse()).toEqual(straight)
+  // A dark square stays dark: playability follows the index, not the position
+  // on screen, so the two players see the same checkerboard.
+  expect(flipped.every((index, seat) => isPlayable(index) === isPlayable(straight[seat]))).toBe(true)
+  // And the two players are looking at the same 24 pieces, in mirrored seats.
+  const board = initialBoard()
+  expect(flipped.map((index) => board[index])).toEqual(straight.map((index) => board[index]).reverse())
+})
+
+test('a multi-jump is refused at every point short of the end', () => {
+  // The board stages a chain tap by tap; only the finished path is sent. Every
+  // prefix of a chain must be refused by applyPath — and by checkers_apply,
+  // which is the one that matters — or a player could stop halfway and leave a
+  // capture on the board that the rules say they had to take.
+  const board = put({
+    [at(7, 0)]: 'x',
+    [at(6, 1)]: 'o',
+    [at(4, 3)]: 'o',
+    [at(4, 1)]: 'o',
+    [at(2, 3)]: 'o',
+  })
+  const whole = [at(7, 0), at(5, 2), at(3, 4), at(1, 2)]
+  for (let cut = 2; cut < whole.length; cut += 1) {
+    const prefix = whole.slice(0, cut)
+    expect(applyPath(board, prefix, 'X').reason).toBe('Finish the jump')
+    // Staging accepts it and says what is still owed.
+    const staged = stagePath(board, prefix, 'X')
+    expect(staged.ok).toBe(true)
+    expect(staged.more.length).toBeGreaterThan(0)
+  }
+  const done = applyPath(board, whole, 'X')
+  expect(done.ok).toBe(true)
+  expect(done.captured).toBe(3)
+  expect(done.promoted).toBe(false)
+  expect(pieceCounts(done.board)).toEqual({ X: 1, O: 1, kings: { X: 0, O: 0 } })
+})
+
+test('a king chain can end where it began', () => {
+  // Four enemies around one square: the king takes all four and lands back on
+  // its own starting square. The path's first and last entries are the same
+  // index, which is the shape play_game_path has to survive when it decides
+  // whether a retried turn has already been played.
+  const board = put({
+    [at(4, 3)]: 'X',
+    [at(3, 2)]: 'o',
+    [at(1, 2)]: 'o',
+    [at(1, 4)]: 'o',
+    [at(3, 4)]: 'o',
+  })
+  const loop = [at(4, 3), at(2, 1), at(0, 3), at(2, 5), at(4, 3)]
+  const played = applyPath(board, loop, 'X')
+  expect(played.ok).toBe(true)
+  expect(played.captured).toBe(4)
+  expect(played.board[at(4, 3)]).toBe('X')
+  expect(squaresOf(played.board, 'O')).toEqual([])
+  expect(resultAfter(played.board, 'X')).toBe('X')
+})
+
+// --------------------------------------------------------------------------
+// The board that stages a multi-jump. Written with createElement rather than
+// JSX because this file is .js and the rules it tests are not React's; the
+// alternative was a second file that could drift from the rules above.
+// --------------------------------------------------------------------------
+afterEach(cleanup)
+
+const mount = (board, onMove) =>
+  render(createElement(CheckersBoard, { board, mark: 'X', revision: 1, disabled: false, onMove }))
+const square = (row, col) => screen.getByLabelText(new RegExp(`row ${row + 1}, column ${col + 1}$`))
+
+test('the board sends a whole multi-jump as ONE move, never the first hop', () => {
+  const onMove = vi.fn()
+  // x at (5,2) with two jumps in a row available, and a spare man that could
+  // move quietly if captures were not compulsory.
+  mount(put({ [at(5, 2)]: 'x', [at(4, 3)]: 'o', [at(2, 3)]: 'o', [at(5, 6)]: 'x' }), onMove)
+
+  // Compulsory capture, in the interface and not only in the rules: the man
+  // that cannot take is not a button you can press.
+  expect(square(5, 6).disabled).toBe(true)
+  expect(screen.getByRole('status').textContent).toMatch(/capture is available/i)
+
+  fireEvent.click(square(5, 2))
+  fireEvent.click(square(3, 4))
+  // The turn is NOT over — another jump is owed, and sending here would be a
+  // half-move the database refuses.
+  expect(onMove).not.toHaveBeenCalled()
+  // The staged board is what the next hop is chosen from: the piece has moved
+  // and the man it jumped is already gone.
+  expect(square(5, 2).textContent).toBe('')
+  expect(screen.getByRole('status').textContent).toMatch(/1 taken/)
+
+  fireEvent.click(square(1, 2))
+  expect(onMove).toHaveBeenCalledExactlyOnceWith([at(5, 2), at(3, 4), at(1, 2)])
+})
+
+test('a quiet move is one tap and one send, and Start over abandons a chain', () => {
+  const onMove = vi.fn()
+  mount(put({ [at(5, 2)]: 'x', [at(4, 3)]: 'o', [at(2, 3)]: 'o' }), onMove)
+  fireEvent.click(square(5, 2))
+  fireEvent.click(square(3, 4))
+  fireEvent.click(screen.getByRole('button', { name: 'Start over' }))
+  expect(onMove).not.toHaveBeenCalled()
+  // Back at the start: the man is where it was and can be picked again.
+  expect(square(5, 2).disabled).toBe(false)
+
+  cleanup()
+  const quiet = vi.fn()
+  mount(put({ [at(5, 2)]: 'x' }), quiet)
+  fireEvent.click(square(5, 2))
+  fireEvent.click(square(4, 3))
+  expect(quiet).toHaveBeenCalledExactlyOnceWith([at(5, 2), at(4, 3)])
 })

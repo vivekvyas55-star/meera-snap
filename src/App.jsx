@@ -4,6 +4,7 @@ import SchemaDriftBar from './components/SchemaDriftBar'
 import NotificationStack from './components/NotificationStack'
 import { StackSlot } from './components/NotificationStack'
 import { PRIORITY } from './lib/notifications'
+import { isKnownGame, titleOf } from './lib/games'
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { AuthProvider } from './hooks/AuthProvider'
 import { useAuth } from './hooks/useAuth'
@@ -136,7 +137,12 @@ function Shell() {
     if (!profileId) return
     const receiver = signalReceiver(profileId)
       .on('broadcast', { event: 'game_invite' }, ({ payload, peer }) => {
-        if (payload?.room && payload.game === 'ttt') {
+        // Any game in the catalogue, not just 'ttt'. Filtering on one id meant
+        // a Connect Four or Checkers invitation missed the realtime path
+        // entirely and only appeared seconds later when the database poll
+        // caught up — the invite arriving late is exactly the bug the merge in
+        // this file was written to fix.
+        if (payload?.room && isKnownGame(payload.game)) {
           const next = { ...payload, id: payload.invite_id, peer }
           setGameInvite(next)
           try { sessionStorage.setItem(`meera:pending-game:${profile.id}`, JSON.stringify(next)) } catch {}
@@ -333,7 +339,7 @@ function Shell() {
     {gameInvite && !playVisible && (
       <StackSlot priority={PRIORITY.game}>
       <div className="game-banner" role="status">
-        <div className="game-banner-copy"><strong>{gameInvite.peer?.display_name || gameInvite.peer?.username || 'A friend'}</strong> {gameInvite.response === 'accepted' ? 'accepted your invitation' : 'invited you to play'}<span>Private to you both · Tic-Tac-Toe</span></div>
+        <div className="game-banner-copy"><strong>{gameInvite.peer?.display_name || gameInvite.peer?.username || 'A friend'}</strong> {gameInvite.response === 'accepted' ? 'accepted your invitation' : 'invited you to play'}<span>Private to you both · {titleOf(gameInvite.game)}</span></div>
         <button type="button" className="game-banner-open" onClick={() => {
           if (gameInvite.response === 'accepted') {
             try { sessionStorage.setItem(`meera:resume-game:${profile.id}`, JSON.stringify(gameInvite)) } catch {}

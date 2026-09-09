@@ -78,18 +78,64 @@
   --danger-ink: #9c3024;
   --danger-solid: #9c3024;  /* filled destructive confirm; always white text */
   --warn-line: #dfbc8a;
-  --success: #2fbf71;
+  --success: #1f9d5b;      /* darkened from #2fbf71: 2.1:1 on a card is not a dot */
 
   --wash: rgba(22, 22, 26, 0.09);   /* a tint of the ink onto its own ground */
   --map-bg: #e6e6ea;        /* under OSM tiles, which are light in both schemes */
-  --shadow-1: rgba(22, 22, 26, 0.15);
+
+  /* The one ink that never moves: white ON a saturated fill — a coral badge, a
+     danger confirm, the hsl avatar gradient, an indigo card. It is not
+     --action-ink (which inverts with the scheme) and it is not --chrome-ink
+     (which belongs to the floating near-black chrome). Conflating the three is
+     how a badge ends up with black text on coral. */
+  --on-fill: #ffffff;
+
+  /* Elevation. Three steps, because a shadow is a hole in the ground and a
+     ground that changes has to change its holes with it — a 15%-black shadow
+     that reads as depth on white is invisible on #101014, so every card at
+     night looked pasted on. Nothing below this line writes a literal rgba
+     shadow; if a new surface floats, it picks a step.
+       0  resting, barely there   (a reaction badge on a bubble)
+       1  lifted                  (menus, the map panel, the QR tile)
+       2  floating over content   (sheets, banners, the desktop phone column) */
+  --shadow-0: 0 1px 4px rgba(22, 22, 26, 0.08);
+  --shadow-1: 0 6px 22px rgba(22, 22, 26, 0.12);
+  --shadow-2: 0 12px 34px rgba(22, 22, 26, 0.2);
+
+  /* The scrim behind a sheet. Darker at night — the same 35% over a near-black
+     ground barely separates the sheet from what it covers. */
+  --scrim: rgba(0, 0, 0, 0.35);
+
+  /* Glass pill on an IMMERSIVE surface (the camera, the snap and story
+     viewers). Those surfaces are deliberately fullscreen black in both
+     schemes, so these are fixed and appear in no dark block. They exist so the
+     four viewer chrome pills stop each picking their own black — 0.42, 0.45,
+     0.5 and 0.55 had all shipped, on elements sitting next to each other. */
+  --glass: rgba(0, 0, 0, 0.5);
+  --glass-strong: rgba(0, 0, 0, 0.62);
+  --glass-ink: rgba(255, 255, 255, 0.92);
+  --glass-muted: rgba(255, 255, 255, 0.72);
+  --glass-line: rgba(255, 255, 255, 0.5);
+
+  /* Wide screens only: the desk the 420px phone column sits on. Dark in both
+     schemes — the point is to disappear around the phone, and a white desk
+     under a white app has no column at all. */
+  --desk-bg: #0e0e10;
+  --desk-shadow: 0 24px 70px rgba(0, 0, 0, 0.45);
 
   /* Status-icon triad. Shape and fill carry the meaning; these only tint it.
-     Snapchat's red/blue/purple mapped onto the reference palette. */
+     Snapchat's red/blue/purple mapped onto the reference palette.
+
+     The tints are measured against the row they sit on, because a status icon
+     that cannot be seen is not a status. Two failed on white and were moved:
+     the voice tint was --lavender itself, which is 1.9:1 on a light card (a
+     fill colour asked to be a foreground), and --pending was 2.1:1. Both are
+     graphics, so 3:1 is the bar; they now clear it. At night the ground is
+     dark enough that plain lavender is 8:1, and the dark block puts it back. */
   --chat: var(--accent);
   --snap: var(--coral);
-  --snap-audio: var(--lavender);
-  --pending: #a8a8ad;
+  --snap-audio: #8748d0;    /* the lavender hue, dropped until it reads on white */
+  --pending: #84848b;
 
   --r-card: 20px;           /* cards */
   --r-row: 16px;            /* list rows */
@@ -191,8 +237,20 @@
 
     --wash: rgba(255, 255, 255, 0.12);
     --map-bg: #1a1a20;
-    --shadow-1: rgba(0, 0, 0, 0.55);
     --pending: #7d7b88;
+    --snap-audio: var(--lavender);   /* 8:1 on a dark card — no deepening needed */
+
+    /* Deeper and wider. A shadow tuned for white has nothing left to darken
+       on a #101014 ground, so every floating thing lost its edge; these are
+       what puts the sheet back in front of the screen instead of on it. */
+    --shadow-0: 0 1px 4px rgba(0, 0, 0, 0.5);
+    --shadow-1: 0 6px 22px rgba(0, 0, 0, 0.6);
+    --shadow-2: 0 14px 40px rgba(0, 0, 0, 0.7);
+    --scrim: rgba(0, 0, 0, 0.62);
+
+    /* --on-fill, --glass* and the four vibrant hues are absent on purpose:
+       white on coral is white on coral at 2am, and the immersive surfaces were
+       already black. */
   }
 }
 
@@ -208,7 +266,18 @@
    This is also the reason an inline `style={{ background: 'var(--lavender)' }}`
    is a dark-mode bug: it paints the fill without entering this context, so the
    text inside stays on the themed --ink and disappears at night. Those are
-   listed out in the handover.
+   listed out in the handover. `.fp-stat` is one of them and is listed below,
+   which pins its ink even while the fill stays inline.
+
+   THE LIST IS THE CONTRACT, and it lives here rather than beside each rule
+   because a selector missing from it fails silently and only after dark. It
+   deliberately names selectors owned by other files — .row-signal (chatlist),
+   .tg-hero / .tg-capsule (together), .pc-card.* / .pc-hero (privacy) — since
+   what matters is that the element enters the context, not which file drew it.
+   Anything painted --lavender / --lime / --coral that contains a word belongs
+   here. (Still outstanding when this was written: the vibrant pieces in
+   styles/games.css — .c4-cell.mark-*, .ck-o — which are discs today and would
+   need adding the moment they carry a glyph.)
    -------------------------------------------------------------------------- */
 .dq,
 .dq-chip.waiting,
@@ -222,6 +291,10 @@
 .story-add,
 .story-tile.is-new,
 .in-chat,
+.fp-stat,
+.row-signal.urgent,
+.tg-hero,
+.tg-capsule,
 .plan-note,
 .plan-card.best,
 .credit-tile,
@@ -241,7 +314,8 @@
 .pc-card.lime,
 .pc-card.coral {
   --ink: #16161a;
-  --muted: rgba(22, 22, 26, 0.62);
+  /* 0.62 left the sub-line on a lavender card at 3.7:1. */
+  --muted: rgba(22, 22, 26, 0.72);
   --hairline: rgba(22, 22, 26, 0.16);
   --card: rgba(255, 255, 255, 0.55);
   --card-press: rgba(255, 255, 255, 0.72);
@@ -251,6 +325,11 @@
   --action: #16161a;
   --action-press: #000000;
   --action-ink: #ffffff;
+  /* The dark scheme's shadows are tuned to bite into #101014; on a lavender
+     card they read as soot. */
+  --shadow-0: 0 1px 4px rgba(22, 22, 26, 0.1);
+  --shadow-1: 0 6px 22px rgba(22, 22, 26, 0.14);
+  --shadow-2: 0 12px 34px rgba(22, 22, 26, 0.22);
   color: var(--ink);
 }
 
@@ -265,7 +344,8 @@
 .tabbar,
 .kept-preview {
   --ink: #ffffff;
-  --muted: rgba(255, 255, 255, 0.7);
+  /* 0.7 was 4.0:1 on indigo, the darkest of the fixed-dark grounds. */
+  --muted: rgba(255, 255, 255, 0.8);
   --hairline: rgba(255, 255, 255, 0.18);
   --card: rgba(255, 255, 255, 0.16);
   --card-press: rgba(255, 255, 255, 0.24);
@@ -288,8 +368,48 @@ body { height: 100vh; height: 100dvh; }
 button { font: inherit; border: none; background: none; cursor: pointer; color: inherit; }
 input, textarea { font: inherit; }
 
-/* Oversized, light-weight page title — the reference's most distinctive move. */
-.display {
+/* ==========================================================================
+   GLOBAL NAMES THAT SWALLOW MARKUP
+
+   A bare one-word selector in this file paints EVERY element in the app that
+   happens to carry that word. It has already cost a real bug: `.error` turns
+   anything with the class into a padded pink alert card, so a component that
+   meant "this line of text is in an error state" rendered as a full-width
+   alert until it was renamed. The failure is silent in the worst way — the
+   markup is right, the class is right, and the screen is wrong.
+
+   Three rules, in the order to reach for them:
+
+   1. A STATE on an existing element is `is-*` — `.is-error`, `.is-unread`,
+      `.is-new`. Never a bare adjective.
+   2. A rule that belongs to ONE screen is scoped to the container that screen
+      renders — see `.viewer .timer` / `.viewer .progress` / `.viewer .tapzone`
+      below, three of the most collidable names in the file, each defused by
+      the ancestor rather than by a rename.
+   3. Anything genuinely shared carries a prefix that says which system it is
+      from (`pc-`, `dq-`, `mk-`, `play-`, `tg-`).
+
+   The bare names that remain are load-bearing patterns with real markup behind
+   them, and cannot be renamed from CSS alone. They are, with what they paint:
+
+     .row .list .empty .field .chip .circle .header .error   — the list/form
+       vocabulary, 6-23 uses each. Do not reuse the word for anything else.
+     .avatar .ring .msg .seg .section .eyebrow .thread .toast .typing
+       .composer .shutter .viewer .camera .sheet .app .pane .auth .pinlock
+       .snapcode .install .greeting .charms .fp .qcard .qcards .dino .burst
+       .tapback .tapbacks .mk                                — one owner each.
+
+   Two were found unowned — nothing in src renders them — and have been
+   namespaced here rather than left loaded: `.display` → `.display-title` and
+   `.badge` → `.count-badge`. `.badge` in particular was a full coral pill with
+   no user, while `.kept-badge`, `.plan-badge` and `.qcards-badge` each define
+   their own; the next `className="badge"` anywhere in the app would have gone
+   coral for no reason.
+   ========================================================================== */
+
+/* Oversized, light-weight title for a surface with no .header of its own.
+   (`.header h1` is the same move for a screen that does have one.) */
+.display-title {
   font-size: var(--fs-display);
   font-weight: 300;
   letter-spacing: -0.03em;
@@ -310,6 +430,28 @@ input, textarea { font: inherit; }
    ========================================================================== */
 .app { position: relative; height: 100dvh; width: 100%; overflow: hidden; background: var(--bg); }
 
+/* --------------------------------------------------------------------------
+   ESCAPE HATCH — delete this the day the inline styles go.
+
+   Profile, Plans, Memories and PlayTogether each render their whole screen as
+   `<div className="app" style={{ …, background: '#fff' }}>`. An inline
+   declaration outranks every selector in this file, so at night those four
+   screens stayed white while --ink went near-white: white text on a white
+   ground, four entire screens, and no rule here could reach them.
+
+   `!important` is the only lever CSS has against an inline style, and it is
+   used exactly once, on exactly this. .app is `background: var(--bg)` anyway,
+   so the three screens that carry an inline style for LAYOUT only (Chat,
+   SnapMap, the pager's own hidden state) are unaffected by it.
+
+   The real fix is a class — `.screen` — on those four elements; it is listed
+   in the handover with the other blocking inline styles. When it lands, this
+   block should go with them.
+   -------------------------------------------------------------------------- */
+@media (prefers-color-scheme: dark) {
+  .app[style] { background: var(--bg) !important; }
+}
+
 .pager {
   display: flex; height: 100%; width: 300%;
   transition: transform 260ms cubic-bezier(0.22, 0.61, 0.36, 1);
@@ -324,11 +466,11 @@ input, textarea { font: inherit; }
 }
 
 @media (min-width: 560px) {
-  body { display: grid; place-items: center; background: #0e0e10; }
+  body { display: grid; place-items: center; background: var(--desk-bg); }
   .app, .auth {
     width: 420px; max-width: 100%;
     height: min(100dvh, 900px);
-    box-shadow: 0 24px 70px rgba(0, 0, 0, 0.45);
+    box-shadow: var(--desk-shadow);
     border-radius: 30px; overflow: hidden;
   }
   /* Overlays are portaled to <body> to escape the pager's transform, so on a
@@ -396,7 +538,7 @@ input, textarea { font: inherit; }
 .avatar {
   width: 46px; height: 46px; border-radius: 50%;
   display: grid; place-items: center;
-  font-weight: 500; color: #fff; font-size: 17px;
+  font-weight: 500; color: var(--on-fill); font-size: 17px;
   flex: 0 0 auto; user-select: none; letter-spacing: -0.02em;
 }
 .avatar.sm { width: 34px; height: 34px; font-size: 13px; }
@@ -441,7 +583,7 @@ input, textarea { font: inherit; }
 }
 .presence-dot.live {
   background: var(--success);
-  box-shadow: 0 0 0 2px rgba(47, 191, 113, 0.22);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--success) 22%, transparent);
 }
 .presence-dot.off { background: var(--hairline); }
 
@@ -457,7 +599,7 @@ input, textarea { font: inherit; }
   padding: 2px 8px;
   font-size: 14px;
   line-height: 1.2;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+  box-shadow: var(--shadow-0);
 }
 /* Floating this pushed it out of flow: the meta line wrapped around it and it
    rode up over the bubble's top-right corner, half-clipped. It now sits in
@@ -651,7 +793,7 @@ input, textarea { font: inherit; }
 .msg-photo .pt-thumb {
   width: 42px; height: 42px; border-radius: 13px; flex: 0 0 auto;
   display: grid; place-items: center;
-  background: var(--coral); color: #fff;
+  background: var(--coral); color: var(--on-fill);
 }
 .msg-photo.opened .pt-thumb { background: var(--card-2); color: var(--muted); }
 .msg-photo .pt-text { flex: 1; display: flex; flex-direction: column; min-width: 0; }
@@ -666,15 +808,18 @@ input, textarea { font: inherit; }
 .leaflet-container { background: var(--map-bg); font-family: var(--font); }
 .map-avatar {
   width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center;
-  font-size: 18px; font-weight: 700; color: #16161a;
-  border: 3px solid #fff; box-shadow: 0 3px 10px rgba(0, 0, 0, 0.3);
+  font-size: 18px; font-weight: 700;
+  /* Pinned, not themed: this floats on OSM tiles, which are light at 2am too.
+     Reading --ink here would put white-on-lavender over a white street map. */
+  color: #16161a;
+  border: 3px solid var(--on-fill); box-shadow: 0 3px 10px rgba(0, 0, 0, 0.3);
 }
 .map-panel {
   position: absolute; left: 12px; right: 12px; bottom: calc(var(--safe-bottom) + 16px); z-index: 1000;
   background: var(--bg); border-radius: var(--r-card);
   /* 16px/18px + a 12px gap first, then the token steps. Tokens won. */
   padding: var(--sp-4); gap: var(--sp-3);
-  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.2); display: flex; flex-direction: column;
+  box-shadow: var(--shadow-2); display: flex; flex-direction: column;
 }
 .map-panel-txt { font-size: 14px; color: var(--ink); line-height: 1.45; }
 
@@ -749,7 +894,7 @@ input, textarea { font: inherit; }
   /* Stays white in both schemes: a QR on a dark tile does not scan. */
   background: #fff; border-radius: 24px; padding: 16px;
   width: 232px; height: 232px; display: grid; place-items: center;
-  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--shadow-1);
 }
 .snapcode-tile img { width: 100%; height: 100%; display: block; }
 .snapcode-loading { color: var(--muted); font-size: 26px; }
@@ -766,7 +911,7 @@ input, textarea { font: inherit; }
 .mem-thumb img, .mem-thumb video { width: 100%; height: 100%; object-fit: cover; display: block; }
 .mem-ph { width: 100%; height: 100%; background: var(--card); }
 .mem-play {
-  position: absolute; bottom: 6px; right: 8px; color: #fff; font-size: 13px;
+  position: absolute; bottom: 6px; right: 8px; color: var(--on-fill); font-size: 13px;
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
 }
 .mem-actions {
@@ -774,7 +919,7 @@ input, textarea { font: inherit; }
   left: 0; right: 0; z-index: 3; padding: 0 12px;
   display: flex; justify-content: center; gap: 8px; flex-wrap: wrap;
 }
-.viewer .pill.danger { background: var(--coral); color: #fff; }
+.viewer .pill.danger { background: var(--coral); color: var(--on-fill); }
 
 /* Snap editor — draw & text over a captured photo */
 .snap-edit { position: absolute; inset: 0; touch-action: none; }
@@ -819,7 +964,7 @@ input, textarea { font: inherit; }
 }
 .call-ring { display: flex; flex-direction: column; align-items: center; gap: 10px; }
 .call-name { font-size: 26px; font-weight: 300; letter-spacing: -0.02em; }
-.call-sub { color: rgba(255, 255, 255, 0.7); font-size: 15px; }
+.call-sub { color: var(--glass-muted); font-size: 15px; }
 .call-sub.light, .call-name.light { color: #fff; }
 .call-ring-actions { display: flex; gap: 46px; margin-top: 42px; }
 .call-btn {
@@ -906,7 +1051,7 @@ input, textarea { font: inherit; }
 .cam-error-help {
   margin: var(--sp-2) 0 0;
   font-size: var(--fs-meta); line-height: 1.55;
-  color: rgba(255, 255, 255, 0.72);
+  color: var(--glass-muted);
 }
 /* White pill on the black card: the primary action on this surface, matching
    the dark circular button's role everywhere else. It is on a fullscreen black
@@ -932,7 +1077,7 @@ input, textarea { font: inherit; }
 .cam-filters::-webkit-scrollbar { display: none; }
 .cam-filter {
   flex: 0 0 auto; min-height: 44px; padding: 10px 15px; border-radius: var(--r-pill);
-  background: rgba(0, 0, 0, 0.4); color: #fff; font-size: 13px; font-weight: 500;
+  background: var(--glass); color: var(--on-fill); font-size: 13px; font-weight: 500;
   -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
 }
 .cam-filter.on { background: #fff; color: var(--ink); }
@@ -963,8 +1108,8 @@ input, textarea { font: inherit; }
 /* Scoped for the same reason as .tray. (Nothing renders it today.) */
 .camera .caption-input {
   position: absolute; left: 0; right: 0; top: 45%;
-  background: rgba(0, 0, 0, 0.42); border: none; outline: none;
-  color: #fff; text-align: center; font-size: 17px; padding: 14px; z-index: 3;
+  background: var(--glass); border: none; outline: none;
+  color: var(--on-fill); text-align: center; font-size: 17px; padding: 14px; z-index: 3;
 }
 
 /* ==========================================================================
@@ -974,12 +1119,12 @@ input, textarea { font: inherit; }
 .viewer img { width: 100%; height: 100%; object-fit: contain; }
 .viewer-caption {
   position: absolute; left: 0; right: 0; top: 50%; transform: translateY(-50%);
-  background: rgba(0, 0, 0, 0.42); color: #fff;
+  background: var(--glass); color: var(--on-fill);
   text-align: center; padding: 14px; font-size: 17px;
 }
 .viewer-loading {
   position: absolute; inset: 0; display: grid; place-items: center;
-  color: rgba(255, 255, 255, 0.7); font-size: 15px;
+  color: var(--glass-muted); font-size: 15px;
 }
 
 /* Story "seen by" — eye pill bottom-left of your own story, and its list. */
@@ -987,7 +1132,7 @@ input, textarea { font: inherit; }
   position: absolute; z-index: 3;
   left: 14px; bottom: calc(var(--safe-bottom) + 20px);
   display: inline-flex; align-items: center; gap: 6px;
-  background: rgba(0, 0, 0, 0.5); color: #fff;
+  background: var(--glass); color: var(--on-fill);
   backdrop-filter: blur(8px);
   border-radius: 999px; padding: 9px 15px; font-size: 14px; font-weight: 500;
 }
@@ -1003,7 +1148,11 @@ input, textarea { font: inherit; }
   max-height: 70dvh; overflow-y: auto;
 }
 .seen-body h3 { margin: 0 0 12px; font-size: 20px; font-weight: 300; letter-spacing: -0.02em; }
-.seen-body .row { padding: 8px 4px; margin: 0; }
+/* The "seen by" list borrows .row for its shape but sits on the sheet, not on
+   the app ground, so it must not bring .row's card fill with it. Stories.jsx
+   was cancelling that fill with an inline `background: 'transparent'` — the
+   scoped rule is what makes that inline style deletable. */
+.seen-body .row { padding: 8px 4px; margin: 0; background: none; }
 .viewer-top {
   position: absolute; top: calc(var(--safe-top) + 12px); left: 12px; right: 12px;
   display: flex; align-items: center; gap: 10px; color: #fff; z-index: 2;
@@ -1205,7 +1354,7 @@ input, textarea { font: inherit; }
   background: var(--chrome); border-radius: 26px;
   /* 9px 6px, then 7px on top. 7px won. */
   padding: 7px;
-  box-shadow: 0 8px 24px var(--shadow-1);
+  box-shadow: var(--shadow-2);
 }
 .tabbar button {
   flex: 1; display: flex; flex-direction: column; align-items: center;
@@ -1224,9 +1373,10 @@ input, textarea { font: inherit; }
 /* ==========================================================================
    Misc
    ========================================================================== */
-.badge {
+/* Unread count. Was `.badge` — see "global names that swallow markup". */
+.count-badge {
   min-width: 19px; height: 19px; padding: 0 6px;
-  border-radius: var(--r-pill); background: var(--coral); color: #fff;
+  border-radius: var(--r-pill); background: var(--coral); color: var(--on-fill);
   font-size: 11px; font-weight: 600; display: grid; place-items: center;
 }
 /* ==========================================================================
@@ -1277,7 +1427,7 @@ input, textarea { font: inherit; }
 
 .sheet {
   position: fixed; inset: 0; z-index: 60;
-  background: rgba(0, 0, 0, 0.35);
+  background: var(--scrim);
   display: flex; align-items: flex-end;
 }
 .sheet-body {
@@ -1299,7 +1449,7 @@ input, textarea { font: inherit; }
   display: flex; align-items: center; gap: 12px;
   background: var(--chrome); color: var(--chrome-ink);
   border-radius: var(--r-card); padding: 12px 14px;
-  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.28);
+  box-shadow: var(--shadow-2);
 }
 .install-icon { border-radius: 11px; flex: 0 0 auto; }
 .install-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
@@ -1448,7 +1598,7 @@ input, textarea { font: inherit; }
 .dq-form textarea {
   width: 100%; border: none; border-radius: 14px; padding: 11px 13px;
   font-size: 16px; font-family: inherit; resize: none; outline: none;
-  background: rgba(255, 255, 255, 0.7); color: var(--ink);
+  background: var(--card-press); color: var(--ink);
 }
 .dq-actions {
   display: flex; align-items: center; gap: 10px; margin-top: 10px;
@@ -1456,8 +1606,8 @@ input, textarea { font: inherit; }
 .dq-hint { flex: 1; font-size: 11.5px; opacity: 0.75; line-height: 1.3; }
 .dq-actions .btn-dark { width: auto; padding: 10px 18px; margin: 0; flex: 0 0 auto; }
 .dq-answers { display: flex; flex-direction: column; gap: 10px; }
-.dq-answer { background: rgba(255, 255, 255, 0.72); border-radius: 14px; padding: 10px 13px; }
-.dq-answer.mine { background: rgba(255, 255, 255, 0.45); }
+.dq-answer { background: var(--card-press); border-radius: 14px; padding: 10px 13px; }
+.dq-answer.mine { background: var(--card); }
 .dq-who {
   font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em;
   opacity: 0.6; margin-bottom: 3px;
@@ -1472,7 +1622,12 @@ input, textarea { font: inherit; }
    (The --muted / --card / --card-press values this block used to re-declare
    won, and now live in the token block at the top of the file.) */
 button, a, input, textarea, select { touch-action: manipulation; }
-button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible {
+/* One focus ring for the whole app. `summary` is in the list because the two
+   <details> disclosures in Profile are keyboard targets that are not buttons —
+   they had grown their own rings (3px accent in one place, 2px ink in another)
+   purely because this selector did not reach them. */
+button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visible,
+select:focus-visible, summary:focus-visible {
   outline: 3px solid var(--accent); outline-offset: 3px;
 }
 button:disabled { cursor: not-allowed; }
@@ -1498,6 +1653,9 @@ button:disabled { cursor: not-allowed; }
   .row:hover { background: var(--card-press); }
   .circle:hover { background: var(--card); }
   .circle.dark:hover { background: var(--action-press); }
+  /* The bar is a fixed-DARK context in both schemes, so this hover is a
+     literal white wash and not --card (0.16) — the hover has to stay quieter
+     than the active pill it sits beside. */
   .tabbar button:not(.active):hover { background: rgba(255, 255, 255, 0.09); }
 }
 
@@ -1662,7 +1820,7 @@ button:disabled { cursor: not-allowed; }
   border-radius: var(--r-pill);
   background: var(--chrome); color: var(--chrome-ink);
   font-size: 13.5px; font-weight: 500;
-  box-shadow: 0 6px 20px var(--shadow-1);
+  box-shadow: var(--shadow-1);
 }
 .composer-wrap { position: relative; flex: 0 0 auto; }
 
@@ -1732,7 +1890,7 @@ button:disabled { cursor: not-allowed; }
 }
 .kept-badge {
   position: absolute; right: 6px; bottom: 5px;
-  font-size: 11px; color: #fff;
+  font-size: 11px; color: var(--on-fill);
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
 }
 
@@ -1868,7 +2026,7 @@ button:disabled { cursor: not-allowed; }
   position: absolute; z-index: 1; top: 8px; right: 8px; width: 38px; height: 38px;
   border-radius: 50%; background: rgba(22,22,26,.72); color: #fff; font-size: 24px; line-height: 1;
 }
-.viewer-privacy-note { color: rgba(255,255,255,.72); font-size: 12px; padding: 11px 4px; }
+.viewer-privacy-note { color: var(--glass-muted); font-size: 12px; padding: 11px 4px; }
 
 /* Friend profile — opened by tapping the chat header. Line icons instead of
    emoji chrome, one vibrant colour per stat card, list rows for actions. */
@@ -1945,7 +2103,7 @@ button:disabled { cursor: not-allowed; }
 .confirm-actions .btn-dark { flex: 1; min-height: 48px; }
 /* Filled destructive confirm: it is a .btn-dark, whose ink follows --action-ink,
    so the white has to be restated or it inverts at night. */
-.confirm-danger { background: var(--danger-solid); color: #fff; }
+.confirm-danger { background: var(--danger-solid); color: var(--on-fill); }
 
 /* Offline: every action other than a text chat fails with a raw toast, so the
    app should at least say why. */
@@ -1954,6 +2112,8 @@ button:disabled { cursor: not-allowed; }
 /* Own-story actions sit together at the bottom of the viewer. */
 .viewer-mine-actions { position: absolute; left: 16px; bottom: calc(var(--safe-bottom) + 18px); display: flex; gap: 8px; }
 .viewer-mine-actions .viewer-seen { position: static; }
+/* Pinned: --danger-ink is a dark red in daylight, and this sits on the
+   viewer's permanent black. */
 .viewer-seen.danger { color: #ffb3a6; }
 
 /* Plans. Built but inert — nothing here gates the app until billing is
@@ -1984,7 +2144,7 @@ button:disabled { cursor: not-allowed; }
    indigo per the palette rules. */
 .credit-hero {
   margin: 6px 0 4px; padding: 20px 18px 18px;
-  border-radius: var(--r-card); background: var(--indigo); color: #fff;
+  border-radius: var(--r-card); background: var(--indigo); color: var(--on-fill);
 }
 .credit-hero-top { display: flex; align-items: center; gap: 7px; opacity: 0.8; }
 .credit-hero-eyebrow {
@@ -2097,7 +2257,7 @@ button:disabled { cursor: not-allowed; }
 .play-waiting .play-chip-dot, .play-away .play-chip-dot { background: var(--muted); }
 @keyframes pulse-dot { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
 
-.game-banner { width: 100%; display: flex; align-items: center; gap: 10px; padding: 12px 12px 12px 15px; border-radius: 18px; background: var(--chrome); color: var(--chrome-ink); box-shadow: 0 12px 30px rgba(22,22,26,.24); }
+.game-banner { width: 100%; display: flex; align-items: center; gap: 10px; padding: 12px 12px 12px 15px; border-radius: 18px; background: var(--chrome); color: var(--chrome-ink); box-shadow: var(--shadow-2); }
 .game-banner-copy { min-width: 0; flex: 1; font-size: 13px; line-height: 1.25; }
 .game-banner-copy strong { margin-right: 4px; }
 .game-banner-copy span { display: block; margin-top: 3px; color: var(--chrome-muted); font-size: 11px; }
@@ -2133,7 +2293,7 @@ button:disabled { cursor: not-allowed; }
 .ttt-cell.mark-o { color: #9b4737; background: #f5d8ce; }
 .game-chat { margin: 18px 0 12px; border: 1px solid var(--hairline); border-radius: 18px; background: var(--card); overflow: hidden; }
 .game-chat-toggle { width: 100%; min-height: 48px; padding: 0 14px; display: flex; align-items: center; justify-content: space-between; color: var(--ink); font-weight: 550; text-align: left; }
-.game-chat-unread { min-width: 22px; height: 22px; padding: 0 6px; display: inline-flex; align-items: center; justify-content: center; border-radius: 999px; background: var(--indigo); color: white; font-size: 11px; }
+.game-chat-unread { min-width: 22px; height: 22px; padding: 0 6px; display: inline-flex; align-items: center; justify-content: center; border-radius: 999px; background: var(--indigo); color: var(--on-fill); font-size: 11px; }
 .game-chat-messages { max-height: 180px; padding: 4px 12px 10px; display: flex; flex-direction: column; gap: 6px; overflow-y: auto; overscroll-behavior: contain; }
 .game-chat-empty { padding: 14px 4px; color: var(--muted); font-size: 12.5px; text-align: center; }
 .game-chat-bubble { align-self: flex-start; max-width: 82%; padding: 8px 11px; border-radius: 13px 13px 13px 4px; background: var(--surface); font-size: 13px; line-height: 1.35; overflow-wrap: anywhere; }
@@ -2153,7 +2313,7 @@ button:disabled { cursor: not-allowed; }
   padding: 16px; border-radius: var(--r-card); text-align: left; color: var(--ink);
 }
 .play-card:active { filter: brightness(0.97); }
-.play-card .fp-row-icon { background: #ffffffa8; }
+.play-card .fp-row-icon { background: var(--card-press); }
 .play-title { font-size: 16px; font-weight: 500; }
 .play-sub { font-size: 12.5px; opacity: 0.72; margin-top: 2px; }
 .play-soon { margin-left: auto; font-size: 11px; }
@@ -2196,6 +2356,31 @@ button:disabled { cursor: not-allowed; }
   100% {
     opacity: 0;
     transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) scale(var(--s));
+  }
+}
+
+/* --------------------------------------------------------------------------
+   REDUCED MOTION — the global rule the rest of the app already assumed.
+
+   The comment above, the one in styles/capture.css, the one in styles/games.css
+   and HeartBurst.jsx all say "the global prefers-reduced-motion rule collapses
+   every duration to 0.01ms, so this one-shot degrades to its finished state".
+   It was not in the file. Four places documented a rule that did not exist, and
+   every entrance animation, the tapback burst, the skeleton pulse and the two
+   status dots ran at full speed for someone who had asked the OS for none of
+   it. (privacy.css and capture.css each stop their own; nothing stopped these.)
+
+   0.01ms rather than `none` on purpose: a keyframe still runs, so it still
+   lands on its end state and `animationend` still fires — `animation: none`
+   would leave anything waiting on that event hanging. `iteration-count: 1` is
+   what actually stops the infinite pulses, which a duration alone does not.
+   -------------------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }
 

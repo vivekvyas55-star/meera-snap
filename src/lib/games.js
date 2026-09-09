@@ -12,7 +12,7 @@
 // already speak that language.
 
 import { supabase } from './supabase'
-import { createGameInvite as createTicTacToeInvite } from './db'
+import { createGameInvite as createTicTacToeInvite, playGameMove } from './db'
 import { emptyBoard as emptyC4 } from './connectFour'
 import { initialBoard as initialCheckers } from './checkers'
 
@@ -60,6 +60,11 @@ export const gameOf = (id) => GAMES[id] ?? GAMES.ttt
 
 export const titleOf = (id) => gameOf(id).title
 
+// `gameOf` falls back to Tic-Tac-Toe for an unknown id, which is right for
+// rendering a room but wrong for deciding whether a broadcast is ours. The
+// invite banner needs the strict question.
+export const isKnownGame = (id) => Object.prototype.hasOwnProperty.call(GAMES, id)
+
 // Start a game. db.js's createGameInvite is the existing, tested entry point
 // for Tic-Tac-Toe and is left carrying it, so widening the catalogue does not
 // add a second way to open the game that already worked. Both call the one RPC.
@@ -73,6 +78,15 @@ export async function createInvite(otherId, room, game) {
   })
   if (error) throw error
   return data
+}
+
+// One turn of ANY game in the catalogue. This is the reason the room screen
+// has no `if (game === 'checkers')` in it: it holds a move — whatever a move is
+// for this game — and hands it to the entry point the catalogue names.
+export function playTurn(game, invite, move, expectedRevision) {
+  return gameOf(game).move === 'path'
+    ? playGamePath(invite, move, expectedRevision)
+    : playGameMove(invite, move, expectedRevision)
 }
 
 // A whole turn for a path game. The database validates the sequence, derives

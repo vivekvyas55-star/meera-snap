@@ -336,9 +336,160 @@ await asUser(A,async()=>{
  assert.equal(row.sender_wins,1); assert.equal(row.recipient_wins,0); assert.equal(row.draws,0)
 })
 console.log('PASS rematch resets the board, alternates who starts, and is idempotent')
+// --------------------------------------------------------------------------
+// Connect Four and Checkers live in the SAME room as Tic-Tac-Toe, so the
+// invitation, acceptance, presence, rematch and score are already covered
+// above. What is asserted here is only what a new game adds — and, for
+// Checkers, the one thing a client must never be trusted with: a whole
+// multi-jump sequence, re-walked hop by hop on the server.
+// --------------------------------------------------------------------------
+assert.equal((await query("select array_length(game_initial_board('c4'),1) n"))[0].n, 42)
+assert.equal((await query("select array_length(game_initial_board('checkers'),1) n"))[0].n, 64)
+assert.equal((await query("select array_length(game_initial_board('ttt'),1) n"))[0].n, 9)
+// Twelve a side, on dark squares only, and the two middle rows empty.
+assert.deepEqual((await query(`select
+  (select count(*) from unnest(game_initial_board('checkers')) with ordinality t(c,i) where c='x')::int x,
+  (select count(*) from unnest(game_initial_board('checkers')) with ordinality t(c,i) where c='o')::int o,
+  (select count(*) from unnest(game_initial_board('checkers')) with ordinality t(c,i)
+     where c<>'' and ((i-1)/8 + (i-1)%8) % 2 = 0)::int on_light,
+  (select count(*) from unnest(game_initial_board('checkers')) with ordinality t(c,i)
+     where c<>'' and (i-1) between 24 and 39)::int in_the_middle`))[0],
+  { x:12, o:12, on_light:0, in_the_middle:0 })
+
+let c4
+await asUser(A, async () => { c4=(await query("select * from create_game_invite($1,'c4','c4-room')",[B]))[0] })
+await asUser(B, () => query("select resolve_game_invite($1,'accepted')",[c4.id]))
+await asUser(A, async () => {
+  // GRAVITY IS THE SERVER'S. The move is a column; the client cannot name the
+  // cell, and a column is not a square — 0 is the BOTTOM of the first column.
+  const first=(await query('select * from play_game_move($1,0,0)',[c4.id]))[0]
+  assert.equal(first.board[35], 'X')   // row 5, col 0
+  assert.equal(first.board[0], '')     // NOT the top-left cell
+  assert.equal(first.revision, 1)
+  // A retried drop after a timeout is the disc on top of that column, not a
+  // second one.
+  const retry=(await query('select * from play_game_move($1,0,0)',[c4.id]))[0]
+  assert.equal(retry.revision, 1)
+  assert.equal(retry.board.filter((c)=>c==='X').length, 1)
+  await assert.rejects(query('select play_game_move($1,7,1)',[c4.id]),/Invalid move/)
+  await assert.rejects(query('select play_game_move($1,1,1)',[c4.id]),/legal move/) // not my turn
+  // Checkers' entry point is refused on a Connect Four room, and vice versa.
+  await assert.rejects(query('select play_game_path($1,array[0,1],1)',[c4.id]),/Wrong move/)
+})
+// Four along the bottom wins, and the win is the server's to notice.
+await asUser(B,()=>query('select play_game_move($1,6,1)',[c4.id]))
+await asUser(A,()=>query('select play_game_move($1,1,2)',[c4.id]))
+await asUser(B,()=>query('select play_game_move($1,6,3)',[c4.id]))
+await asUser(A,()=>query('select play_game_move($1,2,4)',[c4.id]))
+await asUser(B,()=>query('select play_game_move($1,6,5)',[c4.id]))
+await asUser(A, async () => {
+  const win=(await query('select * from play_game_move($1,3,6)',[c4.id]))[0]
+  assert.equal(win.result,'X')
+  assert.equal(win.sender_wins,1)
+  await assert.rejects(query('select play_game_move($1,4,7)',[c4.id]),/legal move/)
+})
+// A full column is refused rather than silently dropped on the floor.
+await asUser(A,()=>query('select rematch_game($1)',[c4.id]))
+for (const [who,rev] of [[B,7],[A,8],[B,9],[A,10],[B,11],[A,12]]) {
+  await asUser(who,()=>query('select play_game_move($1,3,$2)',[c4.id,rev]))
+}
+await asUser(B, async () => {
+  await assert.rejects(query('select play_game_move($1,3,13)',[c4.id]),/legal move/)
+  const elsewhere=(await query('select * from play_game_move($1,4,13)',[c4.id]))[0]
+  assert.equal(elsewhere.board[39],'O')  // row 5, col 4
+})
+console.log('PASS connect four: gravity is server-side, a retried drop is one disc, a full column is refused, four in a row is scored')
+
+// --------------------------------------------------------------------------
+// Checkers. A multi-jump is ONE turn, so the whole sequence arrives as a path
+// and every hop of it is re-walked here. A client that submits its own jump
+// chain could otherwise claim any board it liked.
+// --------------------------------------------------------------------------
+let ck
+await asUser(A, async () => { ck=(await query("select * from create_game_invite($1,'checkers','ck-room')",[B]))[0] })
+await asUser(B, () => query("select resolve_game_invite($1,'accepted')",[ck.id]))
+await asUser(A, async () => {
+  await assert.rejects(query('select play_game_move($1,0,0)',[ck.id]),/Wrong move/)
+  // 40 = row 5 col 0, one of the four men with anywhere to go on move one.
+  const opening=(await query('select * from play_game_path($1,array[40,33],0)',[ck.id]))[0]
+  assert.equal(opening.board[40],'')
+  assert.equal(opening.board[33],'x')
+  assert.equal(opening.revision,1)
+  assert.equal(opening.idle_plies,1)  // nothing taken, nobody crowned
+  await assert.rejects(query('select play_game_path($1,array[42,35],1)',[ck.id]),/legal move/) // not my turn
+})
+// A crafted position, installed the way the harness installs an expiry. X at
+// (7,0) with a three-jump chain on offer, and one o parked out of the way.
+const chain = Array(64).fill('')
+chain[56]='x'; chain[58]='x'; chain[49]='o'; chain[35]='o'; chain[19]='o'; chain[33]='o'
+await db.query('update game_invites set board=$2, revision=2, round_start_revision=0, idle_plies=7 where id=$1',[ck.id,chain])
+await asUser(A, async () => {
+  // CAPTURE IS FORCED: the quiet move the second man could otherwise make is
+  // refused while a jump exists anywhere for this side.
+  await assert.rejects(query('select play_game_path($1,array[58,51],2)',[ck.id]),/capture is available/)
+  // A SEQUENCE MUST BE FINISHED. Stopping on the first landing square is not a
+  // turn, and this is the assertion a client-side chain would walk straight
+  // past: it is the server that knows another jump is still owed.
+  await assert.rejects(query('select play_game_path($1,array[56,42],2)',[ck.id]),/Finish the jump/)
+  await assert.rejects(query('select play_game_path($1,array[56,42,28],2)',[ck.id]),/Finish the jump/)
+  // A hop past the end of the chain, and a hop onto an occupied square.
+  await assert.rejects(query('select play_game_path($1,array[56,42,28,10,0],2)',[ck.id]),/capture is available|legal move/)
+  await assert.rejects(query('select play_game_path($1,array[56,33],2)',[ck.id]),/legal move/)
+  const whole=(await query('select * from play_game_path($1,array[56,42,28,10],2)',[ck.id]))[0]
+  assert.equal(whole.board[10],'x')
+  assert.equal(whole.board[56],'')
+  // Every jumped piece is lifted — three of them, in one revision.
+  assert.deepEqual([whole.board[49],whole.board[35],whole.board[19]],['','',''])
+  assert.equal(whole.board[33],'o')
+  assert.equal(whole.revision,3)
+  assert.equal(whole.idle_plies,0)  // a capture resets the no-progress counter
+  // A retried path after a timeout is the same turn, not a second one.
+  const retry=(await query('select * from play_game_path($1,array[56,42,28,10],2)',[ck.id]))[0]
+  assert.equal(retry.revision,3)
+})
+// CROWNING ENDS THE TURN, even with another jump on the board.
+const crown = Array(64).fill('')
+crown[21]='x'; crown[12]='o'; crown[10]='o'   // (2,5) x, (1,4) o, (1,2) o
+await db.query('update game_invites set board=$2, revision=4, round_start_revision=0 where id=$1',[ck.id,crown])
+await asUser(A, async () => {
+  await assert.rejects(query('select play_game_path($1,array[21,3,17],4)',[ck.id]),/legal move/)
+  const crowned=(await query('select * from play_game_path($1,array[21,3],4)',[ck.id]))[0]
+  assert.equal(crowned.board[3],'X')          // kinged on the far row
+  assert.equal(crowned.idle_plies,0)          // crowning is progress too
+  assert.equal(crowned.result,null)           // o at (1,2) can still move
+})
+// A side with nothing left to move has lost, and the score is written by the
+// statement that decides it.
+const last = Array(64).fill('')
+last[40]='x'; last[33]='o'
+await db.query('update game_invites set board=$2, revision=6, round_start_revision=0 where id=$1',[ck.id,last])
+await asUser(A, async () => {
+  const sweep=(await query('select * from play_game_path($1,array[40,26],6)',[ck.id]))[0]
+  assert.equal(sweep.result,'X')
+  assert.equal(sweep.sender_wins,1)
+})
+// Fifty plies with nothing taken and nobody crowned is a draw. Two kings can
+// otherwise shuffle between the same squares for as long as both are willing,
+// and only the database sees every ply of both players.
+await asUser(A,()=>query('select rematch_game($1)',[ck.id]))
+const shuffle = Array(64).fill('')
+shuffle[26]='X'; shuffle[37]='O'
+await db.query(`update game_invites set board=$2, idle_plies=49, revision=8, round_start_revision=8, round=1 where id=$1`,[ck.id,shuffle])
+await asUser(B, async () => {
+  const drawn=(await query('select * from play_game_path($1,array[37,44],8)',[ck.id]))[0]
+  assert.equal(drawn.idle_plies,50)
+  assert.equal(drawn.result,'draw')
+  assert.equal(drawn.draws,1)
+})
+console.log('PASS checkers: forced capture, a whole multi-jump re-walked server-side, half a chain refused, crowning ends the turn, and fifty idle plies is a draw')
+
 await asUser(B,async()=>{
   await query('select end_game_room($1)',[game.id])
-  assert.equal((await query('select * from active_game_rooms()')).length,0)
+  // THIS room is gone — not "no rooms remain". A pair can hold several at once
+  // now (a Connect Four room and a checkers room are different rooms with the
+  // same two people), which is why roomWith() had to stop taking the first one
+  // it found.
+  assert.equal((await query('select * from active_game_rooms()')).filter((r)=>r.id===game.id).length,0)
 })
 await db.query("update game_invites set expires_at=now()-interval '1 second' where id=$1",[game.id])
 await db.exec('select purge_expired()')

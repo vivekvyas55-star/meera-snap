@@ -1,4 +1,7 @@
-import { expect, test } from 'vitest'
+import { createElement } from 'react'
+import { afterEach, expect, test, vi } from 'vitest'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { ConnectFourBoard } from '../src/components/GameBoards'
 import {
   COLS,
   ROWS,
@@ -9,6 +12,7 @@ import {
   isFull,
   landingCell,
   landingRow,
+  findWinningLine,
   legalColumns,
   resultAfter,
   topCell,
@@ -137,4 +141,53 @@ test('a full board with no line is a draw', () => {
 test('an empty cell is never a win', () => {
   expect(winningLine(emptyBoard(), 0)).toBeNull()
   expect(resultAfter(emptyBoard(), 0)).toBeNull()
+})
+
+test('a re-opened finished board can find the four that won it', () => {
+  // winningLine answers "did the disc that just landed HERE win?", which is
+  // what the database asks. A client opening a finished room was never told
+  // where that disc landed, so the board has to look for the line itself.
+  const board = drop(emptyBoard(), [3, 0, 4, 1, 5, 2, 6])
+  const line = findWinningLine(board)
+  expect(line).toEqual([cellAt(5, 3), cellAt(5, 4), cellAt(5, 5), cellAt(5, 6)])
+  expect(line.every((at) => board[at] === 'X')).toBe(true)
+  // A board still in play has no line, and an empty one is not an exception.
+  expect(findWinningLine(drop(emptyBoard(), [3, 0, 4, 1]))).toBeNull()
+  expect(findWinningLine(emptyBoard())).toBeNull()
+  expect(findWinningLine(null)).toBeNull()
+})
+
+// --------------------------------------------------------------------------
+// The board. A move is a COLUMN — gravity picks the row, so the row was never
+// the player's decision and a 40px circle is a poor thing to hit on a phone.
+// createElement rather than JSX because this file is .js.
+// --------------------------------------------------------------------------
+afterEach(cleanup)
+
+test('the tap target is a column, and a full one stops being one', () => {
+  const onMove = vi.fn()
+  // Column 3 filled to the brim; everything else empty.
+  const full = drop(emptyBoard(), [3, 3, 3, 3, 3, 3])
+  render(createElement(ConnectFourBoard, { board: full, mark: 'X', disabled: false, onMove }))
+
+  // Seven buttons, one per column — not forty-two, one per cell.
+  const columns = screen.getAllByRole('button')
+  expect(columns).toHaveLength(COLS)
+  expect(screen.getByLabelText(/^Column 4,/).disabled).toBe(true)
+  fireEvent.click(screen.getByLabelText(/^Column 4,/))
+  expect(onMove).not.toHaveBeenCalled()
+
+  fireEvent.click(screen.getByLabelText(/^Column 1,/))
+  expect(onMove).toHaveBeenCalledExactlyOnceWith(0)
+  // The column reads from the bottom, which is the order the discs stack in.
+  expect(screen.getByLabelText(/^Column 4,/).getAttribute('aria-label'))
+    .toBe('Column 4, from the bottom: yours, theirs, yours, theirs, yours, theirs')
+})
+
+test('a disabled board offers no column at all', () => {
+  const onMove = vi.fn()
+  render(createElement(ConnectFourBoard, { board: emptyBoard(), mark: 'O', disabled: true, onMove }))
+  expect(screen.getAllByRole('button').every((b) => b.disabled)).toBe(true)
+  fireEvent.click(screen.getByLabelText(/^Column 1,/))
+  expect(onMove).not.toHaveBeenCalled()
 })

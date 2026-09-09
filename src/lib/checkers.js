@@ -234,6 +234,21 @@ export function resultAfter(board, mover) {
   return canMove(board, opponentOf(mover)) ? null : mover
 }
 
+// The order the 64 squares are RENDERED in, which is a VIEW concern and
+// nothing else — every index handed to the rules, to a path, or to the database
+// is the true one.
+//
+// The board is stored with row 0 at the top and X (the inviter) moving up it,
+// so X is looking at their own men in the near rows. O is not: unflipped, the
+// recipient sits behind the enemy line watching their own pieces march away
+// from them, which is how you misread a diagonal. Reversing a row-major 8x8 is
+// exactly a 180 degree rotation of the board — the same board, seen from the
+// other side of the table — and it keeps the dark squares dark, because
+// isPlayable follows the index rather than the position on screen.
+const ORDER = Array.from({ length: CELLS }, (_, index) => index)
+const ORDER_FLIPPED = ORDER.slice().reverse()
+export const renderOrder = (flipped) => (flipped ? ORDER_FLIPPED : ORDER)
+
 export function pieceCounts(board) {
   const counts = { X: 0, O: 0, kings: { X: 0, O: 0 } }
   for (const cell of board) {

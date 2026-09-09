@@ -91,6 +91,20 @@ export function winningLine(board, at) {
   return null
 }
 
+// The first four-in-a-row anywhere on the board. `winningLine` answers "did the
+// piece that just landed here win?", which is what the database asks; a client
+// re-opening a finished board was never told where the disc landed, so it has
+// to look. Forty-two cheap walks, run once per board.
+export function findWinningLine(board) {
+  if (!Array.isArray(board)) return null
+  for (let at = 0; at < board.length; at += 1) {
+    if (!board[at]) continue
+    const line = winningLine(board, at)
+    if (line) return line
+  }
+  return null
+}
+
 export const isFull = (board) => board.every((cell) => !!cell)
 
 // What the board says after a piece lands on `at`: that piece, 'draw', or null

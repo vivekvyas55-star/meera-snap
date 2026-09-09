@@ -1,0 +1,297 @@
+/* ==========================================================================
+   Play — the game catalogue and the two boards that are not Tic-Tac-Toe.
+
+   ABC language: vibrant full-card fills, oversized light display type, pill
+   chips for metadata, a dark circular/pill primary action. Every colour,
+   radius, space and size names a token from index.css — a literal hex is a
+   rule dark mode cannot follow.
+
+   The four vibrant hues (lavender / lime / indigo / coral) are the identity and
+   do NOT move between schemes, so anything painted with one lives in a
+   permanently light world and has to re-declare the themed tokens for its own
+   subtree. index.css keeps a list of those elements; a stylesheet that cannot
+   edit that list declares its own, which is what .pg-game does below.
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   The catalogue. Three game cards and ONE invitation form.
+
+   A friend picker and an Invite button per game would put three of each on
+   screen for a choice made once — and a pair has one room anyway, so what is
+   actually being chosen is "who, and which game".
+   -------------------------------------------------------------------------- */
+.pg-games {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.pg-game {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  width: 100%;
+  padding: var(--sp-4);
+  border-radius: var(--r-card);
+  text-align: left;
+  color: var(--ink);
+  /* A vibrant fill keeps its colour at night, so the ink on it is pinned. */
+  --ink: #16161a;
+  --muted: rgba(22, 22, 26, 0.62);
+  --hairline: rgba(22, 22, 26, 0.16);
+  --surface: #ffffff;
+  transition: transform 120ms ease, box-shadow 160ms ease;
+}
+.pg-game:active { transform: scale(0.985); }
+
+.pg-game-glyph {
+  flex: 0 0 auto;
+  width: 46px;
+  height: 46px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--r-pill);
+  background: rgba(255, 255, 255, 0.55);
+  font-size: var(--fs-meta);
+  letter-spacing: -0.06em;
+}
+
+.pg-game-copy {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.pg-game-copy .play-sub { color: var(--muted); }
+
+/* The tick is the whole selected state — no ring, no shadow, nothing that
+   would read as a second kind of emphasis next to four saturated cards. */
+.pg-game-tick {
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--r-pill);
+  border: 1.5px solid var(--hairline);
+  color: transparent;
+  transition: background 140ms ease, color 140ms ease, border-color 140ms ease;
+}
+.pg-game.is-picked .pg-game-tick {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: #ffffff;
+}
+.pg-game:not(.is-picked) { opacity: 0.72; }
+.pg-game:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+
+.pg-setup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-4);
+  border-radius: var(--r-card);
+  background: var(--card);
+}
+.pg-setup-row { display: flex; gap: var(--sp-2); }
+.pg-setup select {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 var(--sp-3);
+  border: 1px solid var(--hairline);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--ink);
+  /* 16px minimum, or iOS zooms the page when the control takes focus. */
+  font-size: 16px;
+}
+.pg-setup .btn-dark { min-height: 44px; padding: 0 var(--sp-4); }
+
+/* --------------------------------------------------------------------------
+   Connect Four.
+
+   The tap target is a COLUMN — gravity picks the row, so the row was never the
+   player's decision, and a 40px circle is a poor thing to hit on a phone. The
+   board is one indigo card with the discs punched out of it, which is both the
+   real object and the ABC "one vibrant colour per card" rule.
+   -------------------------------------------------------------------------- */
+.c4-board {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 0;
+  max-width: 360px;
+  margin: var(--sp-5) auto;
+  padding: var(--sp-2);
+  border-radius: var(--r-card);
+  background: var(--indigo);
+  box-shadow: var(--shadow-1);
+}
+
+.c4-col {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 4px 2px;
+  border-radius: var(--r-pill);
+  background: transparent;
+  transition: background 140ms ease;
+}
+.c4-col:not(:disabled):hover,
+.c4-col:not(:disabled):focus-visible { background: rgba(255, 255, 255, 0.14); }
+.c4-col:focus-visible { outline: 3px solid var(--on-fill); outline-offset: -1px; }
+/* A full column is not a mistake to punish — just quietly not a target. */
+.c4-col:disabled { cursor: default; }
+
+.c4-cell {
+  display: block;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  /* The empty hole shows the page ground through the card, which is what makes
+     the thing read as a rack of discs rather than a grid of dots. */
+  background: var(--bg);
+  box-shadow: inset 0 1px 3px rgba(22, 22, 26, 0.28);
+}
+.c4-cell.mark-x { background: var(--lavender); }
+.c4-cell.mark-o { background: var(--coral); }
+
+/* Where THIS drop lands, shown only while the column is under a finger or a
+   focus ring: the one thing about Connect Four that is not obvious from the
+   board is which row your disc ends up in. */
+.c4-next { position: relative; }
+.c4-col:not(:disabled):hover .c4-next,
+.c4-col:not(:disabled):focus-visible .c4-next { background: rgba(255, 255, 255, 0.35); }
+.c4-board.next-x .c4-col:not(:disabled):hover .c4-next,
+.c4-board.next-x .c4-col:not(:disabled):focus-visible .c4-next { background: var(--lavender); opacity: 0.55; }
+.c4-board.next-o .c4-col:not(:disabled):hover .c4-next,
+.c4-board.next-o .c4-col:not(:disabled):focus-visible .c4-next { background: var(--coral); opacity: 0.55; }
+
+.c4-win { box-shadow: 0 0 0 3px var(--lime), inset 0 1px 3px rgba(22, 22, 26, 0.28); }
+
+/* --------------------------------------------------------------------------
+   Motion. One-shot on the cell that just filled, so a move that arrives while
+   you are looking at the board is visible rather than simply present. The
+   global prefers-reduced-motion rule collapses the duration to 0.01ms, which
+   lands it on the finished state — the same contract msg-in and the sheets use.
+   -------------------------------------------------------------------------- */
+@keyframes c4-fall {
+  from { transform: translateY(-190%); }
+  60% { transform: translateY(6%); }
+  to { transform: translateY(0); }
+}
+.c4-drop { animation: c4-fall 320ms cubic-bezier(0.3, 0.9, 0.4, 1) both; }
+
+/* --------------------------------------------------------------------------
+   Checkers.
+
+   Two taps: the piece, then where it goes. Captures are forced, so most pieces
+   are frozen most of the time — only a piece that can actually move is a live
+   button, and the squares it may go to are dotted.
+   -------------------------------------------------------------------------- */
+.ck-wrap { margin: var(--sp-4) auto var(--sp-2); max-width: 380px; }
+
+/* Pill chips for metadata, per the reference. Kings are worth saying out loud;
+   a crowned piece changes what the position is worth. */
+.ck-tally {
+  display: flex;
+  justify-content: center;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-2);
+}
+.ck-tally-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 11px;
+  border-radius: var(--r-pill);
+  background: var(--card);
+  color: var(--ink);
+  font-size: var(--fs-meta);
+  font-weight: 550;
+}
+.ck-tally-chip em {
+  font-style: normal;
+  font-weight: 500;
+  color: var(--muted);
+  font-size: var(--fs-micro);
+}
+.ck-dot-x, .ck-dot-o { width: 9px; height: 9px; border-radius: 50%; }
+.ck-dot-x { background: var(--indigo); }
+.ck-dot-o { background: var(--coral); }
+
+.ck-board {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 0;
+  border-radius: var(--r-card);
+  overflow: hidden;
+  box-shadow: var(--shadow-1);
+}
+
+.ck-sq {
+  position: relative;
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0;
+  padding: 0;
+}
+/* The dark squares are the played ones. A lavender wash rather than a grey, so
+   the board belongs to the app rather than to a chess set, and it moves with
+   the scheme instead of glaring at night. */
+.ck-dark { background: var(--tint); }
+.ck-light { background: var(--bg); }
+.ck-sq:focus-visible { outline: 3px solid var(--accent); outline-offset: -3px; z-index: 1; }
+.ck-sq:disabled { cursor: default; }
+
+.ck-piece {
+  width: 74%;
+  height: 74%;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: clamp(11px, 3vw, 15px);
+  line-height: 1;
+  color: var(--on-fill);
+  box-shadow: var(--shadow-0);
+  transition: transform 120ms ease;
+}
+.ck-x { background: var(--indigo); }
+.ck-o { background: var(--coral); }
+/* A king is a ring plus a star, not a colour of its own: the owner has to stay
+   readable first, and there are only two owners. */
+.ck-king { box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.85), var(--shadow-0); }
+
+/* Selected, and where the sequence began. The origin keeps its own marker
+   because a multi-jump can wander a long way from it. */
+.ck-picked .ck-piece { transform: scale(1.08); }
+.ck-picked { box-shadow: inset 0 0 0 3px var(--ink); }
+.ck-origin { box-shadow: inset 0 0 0 2px var(--muted); }
+
+.ck-target { background: var(--tint-press); }
+.ck-hint {
+  position: absolute;
+  width: 34%;
+  height: 34%;
+  border-radius: 50%;
+  background: var(--ink);
+  opacity: 0.42;
+}
+.ck-sq.ck-target:active .ck-hint { opacity: 0.75; }
+
+.ck-note {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  margin-top: var(--sp-3);
+  color: var(--muted);
+  font-size: var(--fs-meta);
+  line-height: 1.4;
+}
+.ck-note .pill-btn { flex: 0 0 auto; }

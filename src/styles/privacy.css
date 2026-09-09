@@ -191,9 +191,9 @@
 .pc-card.lavender { background: var(--lavender); }
 .pc-card.lime { background: var(--lime); }
 .pc-card.coral { background: var(--coral); }
-.pc-card.indigo { background: var(--indigo); color: #fff; }
+.pc-card.indigo { background: var(--indigo); color: var(--on-fill); }
 /* The global focus ring is indigo, which disappears on an indigo card. */
-.pc-card.indigo :focus-visible { outline-color: #fff; }
+.pc-card.indigo :focus-visible { outline-color: var(--on-fill); }
 
 .pc-card-head {
   display: flex;
@@ -567,7 +567,10 @@
   transition: transform 160ms ease;
 }
 .pc-more[open] > summary::after { transform: rotate(-135deg) translate(-2px, -2px); }
-.pc-more > summary:focus-visible { outline: 3px solid var(--accent); outline-offset: -3px; }
+/* Ring and colour come from the global summary:focus-visible in index.css;
+   only the offset is local, because a 3px outset ring on a summary that fills
+   its card is clipped by the card's own radius. */
+.pc-more > summary:focus-visible { outline-offset: -3px; }
 .pc-more-body {
   padding: 0 var(--sp-3) var(--sp-3);
   font-size: var(--fs-meta);
@@ -638,7 +641,7 @@
   cursor: pointer; list-style: none; border-radius: var(--r-row);
 }
 .pc-drawer > summary::-webkit-details-marker { display: none; }
-.pc-drawer > summary:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+.pc-drawer > summary:focus-visible { outline-offset: -3px; }
 .pc-drawer-face {
   width: 38px; height: 38px; border-radius: 50%; flex: 0 0 auto;
   display: grid; place-items: center; font-size: 19px;

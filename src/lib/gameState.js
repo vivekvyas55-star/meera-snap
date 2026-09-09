@@ -80,8 +80,23 @@ export function peerPresence(room, me, now = Date.now()) {
 }
 
 // The room this conversation is about, out of every room the caller has open.
-export function roomWith(rooms, friendId) {
-  return (rooms ?? []).find((r) => r.sender_id === friendId || r.recipient_id === friendId) ?? null
+//
+// A pair can now hold SEVERAL rooms at once — a checkers game and a Connect
+// Four game are different rooms with the same two people — so "the first one
+// found" picks arbitrarily. That was invisible while every room was the same
+// game. The chip has one slot, so it shows the one that most wants attention:
+// your turn first, then an invitation waiting on you, then anything live.
+const ROOM_PRIORITY = { 'your-turn': 0, invited: 1, rematch: 2, resume: 3, waiting: 4, away: 5, idle: 6 }
+
+export function roomWith(rooms, friendId, me = null) {
+  const mine = (rooms ?? []).filter((r) => r.sender_id === friendId || r.recipient_id === friendId)
+  if (mine.length <= 1) return mine[0] ?? null
+  // `me` is the other side of the pair from friendId; derive it rather than
+  // requiring every caller to pass it.
+  const self = me ?? (mine[0].sender_id === friendId ? mine[0].recipient_id : mine[0].sender_id)
+  return mine
+    .slice()
+    .sort((a, b) => ROOM_PRIORITY[playState(a, self).key] - ROOM_PRIORITY[playState(b, self).key])[0]
 }
 
 // The running score for a room, from the viewer's side. X is always the

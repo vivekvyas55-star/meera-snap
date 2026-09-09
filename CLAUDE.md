@@ -1273,6 +1273,36 @@ being counted. A separate history table would mean a second write that can fail
 on its own. `rematch_game` deliberately does not touch the counters — carrying
 the score across rounds is the entire point of keeping one.
 
+**Three games, one room grammar** (`202609090024_more_games.sql`). Tic-Tac-Toe,
+Connect Four and Checkers share the invite, presence, rematch, scoreboard and
+chat flow untouched — the client branches in exactly two places, a `BOARDS`
+id→component map and `playTurn()` picking the right RPC. **The row is the
+authority on which game it is**, not the caller: a resume from a conversation
+carries no game, so the board is held back until the first sync rather than
+flashing a 3×3 grid over a checkers room.
+
+- **`game_initial_board` is the single source of a starting position.** Never
+  build one client-side.
+- Connect Four moves are a **column**; the server applies gravity, so a client
+  cannot name the square it lands on.
+- Checkers uses `play_game_path(invite, integer[], expected_revision)` and
+  **re-walks the whole sequence server-side**. A client that submits an invented
+  jump chain gets nothing; its staging is only "may I send this yet". **Capture
+  is forced**, and every PREFIX of a multi-jump is refused with `Finish the
+  jump` — that is the assertion a client-side chain walks straight past.
+- `idle_plies` drives the fifty-move draw.
+- **A pair can now hold SEVERAL rooms at once**, so anything that used to assume
+  one room per pair is wrong. `roomWith()` ranks by what most wants attention
+  (your turn, then an invitation, then anything live) instead of taking the
+  first it finds, and the SQL harness asserts *this* room ended rather than that
+  none remain.
+- The JS rules and the SQL are cross-checked by differential fuzz, not by
+  inspection: 8350 complete turns replayed through both, plus hand-built
+  positions random play never reaches — a king loop that lands back on its own
+  square exposed a real bug in the retry detection (`board[path[1]] = ''` is
+  false when the path ends where it began, so the move retried as "Board
+  changed").
+
 **A finished game is not the end of the room** (`202609080019_rematch.sql`).
 `rematch_game(invite)` starts the next ROUND in the same room, which keeps the
 whole acceptance and authorisation story untouched. Before this a won board
@@ -1372,6 +1402,24 @@ interchangeably and eight font sizes between 12 and 15.5px. The token values
 were chosen to match what already shipped, so adopting one is never a visual
 change — but new work must pick a step rather than invent a size. Radii are
 `--r-card` / `--r-row` / `--r-tile` (grid thumbnails) / `--r-sheet` / `--r-pill`.
+
+**`prefers-reduced-motion` must actually exist.** For a long time it did not,
+while comments in `index.css`, `capture.css`, `games.css` AND `HeartBurst.jsx`
+all claimed "the global rule collapses every duration to 0.01ms, so this
+degrades to its finished state". Four files documented a rule that was never in
+the stylesheet, and every entrance animation, the tapback burst, the skeleton
+pulse and both infinite status dots ran at full speed for someone who had asked
+their OS for none of it. It is 0.01ms rather than `none` so `animationend`
+still fires, and `animation-iteration-count: 1` is what actually stops the
+infinite pulses.
+
+**Dark mode redefines TOKENS ONLY** — no rule set is duplicated. The clever part
+is the **fixed-light / fixed-dark context**: a list of selectors for vibrant-fill
+and near-black-chrome cards that re-declare `--ink`/`--muted`/`--card` for their
+own subtree, so a lavender card's contents stay legible without a second copy of
+every rule. **A vibrant fill applied from an INLINE style never enters that
+context** — that is how `.fp-stat` ended up near-white text on lavender at
+night. If you paint a card from JS, add its selector to the list.
 
 **Motion** lives in one block near the end of `index.css`. Sheets rise from the
 edge they are anchored to (`sheet-up` + `scrim-in`), toasts and the offline bar

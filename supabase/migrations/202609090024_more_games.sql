@@ -407,10 +407,12 @@ begin
   side := case when auth.uid()=r.sender_id then 'X' else 'O' end;
   -- A timeout may happen after commit: the same path is safe to retry, and it
   -- has already been played when my piece is standing on its last square and
-  -- its first square is empty.
+  -- its first square is empty. A king taking four in a circle lands back where
+  -- it started, so on those paths the first square is not empty and must not be
+  -- — the two ends being the same square IS the evidence there.
   if r.revision = expected_revision + 1
      and public.checkers_owner(r.board[path[n] + 1]) = side
-     and r.board[path[1] + 1] = '' then return r; end if;
+     and (path[1] = path[n] or r.board[path[1] + 1] = '') then return r; end if;
   if r.revision <> expected_revision then raise exception 'Board changed. Sync and try again'; end if;
   moves := r.revision - r.round_start_revision;
   if r.result is not null or side <> public.game_turn(moves, r.round) then raise exception 'Not a legal move'; end if;
