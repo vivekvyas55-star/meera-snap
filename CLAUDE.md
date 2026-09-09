@@ -4,24 +4,27 @@
 > notes below describe earlier versions; do not replay their SQL instructions.
 >
 > **Live as of 9 Sep 2026.** Production is `mqxfggwncoazgmcswedi`. The `cleanup`
-> worker is deployed and scheduled every 15 min, and **Realtime public channel
-> access is disabled** — every channel is private.
+> worker runs every 15 min and **Realtime public channel access is disabled** —
+> every channel is private. Six cron jobs. **3 real users** (plus 5 seed bots —
+> any count of `profiles` without `where not is_bot` is wrong by five).
 >
-> **Every migration through `202609090023_founders.sql` is applied**, and
-> `schema_version()` reports the newest. Six cron jobs: morning quotes, backup
-> purge, media cleanup, monthly credits, ops metrics, location expiry.
-> `billing_settings.enforced` is still **false**, so nothing is gated on credit
-> — but all 8 accounts are `grandfathered` and keep permanent access regardless.
+> Everything through `202609090032_audit_criticals` is applied except the ids in
+> `supabase/migrations/.unapplied`. `billing_settings.enforced` is **false**, and
+> all 3 real users are `grandfathered` regardless.
 >
-> **To check what production actually has**, probe PostgREST rather than
-> guessing: a missing function answers `PGRST202`, an existing one answers
-> `42501`. `PGRST202` ALSO fires when the argument signature does not match, so
-> probe with the real parameter NAMES or an existing function reads as missing.
-> To check the frontend, compare the served `index-*.js` hash against a fresh
-> local build — and scan every chunk, not just the entry: Chat, Profile and
-> SnapMap are lazy chunks, so a feature that is live reads as absent if you only
-> grep the entry bundle. Minified identifiers are renamed; grep for string
-> literals and class names instead.
+> **Before flipping `enforced`, read this:** nothing gates on `entitlement()` —
+> not one policy, not one function besides `start_trial()`, and no client code
+> reads `allowed`. So flipping it changes the copy on two screens **and will
+> look like a success.** The real cutover is the day something reads `allowed`,
+> at which point several known billing bugs fire at once. See ROADMAP.md.
+>
+> **To check what production actually has**, probe rather than assume. For the
+> database: a missing function answers `PGRST202`, an existing one `42501` — but
+> `PGRST202` also fires on a mismatched argument signature, so probe with the
+> real parameter NAMES. For the frontend: compare the served `index-*.js` hash
+> against a fresh local build, and scan EVERY chunk — Chat, Profile and SnapMap
+> are lazy, so a live feature reads as absent from the entry bundle alone, and
+> minified identifiers are renamed (grep string literals and class names).
 >
 > Smoke tested on a real device on 7 Sep 2026 — everything passed except a
 > two-device call, password recovery, and Android hardware Back, which still
@@ -400,9 +403,12 @@ statements have aborted batched transactions on some projects).
   where period is 'YYYY-MM'. That single index is what makes a double-fired
   cron, a retried transaction and a hand re-run of `post_monthly_credits()` all
   cost exactly one charge. Grants and adjustments carry period NULL and are
-  exempt. A second partial index, `credit_ledger_one_grant`, makes a duplicate
-  opening balance physically impossible — the migration's `not exists` guard is
-  a convention, that index is the constraint.
+  exempt. **`credit_ledger_one_grant` does NOT do what this file used to claim.**
+  It indexes `(user_id, reason)`, so `founding_grant` and `signup_grant` are
+  distinct keys and one user can legitimately hold both — 20,000 credits, which
+  a probe found in practice. The `not exists` query guard in the migration is
+  the real protection; the index is the convention. That is the reverse of what
+  was written here, so do not lean on the index.
 - **Nobody signed in can write credits.** `credit_ledger` grants SELECT only,
   RLS scopes it to own rows, and the absence of UPDATE/DELETE grants is what
   makes the ledger append-only. `credit_balance(uuid)` is SECURITY DEFINER and
@@ -424,10 +430,18 @@ statements have aborted batched transactions on some projects).
 - **Periods are IST**, like `ist_date()` and the question of the day. A UTC
   month rolls over at 05:30 IST, which would charge a user for a new month in
   the small hours of the last night of the old one.
-- Balances are allowed to go **negative**: `post_monthly_credits()` charges
-  every non-grandfathered user whether or not they can afford it, so the ledger
-  stays a complete record of the months an account was open. Access is decided
-  separately. `creditsToMonths` treats negative as zero runway.
+- **Balances CANNOT go negative, and the ledger is NOT a complete record.**
+  CLAUDE.md said the opposite for a while and it was wrong:
+  `202609070012_integrity_followup.sql` — the live definition — added
+  `and (sum of ledger) >= rate` to `post_monthly_credits()`, with the comment
+  *"Credits are prepaid. Do not create debt."* A user who cannot afford the
+  month is simply **not charged**, so a month an account was open but broke
+  leaves no row at all. `entitlement()` was narrowed consistently, so the
+  behaviour is coherent — only the documentation had drifted, and it had
+  drifted about money. `creditsToMonths` still treats negative as zero runway.
+  This guard is also the only reason removing the bots' ledger rows
+  (`202609090028`) is safe: under 0011's version the daily job would simply
+  re-charge them.
 - New signups get 10,000 from a trigger on `profiles` insert — **its own
   trigger, not an edit to `handle_new_user()`**, which is redefined across
   migrations under last-applied-wins. Its insert is wrapped in
@@ -623,7 +637,31 @@ the repo. That is said plainly in Profile — and **only** in Profile:
   Any call to `setPin()` clears it — including deliberately retyping the
   default, which is a decision rather than an oversight.
 
-- **Device-local is deliberate.** PinLock renders before `AuthProvider`, so
+- **The pad is an OVERLAY over a mounted app, never an early return.** It used
+  to be `if (!unlocked) return <PinLock/>` above every provider, and that one
+  line was the worst bug of the day: losing visibility for a second unmounted
+  and remounted everything. Per app-switch it closed the open conversation and
+  its draft, fired Chat's unmount cleanup so `leave_seen_messages` burned one of
+  the three ephemeral views (three switches and the messages you had just read
+  were gone for good), cancelled an in-progress voice recording, threw away an
+  edited snap, detached the `<input type=file>` while the OS picker was open so
+  attaching a photo silently failed, and cleared the signed-URL cache so every
+  visible photo re-downloaded — which is the entire egress bill. Two independent
+  audits found it. **Do not restore the early return to "keep it simple".**
+- **`unlocked` must be derived from the flag AND the grace**, at mount and on
+  `visible`. The flag alone let a reload walk past the pad and past an active
+  15-minute lockout: `sessionStorage` survives a tab restore, and a backgrounded
+  phone restores tabs routinely, so "locked two hours ago" and "reloaded just
+  now" looked identical. `wasHiddenPastGrace()` differs from `hiddenTooLong()`
+  on exactly one case — no timestamp — because an in-app reload must not
+  re-ask while a phone that was put down must.
+- **Returning past the grace must LOCK, not merely decline to unlock.** A call
+  that ended while the app was still hidden was exempted on the way out and had
+  nothing to re-lock it on the way back; the next person to open Meera walked
+  straight into the conversations. That hole was opened by the fix for calls
+  dying on background — every exemption needs its own way back.
+- **Device-local is deliberate.** PinLock renders inside `AuthProvider` now but
+  does not use it, so
   there is no session to check a server-side hash against, and a lock screen
   that needs the network is a lock screen that fails on a train.
 - PBKDF2 is not what makes this hard to break — four digits is 10,000 wide and
@@ -892,6 +930,22 @@ column. Verified by mutation — revoking `update (birthday) on profiles`
 reproduces the original production failure ("permission denied for table
 profiles") and the test catches it.
 
+**A later migration can silently re-widen a grant the baseline narrowed.**
+Two live cases, both found by probing rather than reading:
+- `stories_fix.sql` re-issued a table-wide `grant insert on public.stories`,
+  which **subsumes** the baseline's four-column grant. Any signed-in user could
+  post a story with a hand-picked `expires_at` a century out — never purged,
+  and its object never collected, because `claim_media_cleanup` sees a live
+  reference forever. `created_at` and `id` were forgeable the same way.
+- `202609090022` hardened `toggle_saved()` against a blocked user pinning the
+  conversation against the purge, and **left the `saved_by` column grant in
+  place** — so it closed only the client path. A `PATCH` straight to PostgREST
+  still worked, and the victim could not undo it.
+
+Both are re-narrowed in `202609090032`, with negative assertions in
+`tests/database.mjs`. **When you harden an RPC, check whether the grant it was
+protecting is still open.** The RPC is a door; the grant is the wall.
+
 **Watch for paste truncation.** Large migrations pasted into the Monaco SQL
 editor have been silently truncated mid-statement, leaving columns/functions/
 grants missing — the root cause behind several "bug" reports (including the
@@ -1028,6 +1082,55 @@ Opening Play from a chat hands the room across in `sessionStorage`
 when there is no room yet). **The mark must be carried:** the resume path used
 to hardcode `X`, which would have let the recipient try to move on the inviter's
 turn and be rejected by the server.
+
+## Failures must not render as answers
+
+Seven instances of one bug have been found and fixed in this codebase, which
+makes it a habit rather than a coincidence. In each, a `.catch` mapped a
+*failure* onto a value that means something specific and false:
+
+| Surface | A failed fetch claimed |
+|---|---|
+| Blocked contacts | "You haven't blocked anyone" |
+| Location sharing | Ghost Mode — you are hidden |
+| Snap Map | every friend is in Ghost Mode |
+| Story viewers | "Seen by 0 · No views yet" |
+| Question of the day | her question gone, and 3 asks left when there were 0 |
+| Together panes | "The scrapbook is empty" |
+| Snap Map's own row | Ghost Mode, while still broadcasting |
+
+**The rule: a fallback value must mean "we do not know".** In practice that is
+three states, not two — and JS gives you two empties, so use them deliberately:
+
+```js
+const rows = await fetchThing().catch(() => null)   // null  = it failed
+const [rows, setRows] = useState(undefined)          // undefined = not asked yet
+```
+
+`[]` and `false` are *answers*. Reserve them for answers.
+
+Two traps this has already sprung:
+- **A sentinel that means two things makes the honest branch unreachable.** The
+  "Seen by" fix used `null` for both "sheet closed" and "fetch failed", so the
+  error branch sat behind the guard that decides whether to open the sheet — and
+  nothing cleared `paused`, so a failed tap froze the story silently. Worse than
+  the bug it replaced.
+- **On a privacy control this is not cosmetic.** Telling someone they are hidden,
+  or that they have blocked nobody, is a claim they will act on.
+
+## Shelved migrations: `supabase/migrations/.unapplied`
+
+A migration that is deliberately not applied to production goes in that list,
+one id per line. `vite.config.js` subtracts them from the count it stamps into
+the bundle. Without it the drift banner is permanently on — and **an always-on
+warning is invisible on the day it is finally true**, which is the exact failure
+the check exists to prevent.
+
+They stay in the migrations directory on purpose: `tests/database.mjs`
+enumerates the folder, and that is the only thing exercising a shelved
+migration before it goes live. Remove the line in the same change that applies
+it. `tests/schema-contract.test.js` fails if the list names a migration that
+does not exist.
 
 ## Overlays MUST be portaled
 
