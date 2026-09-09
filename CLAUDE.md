@@ -3,19 +3,27 @@
 > transactional recovery setup, and separate provider/hook modules. Historical
 > notes below describe earlier versions; do not replay their SQL instructions.
 >
-> **Live as of 9 Sep 2026.** The audit upgrade is applied to production
-> (`mqxfggwncoazgmcswedi`), the `cleanup` worker is deployed and scheduled every
-> 15 min, the frontend is deployed, and **Realtime public channel access is
-> disabled** — every channel is now private. Migrations are applied through
-> `202609080015_game_rooms.sql`; **0016 (egress), 0017 (schema_version), 0019
-> (rematch) and 0020 (game score) are written and NOT yet applied** — verified
-> by probing PostgREST, where a missing function answers `PGRST202` and an
-> existing one answers `42501`. Note that `PGRST202` also fires on an argument
-> signature that does not match, so probe with the real parameter NAMES or an
-> existing function reads as missing;
-> the credit meter's monthly charge is scheduled (pg_cron job 5, 01:00 UTC), and
-> `billing_settings.enforced` is still **false** — nothing is gated on credit
-> yet. Smoke tested on a real device on 7 Sep 2026 — everything passed except a
+> **Live as of 9 Sep 2026.** Production is `mqxfggwncoazgmcswedi`. The `cleanup`
+> worker is deployed and scheduled every 15 min, and **Realtime public channel
+> access is disabled** — every channel is private.
+>
+> **Every migration through `202609090023_founders.sql` is applied**, and
+> `schema_version()` reports the newest. Six cron jobs: morning quotes, backup
+> purge, media cleanup, monthly credits, ops metrics, location expiry.
+> `billing_settings.enforced` is still **false**, so nothing is gated on credit
+> — but all 8 accounts are `grandfathered` and keep permanent access regardless.
+>
+> **To check what production actually has**, probe PostgREST rather than
+> guessing: a missing function answers `PGRST202`, an existing one answers
+> `42501`. `PGRST202` ALSO fires when the argument signature does not match, so
+> probe with the real parameter NAMES or an existing function reads as missing.
+> To check the frontend, compare the served `index-*.js` hash against a fresh
+> local build — and scan every chunk, not just the entry: Chat, Profile and
+> SnapMap are lazy chunks, so a feature that is live reads as absent if you only
+> grep the entry bundle. Minified identifiers are renamed; grep for string
+> literals and class names instead.
+>
+> Smoke tested on a real device on 7 Sep 2026 — everything passed except a
 > two-device call, password recovery, and Android hardware Back, which still
 > need the hardware. See the checklist at the end of AUDIT-FIXES.md.
 
@@ -33,7 +41,7 @@ npm run dev      # dev server on :5173
 npm run build    # production build to dist/
 npm run preview  # serve the built output
 npx oxlint src   # lint
-npx vitest run   # component + unit tests (74)
+npx vitest run   # component + unit tests (250+, and growing)
 npm run test:db  # runs EVERY migration in supabase/migrations/ against PGlite
 ```
 
@@ -285,8 +293,12 @@ conversation (SECURITY INVOKER, so RLS still scopes it) in one round trip.
 ChatList used to call `listMessages` **per friend**, each a 200-row page, and it
 re-runs on every unfiltered `postgres_changes` event on messages / friendships /
 streaks / profiles — i.e. a full N×200 refetch per message received. It returns
-several rows per pair, not one, because visibility is decided client-side by
-`isVisibleTo`; the row needs depth to fall through already-cleared messages.
+**one** row per pair — it is a bare `distinct on (user_a, user_b)` and ignores
+its `per_pair` argument entirely. That is correct NOW because `message_visible`
+filters server-side, so a returned row is already visible; it was written when
+visibility was decided client-side and the row needed depth to fall through
+cleared messages. The argument is vestigial. Do not "fix" the caller to ask for
+more rows without changing the function.
 `listLatestPerFriend` (db.js) degrades to a preview-less list if the RPC is
 missing, so an unapplied migration doesn't blank the screen.
 
@@ -581,6 +593,22 @@ the repo. That is said plainly in Profile — and **only** in Profile:
   type it without looking. `hiddenTooLong()` treats a missing or unreadable
   timestamp as "too long": the failure mode must be asking for a code that was
   not needed, never skipping one that was.
+- **A live call blocks the re-lock** (`lib/callState.js`). PinLock is an early
+  return ABOVE the whole provider tree, so locking on `hidden` unmounts
+  `CallProvider` — and WebRTC takes no wake lock, so on a voice call where
+  nobody touches the screen the display timing out is **guaranteed**. The call
+  died mid-sentence, the peer was told nothing and no call log was written. The
+  flag is module-level rather than context precisely because the reader sits
+  above the writer. `markHidden()` still runs, so a long absence still costs the
+  passcode once the call ends. **Anything else that must survive backgrounding —
+  an upload in flight, a recording — needs the same treatment.**
+- The default passcode is `9934`. **`RETIRED_DEFAULTS` in `pinStore.js` is not
+  optional**: `ensurePin()` never overwrites an existing hash, so changing
+  `DEFAULT_PIN` without listing the old one leaves every already-seeded device
+  asking for a code that is no longer written down anywhere. That happened —
+  `9943` shipped for a few hours and locked someone out of their own phone. The
+  migration runs only while the default flag is set, so a chosen passcode is
+  never touched, and it deliberately does NOT clear an active lockout.
 - Counters live in **localStorage, not sessionStorage** — a lockout a reload or a
   fresh tab clears is not a lockout.
 - The decoy shows **no countdown and no hint that a passcode exists**; the pad
@@ -636,6 +664,21 @@ already had Meera open and a message produced nothing at all.
   **Bump `VERSION` on every sw.js change** or browsers keep the old worker and
   new handlers never activate.
 
+**`push_subscriptions.endpoint` is a URL the Edge Function will FETCH.** It is
+user-writable and the anon key is in the bundle, so without a host allowlist a
+signed-in user could point the function at any host on the internet — and worse,
+`vapidHeader(origin)` mints a JWT signed with `VAPID_PRIVATE_KEY` whose audience
+is that host, handing an attacker a real token on every send. There is now a
+CHECK constraint (`202609090022`) **and** the same check again before the fetch,
+plus a cap on the fan-out. Both halves are needed: a constraint added today does
+not clean rows written yesterday. If you add a push service, widen both.
+
+**`display_name` is the SUBJECT of every notification** and had no length or
+content limit in SQL — the 40 characters were a React prop. A friend could put
+`"Meera Security — verify at evil.tld"` on your lock screen under Meera's own
+name and icon. Capped in the column and truncated (whitespace collapsed, since
+newlines split a notification into fake lines) in the function.
+
 **Notification wording is composed SERVER-SIDE from a fixed vocabulary** (`KINDS`
 in the function). The client sends only `{ to, kind }`. If the client could
 supply the text, any friend could put arbitrary words on your lock screen under
@@ -650,6 +693,23 @@ friendship** before pushing. Without that check it is an open notification relay
 to any user id an attacker can name. It also prunes subscriptions on 404/410 —
 the browser has discarded those, and dead endpoints otherwise accumulate and get
 retried forever.
+
+**A declined call must be remembered, or it rings again.** The invite repeat
+runs for up to 40s, and the old suppression check (`c.room === payload.room`)
+only held while the call was still on screen — after `decline()` the ref is
+null, so the next repeat rang the phone for the call just refused.
+`endedRooms` (a `Map<room, expiry>` ref written in `teardown()`) drops those
+invites **silently** rather than answering `busy`, which would tell the caller
+something untrue. Entries expire after `CONNECT_TIMEOUT_MS` so the map cannot
+grow. Denying the mic on Accept must also send `decline` — returning quietly
+left the caller ringing the full 40s and, with the repeat, re-ringing the phone
+of someone who had just refused permission.
+
+**`notify()` resolves `{ data, error }`, and the difference matters.** `data`
+present means the push function ran and its `sent` count is real; `data: null`
+means the invoke itself failed. Giving up on both told a friend sitting in the
+app that they were unavailable, cancelled the call after one invite and wrote a
+missed-call log — on nothing worse than a cold start.
 
 **Calls re-broadcast the invite every 3s while ringing** (`ringRepeat` in
 useCall). The Realtime invite is transient with no retention, so a phone woken by
@@ -936,6 +996,14 @@ three views per Back.) Image snaps reopen up to `SNAP_MAX_OPENS` (1 view + 5
 reopens); `isVisibleTo` hides consumed/cleared. Photo/video snaps render as a
 consistent `.msg-photo` tile (same box across unopened/opened/saved).
 
+**KNOWN GAP — your own sent snaps never actually clear.** The text above
+describes `clear_viewed_chats` covering your own sent snaps, and the SQL still
+implements it — but `Chat.jsx`'s IntersectionObserver only reports
+`['chat','sticker']`, so no snap id ever reaches `mark_messages_seen` and the
+`(kind='snap' and sender_id=auth.uid())` branch is unreachable. Your own snap
+status rows persist the full 31 days. Recorded here rather than quietly fixed
+because the fix is one word in a filter and the behaviour change is real.
+
 Stories (`schema.sql` stories table): **48h / 2-day** expiry (was 24h). A
 purge in `features.sql`/`hardening.sql` deletes expired rows + their media.
 Posting requires the table INSERT grant (see Migrations) — missing it left the
@@ -1049,8 +1117,18 @@ countdown. Messages show timestamps.
   dropped, with Chat toasting the count. It used to `break` on *every* error and
   never drop, so one undeliverable message at the head blocked the whole queue
   forever, across restarts, silently. Items for another account are dropped
-  outright (unsendable here, and not ours to keep); items age out after 7 days;
-  the queue is capped at 200.
+  outright (unsendable here, and not ours to keep). **The 7-day age-out and the
+  200-item cap described here are NOT in the code** — the current design instead
+  flags a permanently-failed item with `error` and offers Retry, and `dropped`
+  is returned hard-coded empty with no consumer. Documented so the gap is
+  visible rather than trusted.
+
+  **The flush tracks re-entry.** `removeQueued` dispatches `OUTBOX_EVENT` from
+  inside the loop, and that re-entrant flush is rejected because the concurrent
+  guard is still set — so the second message you sent while the first was in
+  flight sat on "⏳ Pending" until a 15s interval noticed. An `again` flag and a
+  `do { … } while (again)` fix it. On a slow mobile round trip this was the
+  common case, not an edge case.
 - **Quoted replies** (`messages.reply_to`, `reply.sql`): **swipe a message left**
   or long-press → Reply; the composer shows a "Replying to…" bar, and the sent
   reply renders a quoted preview of the original (`repliedTo` looked up in the
