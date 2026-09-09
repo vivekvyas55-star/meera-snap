@@ -219,7 +219,12 @@ function StoryViewer({ group, author, me, onClose, onNextAuthor }) {
   const [url, setUrl] = useState(null)
   const [paused, setPaused] = useState(false)
   const [elapsed, setElapsed] = useState(0)
-  const [viewers, setViewers] = useState(null)
+  // THREE states, not two. `null` used to mean both "sheet closed" and "fetch
+  // failed", so the honest failure branch was unreachable behind the very guard
+  // that decides whether to open the sheet — and nothing cleared `paused`, so a
+  // failed tap froze the story with no message. Worse than the "Seen by 0" it
+  // replaced. undefined = closed, null = failed, array = loaded.
+  const [viewers, setViewers] = useState(undefined)
   const [confirmDelete, setConfirmDelete] = useState(false) // null = closed, [] = open/empty
 
   // Refs so a parent re-render (e.g. a stories realtime event) doesn't re-run
@@ -264,7 +269,7 @@ function StoryViewer({ group, author, me, onClose, onNextAuthor }) {
   // Auto-advance, held while the user presses and holds. The interval only
   // fills the bar; advancing happens in the effect below.
   useEffect(() => {
-    if (!url || !ready || paused || viewers !== null) return
+    if (!url || !ready || paused || viewers !== undefined) return
     const t = setInterval(() => setElapsed((e) => Math.min(e + TICK, DURATION)), TICK)
     return () => clearInterval(t)
   }, [url, ready, paused, viewers])
@@ -390,12 +395,12 @@ function StoryViewer({ group, author, me, onClose, onNextAuthor }) {
         />
       )}
 
-      {viewers !== null && (
+      {viewers !== undefined && (
         <div
           className="seen-sheet"
           onClick={(e) => {
             e.stopPropagation()
-            setViewers(null)
+            setViewers(undefined)
             setPaused(false)
           }}
         >
@@ -423,7 +428,7 @@ function StoryViewer({ group, author, me, onClose, onNextAuthor }) {
               className="btn-dark"
               style={{ marginTop: 12 }}
               onClick={() => {
-                setViewers(null)
+                setViewers(undefined)
                 setPaused(false)
               }}
             >

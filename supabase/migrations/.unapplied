@@ -1,0 +1,12 @@
+# Migrations that are deliberately NOT applied to production, one id per line.
+#
+# The bundle stamps how many migrations it expects, and the drift banner fires
+# when production has fewer. Counting a migration that is intentionally on the
+# shelf makes that warning permanent — and a warning that is always on is one
+# nobody reads on the day it is finally true.
+#
+# They stay in this directory on purpose: tests/database.mjs enumerates the
+# folder, and that is the only thing exercising them before they go live.
+#
+# Remove the line in the same change that applies the migration.
+202609090026_intimate_games

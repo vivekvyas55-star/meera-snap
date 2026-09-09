@@ -29,7 +29,8 @@ import { CameraIcon, ChatIcon, StoriesIcon } from './components/Icons'
 import InstallPrompt from './components/InstallPrompt'
 import OutboxDelivery from './components/OutboxDelivery'
 import PinLock from './components/PinLock'
-import { clearHidden, hiddenTooLong, isUnlocked, markHidden } from './lib/appLock'
+import Portal from './components/Portal'
+import { clearHidden, hiddenTooLong, isUnlocked, markHidden, wasHiddenPastGrace } from './lib/appLock'
 import { isCallActive } from './lib/callState'
 import { trackDeviceSessions } from './lib/devices'
 import { useBackLayer } from './hooks/useBackLayer'
@@ -403,7 +404,11 @@ export default function App() {
   // The lock is MANDATORY: Meera does not open without a passcode. A device
   // that has never had one is seeded with the shipped default by PinLock
   // itself, so there is no state in which the pad can be skipped.
-  const [unlocked, setUnlocked] = useState(isUnlocked)
+  // Both halves. The flag alone let a reload walk past the pad — sessionStorage
+  // survives a tab restore, and a backgrounded phone discards and restores tabs
+  // routinely, so "I locked it two hours ago" and "I reloaded just now" looked
+  // identical. It also walked past an active 15-minute lockout.
+  const [unlocked, setUnlocked] = useState(() => isUnlocked() && !wasHiddenPastGrace())
   useEffect(() => {
     const relock = () => setUnlocked(false)
     window.addEventListener('meera:lock', relock)
@@ -426,6 +431,12 @@ export default function App() {
       // Back within the grace window — a task switch, not a handover. Lift it
       // again silently; anything longer costs the passcode.
       if (!hiddenTooLong() && isUnlocked()) setUnlocked(true)
+      // And past the grace, LOCK — do not merely decline to unlock. A call that
+      // ended while the app was still hidden was exempted from the lock on the
+      // way out and had nothing to re-lock it on the way back, so the next
+      // person to open Meera walked straight into the conversations. That hole
+      // was opened by the fix for calls dying on background.
+      else if (hiddenTooLong()) setUnlocked(false)
       clearHidden()
     }
     document.addEventListener('visibilitychange', onVisibility)
@@ -438,8 +449,6 @@ export default function App() {
       window.removeEventListener('pagehide', markHidden)
     }
   }, [])
-  if (!unlocked) return <PinLock onUnlock={() => setUnlocked(true)} />
-
   return (
     <ErrorBoundary>
     <AuthProvider>
@@ -453,6 +462,29 @@ export default function App() {
               <SchemaDriftBar />
               <SessionShell />
               <CallOverlay />
+              {/* An OVERLAY, not an early return. This used to be
+                  `if (!unlocked) return <PinLock/>` above the whole provider
+                  tree, so every loss of visibility — a one-second glance at a
+                  notification — unmounted and remounted everything under it.
+                  That silently closed the open conversation and its draft,
+                  fired Chat's unmount cleanup so `leave_seen_messages` burned
+                  one of the three ephemeral views (three app-switches and the
+                  messages you had just read were gone for good), cancelled a
+                  voice recording in progress, threw away an edited snap, and
+                  cleared the signed-URL cache so every visible photo
+                  re-downloaded — which is the whole egress bill.
+
+                  Rendering it over a mounted tree keeps the property that
+                  motivated locking on `hidden` in the first place: the pad
+                  still paints before the platform takes its app-switcher
+                  snapshot, so the thumbnail shows the pad and not a chat. */}
+              {!unlocked && (
+                <Portal>
+                  <div className="lock-overlay">
+                    <PinLock onUnlock={() => setUnlocked(true)} />
+                  </div>
+                </Portal>
+              )}
             </CallProvider>
           </AliasClockProvider>
         </OnlinePresenceProvider>

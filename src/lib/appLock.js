@@ -50,6 +50,27 @@ export function hiddenTooLong(now = Date.now()) {
   return !Number.isFinite(ms) || ms > RELOCK_GRACE_MS
 }
 
+// Like hiddenTooLong, but a MISSING timestamp means "we were never hidden" —
+// so an ordinary in-app reload does not demand the passcode, while a phone that
+// was actually put down does.
+//
+// hiddenTooLong answers "should returning cost a passcode"; this answers "was
+// the app away long enough that the unlocked flag is stale". They differ
+// exactly on the no-timestamp case, and conflating them is why a reload used to
+// walk straight past the pad — sessionStorage survives a tab restore, and a
+// backgrounded phone discards and restores tabs routinely.
+export function wasHiddenPastGrace(now = Date.now()) {
+  let at = null
+  try {
+    at = sessionStorage.getItem(HIDDEN_AT)
+  } catch {
+    return false
+  }
+  if (!at) return false
+  const ms = now - Number(at)
+  return !Number.isFinite(ms) || ms > RELOCK_GRACE_MS
+}
+
 export function clearHidden() {
   try {
     sessionStorage.removeItem(HIDDEN_AT)

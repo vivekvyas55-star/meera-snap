@@ -584,6 +584,17 @@ await asUser(A,async()=>{
  // calls and push. Writing the row directly skipped it.
  await assert.rejects(query('insert into blocks(blocker,blocked) values($1,$2)',[A,C]),/permission denied/)
 })
+// A forged story expiry is a permanent story and a permanently uncollectable
+// object. The baseline scoped this grant to four columns; a later migration
+// re-issued a table-wide INSERT that silently subsumed them.
+await asUser(A,async()=>{
+ await assert.rejects(query(
+   "insert into stories(user_id,media_path,media_type,expires_at) values($1,$2,'image',now()+interval '100 years')",
+   [A,`${A}/stories/forged.jpg`]),/permission denied/)
+ // And the pin-the-conversation attack: saving is toggle_saved's job alone.
+ await assert.rejects(query('update messages set saved_by=array[$1::uuid] where user_a=$1',[A]),/permission denied/)
+})
+console.log('PASS a story expiry cannot be forged, and saved_by is not client-writable')
 console.log('PASS push endpoints, display names and blocks cannot be written around')
 console.log('PASS every client write succeeds for a legitimate user')
 

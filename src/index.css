@@ -2496,3 +2496,14 @@ button:disabled { cursor: not-allowed; }
 .game-resume-card > span:last-child { font-size: 13px; white-space: nowrap; }
 .ttt-cell:disabled:empty { opacity: .55; cursor: default; }
 .ttt-cell:focus-visible, .game-resume-card:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+
+
+/* The passcode pad covers a MOUNTED app rather than replacing it — see the
+   comment in App.jsx. Opaque and above everything, so nothing behind it is
+   visible or reachable, including the app-switcher snapshot. */
+.lock-overlay {
+  position: fixed; inset: 0; z-index: 2000;
+  background: var(--bg);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}

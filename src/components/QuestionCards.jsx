@@ -30,7 +30,12 @@ export default function QuestionCards({ me, friend, friendName }) {
   const requestRef = useRef(0)
   const load = useCallback(async () => {
     const request = ++requestRef.current
-    const list = await listPairQuestions(friend.id).catch(() => [])
+    // undefined = this fetch failed; null = the RPC is missing. Mapping a
+    // failure to [] made `unavailable` dead code and, worse, wiped the
+    // partner's unanswered question off the screen on a flaky poll and reset
+    // the visible quota to 3 — so Ask then failed against a cap the UI denied.
+    const list = await listPairQuestions(friend.id).catch(() => undefined)
+    if (list === undefined) return // keep whatever is already on screen
     if (request !== requestRef.current) return
     if (list === null) { setUnavailable(true); return }
     setRows(list)

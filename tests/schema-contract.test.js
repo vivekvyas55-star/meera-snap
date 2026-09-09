@@ -88,3 +88,27 @@ test('every migration records itself in schema_migrations', () => {
   })
   expect(missing, `migrations that never register themselves: ${missing.join(', ')}`).toEqual([])
 })
+
+test('a deliberately unapplied migration is not counted against production', () => {
+  // The drift banner fires when production has fewer migrations than the bundle
+  // expects. Counting a migration that is intentionally on the shelf makes that
+  // warning permanent — and an always-on warning is invisible on the day it is
+  // finally true, which is the exact failure the check exists to prevent.
+  const listPath = join(MIGRATIONS, '.unapplied')
+  const shelved = new Set(
+    readFileSync(listPath, 'utf8')
+      .split('\n').map((l) => l.trim()).filter((l) => l && !l.startsWith('#'))
+  )
+  const files = readdirSync(MIGRATIONS).filter((f) => f.endsWith('.sql')).sort()
+  const ids = new Set(files.map((f) => f.replace(/\.sql$/, '')))
+
+  // Every shelved id must still BE a migration — a typo here silently
+  // under-counts and re-hides the drift it was meant to expose.
+  const unknown = [...shelved].filter((id) => !ids.has(id))
+  expect(unknown, `.unapplied names migrations that do not exist: ${unknown.join(', ')}`).toEqual([])
+
+  // And a shelved migration must still be exercised by the harness — being off
+  // production is not a reason to be untested.
+  const harness = readFileSync('tests/database.mjs', 'utf8')
+  expect(/readdirSync\s*\(/.test(harness), 'the harness must still enumerate, so shelved migrations run').toBe(true)
+})

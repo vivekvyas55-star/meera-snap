@@ -1,5 +1,5 @@
 import { beforeEach, expect, test } from 'vitest'
-import { RELOCK_GRACE_MS, clearHidden, hiddenTooLong, lockApp, markHidden } from '../src/lib/appLock'
+import { RELOCK_GRACE_MS, clearHidden, hiddenTooLong, lockApp, markHidden, wasHiddenPastGrace } from '../src/lib/appLock'
 
 beforeEach(() => sessionStorage.clear())
 
@@ -31,4 +31,24 @@ test('locking explicitly forgets the grace window too', () => {
   lockApp()
   // Otherwise "Lock app" followed by a task switch would let you back in free.
   expect(hiddenTooLong()).toBe(true)
+})
+
+test('a reload does not walk past the pad, or past a lockout', () => {
+  // sessionStorage survives a tab restore, and a backgrounded phone discards
+  // and restores tabs routinely — so the unlocked flag alone could not tell
+  // "I locked it two hours ago" from "I reloaded just now".
+  sessionStorage.setItem('meera:unlocked', '1')
+  markHidden()
+  const long = Date.now() + RELOCK_GRACE_MS + 1
+  expect(wasHiddenPastGrace(long)).toBe(true)
+  const unlockedAtMount = sessionStorage.getItem('meera:unlocked') === '1' && !wasHiddenPastGrace(long)
+  expect(unlockedAtMount).toBe(false)
+})
+
+test('an in-app reload with no hidden timestamp does NOT re-ask', () => {
+  // The two questions differ exactly here. Demanding the passcode on every
+  // ordinary reload is how a lock gets typed without being read.
+  sessionStorage.setItem('meera:unlocked', '1')
+  clearHidden()
+  expect(wasHiddenPastGrace()).toBe(false)
 })

@@ -273,7 +273,13 @@ language sql stable security definer set search_path = public as $fn$
     -- Nobody has moved: whoever opened the room picked the game, so they start.
     s.opened_by)
     from public.intimate_sessions s
-   where s.id = sess;
+   where s.id = sess
+    -- Every other function on this surface builds the pair from auth.uid();
+    -- this one took the session id on trust and handed a stranger back a
+    -- participant's user id. The id is a v4 uuid that never leaves the pair, so
+    -- there is nothing to enumerate — but an oracle on a table whose entire
+    -- design is invisibility should not exist at all.
+    and auth.uid() in (s.user_a, s.user_b);
 $fn$;
 revoke all on function public.intimate_turn(uuid) from public, anon;
 grant execute on function public.intimate_turn(uuid) to authenticated;
@@ -498,7 +504,11 @@ begin
   -- messages: the path must sit under the sender's own uid prefix, the object
   -- must actually exist, and it must not already be on its way out.
   if media_path is not null then
-    if split_part(media_path, '/', 1) is distinct from auth.uid()::text then
+    -- The SHAPE too, not just the owner. Without it a round can name the caller's
+  -- own memories/ or stories/ object and drag a durable file onto this
+  -- surface's two-minute accelerated expiry.
+  if media_path !~ '^[0-9a-f-]+/intimate/[0-9a-zA-Z_.-]+$'
+     or split_part(media_path, '/', 1) is distinct from auth.uid()::text then
       raise exception 'Media must belong to the sender';
     end if;
     if not exists (select 1 from storage.objects o where o.bucket_id = 'media' and o.name = media_path) then
