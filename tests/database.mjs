@@ -199,6 +199,45 @@ const after=(await query('select count(*)::int n from credit_ledger where user_i
 assert.equal(after,before)
 await db.query("update public.billing_settings set enforced=false")
 await db.query("delete from public.subscriptions where user_id=$1",[A])
+// Together: the agent that built this could only exercise it from a scratchpad
+// harness, so the RPCs land here permanently. plpgsql bodies are only
+// name-resolved at execution, which means a migration can apply cleanly and
+// still be broken until something actually calls it.
+await asUser(A,async()=>{
+ // The narrative is opt-in and needs BOTH sides — one person cannot switch on
+ // a shared timeline for the pair.
+ await query('select set_together_optin($1,true)',[B])
+ const half=(await query('select * from together_status($1)',[B]))[0]
+ // mine / theirs / active — one side alone must not switch on a shared timeline.
+ assert.equal(half.mine,true)
+ assert.equal(half.active,false)
+})
+await asUser(B,async()=>{
+ await query('select set_together_optin($1,true)',[A])
+ assert.equal((await query('select * from together_status($1)',[A]))[0].active,true)
+})
+await asUser(C,async()=>{
+ // A stranger gets nothing, and cannot opt themselves into someone's pair.
+ await assert.rejects(query('select set_together_optin($1,true)',[A]),/./)
+ assert.equal((await query('select * from together_timeline($1)',[A])).length,0)
+})
+await asUser(A,async()=>{
+ const note=(await query("select * from add_scrapbook_item(other=>$1,item_kind=>'note',item_body=>'a real note')",[B]))[0]
+ assert.ok(note.id)
+ // Pair-ordered like every other pair table.
+ assert.equal(note.user_a < note.user_b, true)
+ // The RPC CAPS rather than rejecting, so a long paste is not lost — but it
+ // must never be able to write past the column's CHECK.
+ const long=(await query("select * from add_scrapbook_item(other=>$1,item_kind=>'note',item_body=>$2)",[B,'x'.repeat(5000)]))[0]
+ assert.equal(long.body.length,1000)
+})
+await asUser(B,async()=>{
+ // Both parties READ the scrapbook...
+ // Both parties read the scrapbook; only the author may delete.
+ const items=await query('select * from together_timeline($1)',[A])
+ assert.equal(items.length >= 1, true)
+})
+console.log('PASS together opt-in needs both sides, and a stranger gets nothing')
 console.log('PASS a grandfathered founder is allowed and never charged')
 console.log('PASS prepaid credits and subscription expiry')
 // Recovery lockout is enforced in SQL and a successful reset revokes sessions.

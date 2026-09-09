@@ -199,6 +199,10 @@
   background: var(--card);
   width: 100%;
 }
+/* The same tile without a tap target, for a capsule whose original the RPC
+   deliberately never named. It has to look identical — the difference is that
+   one opens something and the other has nothing to open. */
+.tg-thumb-still { display: block; }
 .tg-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .tg-thumb-ph { display: block; width: 100%; height: 100%; background: var(--card-2); }
 

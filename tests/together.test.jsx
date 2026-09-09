@@ -228,3 +228,158 @@ test('"on this day" only ever shows previous years', async () => {
   await screen.findByText('2 years ago today')
   expect(screen.getByText('two years back')).toBeTruthy()
 })
+
+// ---------------------------------------------------------------------------
+// The gaps the first pass left. Each of these is a rule the screen can break
+// silently — a tap that does nothing, a state asserted before it was read, or
+// a request nobody sees until the bill arrives.
+// ---------------------------------------------------------------------------
+
+test('a status that has not come back yet is not rendered as "off"', async () => {
+  // getMyLocation's bug in another screen: a privacy surface that asserts a
+  // state it failed to read tells the user something untrue about who can see
+  // them. "Checking…" is the only honest thing to say here.
+  let settle
+  getTogetherStatus.mockReturnValue(new Promise((resolve) => { settle = resolve }))
+  await openFriend()
+  await screen.findByText('Checking…')
+  expect(screen.queryByText('Together is off')).toBe(null)
+  expect(screen.queryByText('Together is on')).toBe(null)
+  // ...and nothing offers to flip a switch whose current position is unknown.
+  expect(screen.queryByRole('button', { name: 'Turn on' })).toBe(null)
+  expect(screen.queryByRole('button', { name: 'Turn off' })).toBe(null)
+  settle(OFF)
+  await screen.findByText('Together is off')
+})
+
+test('their opt-in is an invitation, not an on switch', async () => {
+  getTogetherStatus.mockResolvedValue({ ...OFF, theirs: true })
+  await openFriend()
+  await screen.findByText('Sneha turned Together on')
+  expect(screen.getByText(/Nothing has been shared yet/i)).toBeTruthy()
+  expect(screen.getByRole('button', { name: 'Turn on' })).toBeTruthy()
+  expect(listTimeline).not.toHaveBeenCalled()
+})
+
+test('the timeline fetches no media at all, only text and thumbnails', async () => {
+  getTogetherStatus.mockResolvedValue(ON)
+  listTimeline.mockResolvedValue([
+    { kind: 'first_kept', at: '2019-09-09T04:00:00Z', on_date: '2019-09-09',
+      title: 'The first snap you kept', detail: null, ref: 'm1', thumb_path: 'me-1/snaps/t.jpg' },
+  ])
+  await openFriend()
+  await screen.findByText('The first snap you kept')
+  // together_timeline() returns thumb_path and never media_path, and the pane
+  // renders no image: a year of history must cost one RPC, not a download per
+  // row. If this ever grows tiles, they take gridPath — never media_path.
+  expect(signedUrl).not.toHaveBeenCalled()
+})
+
+test('a voice note costs nothing until it is played', async () => {
+  getTogetherStatus.mockResolvedValue(ON)
+  listScrapbook.mockResolvedValue([
+    { id: 'v1', kind: 'voice', author: ME, on_date: '2026-09-01', body: 'listen',
+      media_path: 'me-1/scrapbook/v1.webm', thumb_path: null, media_type: 'audio' },
+  ])
+  await openFriend()
+  await screen.findByText('Together is on')
+  fireEvent.click(screen.getByRole('tab', { name: 'Scrapbook' }))
+  await screen.findByText('listen')
+  // Twenty voice notes in a scrapbook must not be twenty downloads on open.
+  // VoicePlayer signs its URL on the first tap, not on render.
+  expect(signedUrl).not.toHaveBeenCalledWith('me-1/scrapbook/v1.webm')
+})
+
+test('a capsule with no original is not a button that does nothing', async () => {
+  getTogetherStatus.mockResolvedValue(ON)
+  // together_on_this_day() returns a thumb_path and deliberately never a
+  // media_path. Wiring the tile to the viewer regardless gave a tap that
+  // opened an overlay with no path, which closed itself on mount.
+  listOnThisDay.mockResolvedValue([
+    { source: 'kept', id: 'm1', on_date: '2024-09-09', years_ago: 2, kind: 'photo',
+      body: 'a snap', thumb_path: 'me-1/snaps/t.jpg', media_type: 'image', author: ME },
+  ])
+  await openFriend()
+  await screen.findByText('Together is on')
+  fireEvent.click(screen.getByRole('tab', { name: 'On this day' }))
+  await screen.findByText('A snap you both kept')
+  await waitFor(() => expect(signedUrl).toHaveBeenCalledWith('me-1/snaps/t.jpg'))
+  expect(screen.queryByRole('button', { name: /Open photo/ })).toBe(null)
+  expect(document.querySelector('.tg-thumb-still')).toBeTruthy()
+})
+
+test('a capsule opens from the scrapbook row already in hand, costing no extra request', async () => {
+  getTogetherStatus.mockResolvedValue(ON)
+  listScrapbook.mockResolvedValue([
+    { id: 's1', kind: 'photo', author: ME, on_date: '2024-09-09', body: 'the beach',
+      media_path: 'me-1/scrapbook/1.jpg', thumb_path: 'me-1/scrapbook/thumb_1.jpg', media_type: 'image' },
+  ])
+  listOnThisDay.mockResolvedValue([
+    { source: 'scrapbook', id: 's1', on_date: '2024-09-09', years_ago: 2, kind: 'photo',
+      body: 'the beach', thumb_path: 'me-1/scrapbook/thumb_1.jpg', media_type: 'image', author: ME },
+  ])
+  await openFriend()
+  await screen.findByText('Together is on')
+  fireEvent.click(screen.getByRole('tab', { name: 'On this day' }))
+  const tile = await screen.findByRole('button', { name: 'Open photo from 9 Sep 2024' })
+  // The capsule itself never named the original; the scrapbook list loaded for
+  // this pair did, so opening it is free.
+  expect(signedUrl).not.toHaveBeenCalledWith('me-1/scrapbook/1.jpg')
+  fireEvent.click(tile)
+  await waitFor(() => expect(signedUrl).toHaveBeenCalledWith('me-1/scrapbook/1.jpg'))
+})
+
+test('a photo with no thumbnail still renders, from the original', async () => {
+  getTogetherStatus.mockResolvedValue(ON)
+  // makeThumbnail is best-effort at upload. A failed encode must cost a bigger
+  // download, never the user's photo.
+  listScrapbook.mockResolvedValue([
+    { id: 's1', kind: 'photo', author: ME, on_date: '2019-09-09', body: null,
+      media_path: 'me-1/scrapbook/1.jpg', thumb_path: null, media_type: 'image' },
+  ])
+  await openFriend()
+  await screen.findByText('Together is on')
+  fireEvent.click(screen.getByRole('tab', { name: 'Scrapbook' }))
+  await waitFor(() => expect(signedUrl).toHaveBeenCalledWith('me-1/scrapbook/1.jpg'))
+  expect(screen.getByRole('button', { name: 'Open photo from 9 Sep 2019' })).toBeTruthy()
+})
+
+test('removing an entry states what is lost before it happens', async () => {
+  getTogetherStatus.mockResolvedValue(ON)
+  const mine = { id: 'n1', kind: 'note', author: ME, on_date: '2026-09-01', body: 'mine',
+    media_path: null, thumb_path: null }
+  listScrapbook.mockResolvedValue([mine])
+  await openFriend()
+  await screen.findByText('Together is on')
+  fireEvent.click(screen.getByRole('tab', { name: 'Scrapbook' }))
+  fireEvent.click(await screen.findByLabelText('Remove this entry'))
+  await screen.findByText('Remove this from the scrapbook?')
+  expect(screen.getByText(/can't be undone/i)).toBeTruthy()
+  expect(removeScrapbookItem).not.toHaveBeenCalled()
+  fireEvent.click(screen.getByText('Remove'))
+  await waitFor(() => expect(removeScrapbookItem).toHaveBeenCalledWith(mine))
+})
+
+test('the date the memory happened defaults to the IST today, never the browser’s', async () => {
+  // istToday() is mocked to the IST date. A composer that reached for
+  // new Date() would put someone past their local midnight on a different day
+  // than the row the database is about to write.
+  getTogetherStatus.mockResolvedValue(ON)
+  await openFriend()
+  await screen.findByText('Together is on')
+  fireEvent.click(screen.getByRole('tab', { name: 'Scrapbook' }))
+  const picker = await screen.findByLabelText('The day this happened')
+  expect(picker.value).toBe('2026-09-09')
+  // And it refuses to be postdated, because add_scrapbook_item() would clamp it
+  // to today and never say so.
+  expect(picker.getAttribute('max')).toBe('2026-09-09')
+})
+
+test('going back from a conversation lands on the picker, not out of the screen', async () => {
+  getTogetherStatus.mockResolvedValue(ON)
+  await openFriend()
+  await screen.findByText('Together is on')
+  fireEvent.click(screen.getByLabelText('Back'))
+  await screen.findByText('Sneha')
+  expect(screen.queryByText('Together is on')).toBe(null)
+})

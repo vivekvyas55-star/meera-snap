@@ -136,11 +136,25 @@ export function isFutureDate(day, today) {
   return day > today
 }
 
+// Spelled out rather than handed to Intl. `Intl.DateTimeFormat('en-GB', { month:
+// 'short' })` is not a fixed string: CLDR 42 (ICU 72) changed September's
+// abbreviation from "Sep" to "Sept", so the same scrapbook entry reads "9 Sep
+// 2019" on one phone and "9 Sept 2019" on the other depending on how old that
+// browser's ICU is. A shared surface where two people are looking at the same
+// memory is the one place a date must not drift, and it is not worth a locale
+// lookup to render three tokens. Day-first ordering is fixed for the same
+// reason — this app's dates come from IST and read dd-mmm-yyyy everywhere.
+const MONTH_SHORT = [
+  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+]
+
 export function scrapbookDateLabel(day) {
   if (!day) return ''
   const parsed = new Date(`${day}T00:00:00Z`)
   if (Number.isNaN(parsed.getTime())) return day
-  return new Intl.DateTimeFormat('en-GB', {
-    day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC',
-  }).format(parsed)
+  // Read back in UTC, never local: the stored value is an IST calendar date, and
+  // reading it in the browser's zone is how "28 May" becomes "27 May" west of
+  // UTC.
+  return `${parsed.getUTCDate()} ${MONTH_SHORT[parsed.getUTCMonth()]} ${parsed.getUTCFullYear()}`
 }

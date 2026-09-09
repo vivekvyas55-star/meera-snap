@@ -39,6 +39,10 @@ const TIMELINE_ICON = {
 // A thumbnail that never asks for the original. `gridPath` prefers thumb_path
 // and only falls back to the full object when the ~400px encode failed at
 // upload — see the egress note in lib/togetherState.js.
+//
+// `onOpen` is optional, and that is the point: a tile is only a button when
+// there is a full-size object to open. Drawing one that cannot open anything is
+// how the capsules ended up with a tap that silently did nothing.
 function Thumb({ item, onOpen, label }) {
   const [url, setUrl] = useState(null)
   const path = gridPath(item)
@@ -48,11 +52,13 @@ function Thumb({ item, onOpen, label }) {
     signedUrl(path).then((u) => alive && setUrl(u)).catch(() => {})
     return () => { alive = false }
   }, [path])
+  const inner = url
+    ? <img src={url} alt={onOpen ? '' : (item?.body || '')} loading="lazy" decoding="async" />
+    : <span className="tg-thumb-ph" aria-hidden="true" />
+  if (!onOpen) return <span className="tg-thumb tg-thumb-still">{inner}</span>
   return (
     <button type="button" className="tg-thumb" onClick={onOpen} aria-label={label}>
-      {url
-        ? <img src={url} alt="" loading="lazy" decoding="async" />
-        : <span className="tg-thumb-ph" aria-hidden="true" />}
+      {inner}
     </button>
   )
 }
@@ -116,7 +122,7 @@ function TimelinePane({ rows, loading }) {
   )
 }
 
-function OnThisDayPane({ capsules, loading, onOpen }) {
+function OnThisDayPane({ capsules, loading, resolve, onOpen }) {
   return (
     <section className="tg-pane" aria-label="On this day">
       <PrivateBadge note="turns over at your midnight" />
@@ -128,13 +134,25 @@ function OnThisDayPane({ capsules, loading, onOpen }) {
           <p>Add a scrapbook entry with the date it actually happened and it will come back on this day next year.</p>
         </div>
       ) : null}
-      {capsules.map((capsule) => (
+      {capsules.map((capsule) => {
+        // together_on_this_day() returns thumbnails and never a media_path — a
+        // dozen capsules naming a dozen originals is the screen that spends the
+        // month. So a capsule opens only when its full-size row is already in
+        // the scrapbook list we loaded for this pair anyway, which costs no
+        // extra request. Anything else (a snap you both kept, an entry older
+        // than the scrapbook page) stays a still image.
+        const target = resolve(capsule)
+        return (
         <article key={`${capsule.source}-${capsule.id}`} className="tg-capsule">
           <span className="tg-chip">{yearsAgoLabel(capsule.years_ago)}</span>
           <div className="tg-capsule-body">
-            {capsule.thumb_path
-              ? <Thumb item={capsule} onOpen={() => onOpen(capsule)} label="Open this memory" />
-              : null}
+            {capsule.thumb_path ? (
+              <Thumb
+                item={capsule}
+                onOpen={target ? () => onOpen(target) : null}
+                label={target ? `Open photo from ${scrapbookDateLabel(capsule.on_date)}` : null}
+              />
+            ) : null}
             <div>
               <strong>{capsule.source === 'kept' ? 'A snap you both kept' : 'From your scrapbook'}</strong>
               {capsule.body ? <p>{capsule.body}</p> : null}
@@ -142,7 +160,8 @@ function OnThisDayPane({ capsules, loading, onOpen }) {
             </div>
           </div>
         </article>
-      ))}
+        )
+      })}
     </section>
   )
 }
@@ -408,6 +427,16 @@ export default function Together({ me, onBack }) {
     }
   }
 
+  // A capsule only names a thumbnail (see together_on_this_day), so opening one
+  // means finding the full-size row in the scrapbook list already in hand. No
+  // extra request, and no button where there is nothing to open.
+  const resolveCapsule = useCallback(
+    (capsule) => (capsule?.source === 'scrapbook'
+      ? items.find((i) => i.id === capsule.id && i.media_path) ?? null
+      : null),
+    [items],
+  )
+
   const onNote = (text, day) => guardedAdd(() => addNote(friend.id, text, day), 'Added to your scrapbook')
   const onPhoto = (file, caption, day) => guardedAdd(() => addPhoto(me, friend.id, file, caption, day), 'Photo added')
   const onVoice = (blob, caption, day) => guardedAdd(() => addVoice(me, friend.id, blob, caption, day), 'Voice note added')
@@ -493,7 +522,9 @@ export default function Together({ me, onBack }) {
         </div>
 
         {state === 'on' && tab === 'timeline' ? <TimelinePane rows={timeline} loading={loading} /> : null}
-        {state === 'on' && tab === 'onthisday' ? <OnThisDayPane capsules={capsules} loading={loading} onOpen={setViewing} /> : null}
+        {state === 'on' && tab === 'onthisday'
+          ? <OnThisDayPane capsules={capsules} loading={loading} resolve={resolveCapsule} onOpen={setViewing} />
+          : null}
         {/* Reading the scrapbook stays open whatever the toggle says: if
             opting out hid the rows, either person could hold the other's
             memories behind a switch. Only WRITING is gated, which is what

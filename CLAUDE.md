@@ -492,6 +492,45 @@ other person too — messages are pair-keyed with ON DELETE CASCADE on both halv
 SQL deliberately, so they can be CREATED on a database that is behind on later
 migrations.
 
+## The Together layer (`202609090025_together.sql`)
+
+A pair surface: an opt-in timeline, a shared scrapbook, and "On this day".
+
+**The narrative is opt-in and needs BOTH sides.** `together_status()` returns
+`mine` / `theirs` / `active` separately, and one person cannot switch on a
+shared timeline for the pair. Opting out hides the narrative but leaves the
+scrapbook readable — read is always shared, write is what the opt-in gates.
+
+**Capsule thumbnails are the egress rule made concrete.**
+`together_on_this_day()` deliberately returns `thumb_path` and **never**
+`media_path` — a dozen capsules naming a dozen originals is exactly the screen
+that spends the month. The first version wired every capsule to the photo
+viewer anyway, so `fullPath` was null and the viewer closed on mount: a tap
+target that silently did nothing. The fix is NOT to add `media_path` to the RPC
+(that reintroduces the cost) nor to blow up a 400px thumbnail. A capsule is
+tappable only when its full-size row is **already in the scrapbook page loaded
+for the same pair** — zero extra requests — and anything else renders as a
+still `.tg-thumb-still` image with no button around it.
+
+**`add_scrapbook_item` CAPS the body at 1000 rather than rejecting**, so a long
+paste is not lost, with the column CHECK behind it as the real guard. The
+`scrapbook/` storage prefix had to be added in three places — the
+`queue_media_cleanup` prefix whitelist, `claim_media_cleanup`'s reference check,
+and `media_read`'s other-half-of-the-pair clause. Miss any one and either the
+photos are unreadable or the cleanup worker deletes them out from under a live
+row.
+
+**Never format a date with `Intl` on a surface two people share.**
+`Intl.DateTimeFormat('en-GB', { month: 'short' })` returns `Sept` on ICU 72+ and
+`Sep` before it, so the same scrapbook entry read differently on the two phones
+looking at it depending on browser age. The month table is spelled out in
+`togetherState.js`. This is a shared-surface bug, not a cosmetic one.
+
+No playlists (there is no music integration and faking one is worse than
+omitting it) and no scheduled messages — a scheduled message sits in plaintext
+for days in an app that clears chats after three visits, and that needs a
+decision before it is built.
+
 ## Question of the day, status notes, birthdays (`together.sql`)
 
 **Day boundaries are IST** (`public.ist_date()`), like `friendship_charms`.
