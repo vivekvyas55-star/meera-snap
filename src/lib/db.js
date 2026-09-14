@@ -814,6 +814,41 @@ export async function signedUrl(path, expiresIn = SIGNED_TTL) {
   return data.signedUrl
 }
 
+// A signed URL that is deliberately NOT cached, for the one surface where the
+// cache above is the wrong trade.
+//
+// An intimate-game photo opens once and the database stops minting URLs for it
+// two minutes later. Handing back an hour-old url from `urlCache` would keep it
+// on screen long after that window shut, and would survive the viewer closing
+// — the exact opposite of what that surface promises. So this mints fresh,
+// never reads the cache, never writes to it, and takes its TTL from the caller
+// so the token's own `exp` can be made to land inside the window rather than an
+// hour past it.
+//
+// The egress cost is real and accepted: the object is single-view and tiny in
+// number, so there is nothing here to re-download in the first place.
+export async function ephemeralSignedUrl(path, expiresIn) {
+  const generation = mediaGeneration
+  const seconds = Math.max(1, Math.round(expiresIn))
+  const { data, error } = await supabase.storage.from('media').createSignedUrl(path, seconds)
+  if (error) throw error
+  if (generation !== mediaGeneration) throw new Error('Account changed while loading media')
+  return data.signedUrl
+}
+
+// Upload for an intimate-game round. The `<uid>/intimate/` prefix is not a
+// convention: pose_intimate_round() matches on it, queue_media_cleanup() only
+// accepts it from 202609090031 onward, and claim_media_cleanup() knows to leave
+// an object alone while a live round still references it. Uploading one of
+// these under `snaps/` instead — the obvious workaround if the prefix is
+// missing — gets it deleted out from under a live session 24 hours later.
+export async function uploadIntimatePhoto(me, blob, clientId = crypto.randomUUID()) {
+  const body = await downscaleImage(blob, 1600, 0.85)
+  const path = `${me}/intimate/${clientId}.${mediaExtension(body)}`
+  await uploadMedia(path, body)
+  return path
+}
+
 // --------------------------------------------------------------------------
 // streaks
 // --------------------------------------------------------------------------

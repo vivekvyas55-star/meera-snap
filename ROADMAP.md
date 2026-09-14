@@ -49,6 +49,10 @@ Status as of **9 Sep 2026**. `CLAUDE.md` says how things work; this says what is
 ---
 
 ## In flight
+- [ ] **Just us** — the five intimate games now have a client (FriendSheet →
+      Just us, plus a neutral chip in the conversation). `202609090026` is still
+      in `.unapplied`, so the feature hides itself in production until it is
+      applied. Applying it means removing that line in the same change.
 - [ ] Profile UI/UX design pass — structure is right, visual pass is not done.
 - [ ] Market decoy depth — India/US, Watchlist/Orders/Funds/Research, market-hours clock.
 

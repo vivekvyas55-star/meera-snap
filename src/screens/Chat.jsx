@@ -30,10 +30,14 @@ import { useAlias } from '../hooks/useAliasClock'
 import { useOnline } from '../hooks/useOnlinePresence'
 import { useConversationPresence } from '../hooks/usePresence'
 import { useToast } from '../hooks/useToast'
+import { useIntimateSession } from '../hooks/useIntimateSession'
+import { chipLabel, sessionView } from '../lib/relationshipGames'
 import Avatar from '../components/Avatar'
 import StatusIcon from '../components/StatusIcon'
 import SnapViewer from '../components/SnapViewer'
 import PlayChip from '../components/PlayChip'
+import IntimateChip from '../components/IntimateChip'
+import IntimateSession from '../components/IntimateSession'
 import { usePlayState } from '../hooks/usePlayState'
 import Portal from '../components/Portal'
 import Sheet from '../components/Sheet'
@@ -109,6 +113,13 @@ export default function Chat({ friend, onBack, onOpenPlay }) {
   // One poll feeds both the header button and the strip chip.
   const play = usePlayState(friend.id, me, Boolean(onOpenPlay))
   const friendName = alias(friend)
+  // One light poll per open conversation, and none at all once PostgREST has
+  // said the migration is not applied. The chip is the only way the invited
+  // person learns there is something waiting without opening the friend sheet.
+  const intimate = useIntimateSession(me, friend.id)
+  const intimateChip = intimate.available === false
+    ? null
+    : chipLabel(sessionView(intimate.session, intimate.rounds, me))
 
   const [messages, setMessages] = useState([])
   const [, tick] = useState(0) // periodic re-render so time-based UI (privacy scramble) updates
@@ -125,6 +136,10 @@ export default function Chat({ friend, onBack, onOpenPlay }) {
   const [anniv, setAnniv] = useState(null) // "together since" date for this pair
   const [stickers, setStickers] = useState(false)
   const [friendSheet, setFriendSheet] = useState(false)
+  // "Just us" — the five intimate games. It lives in the friend sheet rather
+  // than on the conversation, and the only thing on the conversation is a chip
+  // that appears when a turn or an invitation is actually waiting.
+  const [justUs, setJustUs] = useState(false)
   const [burst, setBurst] = useState(null) // { key, x, y } — hearts leaving a double-tapped bubble
   const [recSecs, setRecSecs] = useState(0)
   const threadRef = useRef(null)
@@ -513,10 +528,15 @@ export default function Chat({ friend, onBack, onOpenPlay }) {
       </div>
 
       {/* Idle is the common case and the header icon already covers it, so the
-          strip only appears when there is a game to say something about. */}
-      {onOpenPlay && play.state.key !== 'idle' && (
+          strip only appears when there is a game to say something about. The
+          "Just us" chip joins it under the same rule and with deliberately
+          neutral wording — see components/IntimateChip.jsx. */}
+      {((onOpenPlay && play.state.key !== 'idle') || intimateChip) && (
         <div className="hero-strip">
-          <PlayChip state={play.state} room={play.room} onOpenPlay={onOpenPlay} />
+          {onOpenPlay && play.state.key !== 'idle' && (
+            <PlayChip state={play.state} room={play.room} onOpenPlay={onOpenPlay} />
+          )}
+          <IntimateChip label={intimateChip} onOpen={() => setJustUs(true)} />
         </div>
       )}
 
@@ -748,9 +768,28 @@ export default function Chat({ friend, onBack, onOpenPlay }) {
           friendName={friendName}
           me={me}
           onClose={() => setFriendSheet(false)}
+          onOpenJustUs={() => {
+            setFriendSheet(false)
+            setJustUs(true)
+          }}
+          justUsAvailable={intimate.available !== false}
           onRemoved={() => {
             setFriendSheet(false)
             onBack()
+          }}
+        />
+      )}
+
+      {/* It portals and sheets itself, and re-syncs the pair's session on open,
+          so it is the same screen whether it was reached from the friend sheet
+          or from the chip. */}
+      {justUs && (
+        <IntimateSession
+          me={me}
+          friend={friend}
+          onClose={() => {
+            setJustUs(false)
+            intimate.sync()
           }}
         />
       )}
@@ -814,7 +853,7 @@ export default function Chat({ friend, onBack, onOpenPlay }) {
 }
 
 // Friend info: view their profile + remove-friend, opened from the chat header.
-function FriendSheet({ friend, friendName, me, onClose, onRemoved }) {
+function FriendSheet({ friend, friendName, me, onClose, onRemoved, onOpenJustUs, justUsAvailable }) {
   const toast = useToast()
   const [score, setScore] = useState(null)
   const [anniv, setAnniv] = useState(null)
@@ -904,6 +943,27 @@ function FriendSheet({ friend, friendName, me, onClose, onRemoved }) {
               </span>
               <span className="fp-row-go"><ChevronIcon width={17} height={17} /></span>
             </button>
+
+            {/* Just us lives HERE rather than in Profile -> Play, and that is
+                the whole point: Play is a friend picker, and a list of people
+                next to five games called things like Truth or Dare is the one
+                place this must never appear. The friend sheet is reachable only
+                from inside a conversation that already exists, so this cannot
+                show up for anyone who is not an accepted friend — the RPCs
+                re-check that anyway, but the entry point should not depend on
+                it. `justUsAvailable` is false only once PostgREST has actually
+                said the function is absent (the migration is deliberately
+                shelved); a dropped connection leaves the row where it is. */}
+            {justUsAvailable && onOpenJustUs ? (
+              <button className="fp-row" onClick={onOpenJustUs}>
+                <span className="fp-row-icon"><HeartIcon width={19} height={19} /></span>
+                <span className="fp-row-text">
+                  <span className="fp-row-title">Just us</span>
+                  <span className="fp-row-sub">Five slow games. Both of you have to say yes.</span>
+                </span>
+                <span className="fp-row-go"><ChevronIcon width={17} height={17} /></span>
+              </button>
+            ) : null}
             {confirmRemove && (
               <Confirm
                 title={`Remove ${friendName}?`}

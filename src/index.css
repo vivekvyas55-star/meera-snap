@@ -312,7 +312,12 @@
 .pc-hero,
 .pc-card.lavender,
 .pc-card.lime,
-.pc-card.coral {
+.pc-card.coral,
+/* styles/intimate.css. `.ig-game` is painted from JS — each game carries its
+   own tint — so it is exactly the inline-fill case this list exists for. */
+.ig-game,
+.ig-consent,
+.ig-chip {
   --ink: #16161a;
   /* 0.62 left the sub-line on a lavender card at 3.7:1. */
   --muted: rgba(22, 22, 26, 0.72);

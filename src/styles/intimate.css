@@ -1,0 +1,173 @@
+/* ==========================================================================
+   Just us — the five intimate games.
+
+   ABC language: vibrant full-card fills, oversized light display headings,
+   pill chips, a dark near-black primary action, thin-line icons. Every colour,
+   space, radius and size names a token from index.css; a literal hex is a rule
+   dark mode cannot follow.
+
+   The vibrant cards here are painted from JS (each game carries its own tint),
+   which means their selectors MUST appear in the fixed-light list in
+   index.css — an inline fill does not enter that context on its own, and that
+   is exactly how .fp-stat ended up near-white on lavender at night.
+   ========================================================================== */
+
+.ig-sheet { max-height: 92dvh; }
+
+.ig-head {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: var(--sp-3); margin-bottom: var(--sp-4);
+}
+.ig-head h2 { margin: 2px 0 0; font-size: var(--fs-h1); font-weight: 300; letter-spacing: -0.03em; }
+
+.ig-intro {
+  margin: 0 0 var(--sp-4); font-size: var(--fs-sm); line-height: 1.5; color: var(--muted);
+}
+
+/* --------------------------------------------------------------------------
+   Picking a game
+   -------------------------------------------------------------------------- */
+.ig-picker { display: flex; flex-direction: column; gap: var(--sp-3); }
+.ig-game {
+  display: flex; flex-direction: column; gap: var(--sp-1);
+  text-align: left; border: none; width: 100%;
+  border-radius: var(--r-card); padding: var(--sp-4) var(--sp-4) var(--sp-5);
+  color: var(--ink); cursor: pointer;
+}
+.ig-game:active { filter: brightness(0.96); }
+.ig-game:disabled { opacity: 0.55; }
+.ig-game-title { font-size: var(--fs-h2); font-weight: 300; letter-spacing: -0.03em; }
+.ig-game-blurb { font-size: var(--fs-meta); line-height: 1.45; color: var(--muted); }
+
+/* --------------------------------------------------------------------------
+   Cards: consent, ended, expired
+   -------------------------------------------------------------------------- */
+.ig-card {
+  border-radius: var(--r-card); padding: var(--sp-4);
+  background: var(--card); margin-bottom: var(--sp-4);
+}
+.ig-card p { margin: 0 0 var(--sp-3); font-size: var(--fs-body); line-height: 1.5; }
+.ig-card p:last-child { margin-bottom: 0; }
+.ig-consent { background: var(--lavender); }
+.ig-consent-line { font-size: var(--fs-lead); font-weight: 300; letter-spacing: -0.02em; }
+.ig-ended { background: var(--card); }
+
+.ig-status {
+  display: block; margin-bottom: var(--sp-4);
+  border-radius: var(--r-pill); padding: var(--sp-2) var(--sp-4);
+  background: var(--wash); font-size: var(--fs-sm); font-weight: 500;
+}
+
+/* --------------------------------------------------------------------------
+   The list of rounds
+   -------------------------------------------------------------------------- */
+.ig-rounds { list-style: none; margin: 0 0 var(--sp-4); padding: 0; display: flex; flex-direction: column; gap: var(--sp-3); }
+.ig-round {
+  border-radius: var(--r-row); padding: var(--sp-3) var(--sp-4);
+  background: var(--card);
+}
+.ig-round.mine { background: var(--wash); }
+.ig-round-pass { font-size: var(--fs-meta); color: var(--muted); text-align: center; background: none; padding: var(--sp-1) 0; }
+.ig-round-who {
+  display: block; font-size: var(--fs-eyebrow); text-transform: uppercase;
+  letter-spacing: 0.08em; color: var(--muted); margin-bottom: var(--sp-1);
+}
+.ig-round-prompt { margin: 0 0 var(--sp-1); font-size: var(--fs-body); line-height: 1.45; }
+.ig-round-alt { color: var(--muted); }
+.ig-round-photo {
+  display: flex; align-items: center; gap: var(--sp-2);
+  margin: var(--sp-1) 0; font-size: var(--fs-meta); color: var(--muted);
+}
+.ig-round-answer { margin: var(--sp-2) 0 0; font-size: var(--fs-sm); line-height: 1.45; }
+.ig-round-reveal { margin: var(--sp-1) 0 0; font-size: var(--fs-meta); color: var(--muted); }
+
+/* --------------------------------------------------------------------------
+   Composing
+   -------------------------------------------------------------------------- */
+.ig-compose { display: flex; flex-direction: column; gap: var(--sp-3); margin-bottom: var(--sp-4); }
+.ig-field { display: flex; flex-direction: column; gap: var(--sp-1); }
+.ig-field textarea.field { resize: vertical; min-height: 64px; }
+
+/* Two equal ways to play, in one row, at the same weight. Guess What's
+   camera-free route is a MODE, not a fallback — a smaller or quieter button
+   for it would say the opposite of what the feature means. */
+.ig-modes { display: flex; gap: var(--sp-2); }
+.ig-mode {
+  flex: 1; display: flex; align-items: center; justify-content: center; gap: var(--sp-2);
+  border: 1px solid var(--hairline); background: var(--card); color: var(--ink);
+  border-radius: var(--r-pill); padding: var(--sp-3) var(--sp-2);
+  font-size: var(--fs-sm); font-weight: 500; cursor: pointer;
+}
+.ig-mode.on { background: var(--action); color: var(--action-ink); border-color: var(--action); }
+
+.ig-picks { display: flex; gap: var(--sp-2); flex-wrap: wrap; }
+.ig-pick {
+  flex: 1; min-width: 120px;
+  border: 1px solid var(--hairline); background: var(--card); color: var(--ink);
+  border-radius: var(--r-pill); padding: var(--sp-3) var(--sp-4);
+  font-size: var(--fs-sm); font-weight: 500; cursor: pointer;
+}
+.ig-pick.on { background: var(--action); color: var(--action-ink); border-color: var(--action); }
+
+.ig-photo-pick { display: flex; flex-direction: column; gap: var(--sp-2); }
+.ig-photo-open { display: flex; flex-direction: column; gap: var(--sp-2); }
+
+/* The promise. Long on purpose — it is the one place this surface says exactly
+   what is and is not guaranteed, and shortening it into "gone in two minutes"
+   would make it untrue. */
+.ig-promise,
+.ig-foot {
+  display: flex; align-items: flex-start; gap: var(--sp-2);
+  margin: 0; font-size: var(--fs-micro); line-height: 1.5; color: var(--muted);
+}
+.ig-promise svg, .ig-foot svg { flex: 0 0 auto; margin-top: 2px; opacity: 0.7; }
+.ig-foot { margin: var(--sp-4) 0 var(--sp-3); }
+
+.ig-ideas { display: flex; flex-direction: column; gap: var(--sp-2); }
+.ig-idea {
+  text-align: left; border: 1px solid var(--hairline); background: transparent;
+  color: var(--ink); border-radius: var(--r-row); padding: var(--sp-3);
+  font-size: var(--fs-meta); line-height: 1.45; cursor: pointer;
+}
+.ig-idea small { display: block; margin-top: var(--sp-1); color: var(--muted); font-size: var(--fs-eyebrow); }
+
+/* Passing is an ordinary outcome and reads like one — same weight as anything
+   else, no warning colour, and nothing anywhere keeping score of it. */
+.ig-pass { display: flex; align-items: center; gap: var(--sp-3); flex-wrap: wrap; margin-bottom: var(--sp-3); }
+.ig-pass .field-hint { margin: 0; }
+
+.ig-waiting {
+  display: flex; align-items: center; gap: var(--sp-2);
+  margin: 0 0 var(--sp-3); font-size: var(--fs-meta); color: var(--muted);
+}
+
+/* --------------------------------------------------------------------------
+   The single-view photo
+   -------------------------------------------------------------------------- */
+.ig-count {
+  border-radius: var(--r-pill); padding: var(--sp-1) var(--sp-3);
+  background: rgba(0, 0, 0, 0.45); color: #ffffff;
+  font-size: var(--fs-meta); font-variant-numeric: tabular-nums;
+}
+.ig-viewer-note {
+  position: absolute; left: var(--sp-4); right: var(--sp-4);
+  bottom: calc(var(--safe-bottom) + var(--sp-5));
+  color: rgba(255, 255, 255, 0.82); font-size: var(--fs-micro); line-height: 1.5;
+  text-align: center;
+}
+
+/* --------------------------------------------------------------------------
+   The chip under the chat header. Says nothing about which game, what was
+   asked, or who — the conversation screen is not behind a second tap.
+   -------------------------------------------------------------------------- */
+.ig-chip {
+  display: inline-flex; align-items: center; gap: var(--sp-2);
+  border: none; border-radius: var(--r-pill);
+  padding: var(--sp-2) var(--sp-4);
+  background: var(--lavender); color: var(--ink);
+  font-size: var(--fs-meta); font-weight: 500; cursor: pointer;
+}
+.ig-chip-dot {
+  width: 7px; height: 7px; border-radius: var(--r-pill);
+  background: currentColor; opacity: 0.6;
+}
