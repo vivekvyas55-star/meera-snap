@@ -34,14 +34,20 @@ export function optInCopy(state, friendName = 'they') {
   switch (state) {
     case 'on':
       return {
+        // This used to promise "nothing is deleted", and 202609140034 made that
+        // untrue: turning it off now deletes the milestones recorded for the
+        // pair. The honest sentence is the one that names both halves — what
+        // goes, and what does not — and it has to be here rather than only in
+        // the confirmation, because this is the card somebody reads before
+        // deciding to tap.
         title: 'Together is on',
-        body: `Only you and ${friendName} can see any of this. Turning it off hides it for both of you — nothing is deleted.`,
+        body: `Only you and ${friendName} can see any of this. Turning it off stops recording and deletes the milestones already recorded. Your scrapbook is not touched.`,
         action: 'Turn off',
       }
     case 'waiting':
       return {
         title: 'Waiting for them',
-        body: `You've turned Together on. It stays hidden until ${friendName} turns it on too.`,
+        body: `You've turned Together on. It stays hidden until ${friendName} turns it on too. Nothing is recorded until you both have.`,
         action: 'Turn off',
       }
     case 'invited':
@@ -61,6 +67,82 @@ export function optInCopy(state, friendName = 'they') {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Counts that might not have been answered
+// ---------------------------------------------------------------------------
+// together_status() grew event_count and my_item_count in 202609140034. A
+// database that has not had that migration yet answers with the columns it has,
+// so the field arrives `undefined` — and rendering that as 0 would tell someone
+// "nothing will be deleted" on the one screen where being wrong about it
+// matters. null means we do not know, and every caller below says so in words
+// rather than quoting a number it does not have.
+export function knownCount(value) {
+  if (value === null || value === undefined) return null
+  const n = Number(value)
+  return Number.isFinite(n) && n >= 0 ? n : null
+}
+
+const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`
+
+// ---------------------------------------------------------------------------
+// Opting out — what goes, what stays, said BEFORE the tap
+// ---------------------------------------------------------------------------
+// The rule the migration enforces, in the words the user reads: the purge
+// deletes what the system observed and never what a person made. Those are two
+// different sentences and a confirmation that merges them is how somebody
+// deletes the other person's scrapbook believing they turned a switch off.
+//
+// Deliberately a list rather than a paragraph, like DELETION_LOSES in
+// privacy.js: a destructive action states what is lost first, and a reader has
+// to be able to decide from the sheet alone.
+export function optOutCopy(status, friendName = 'they') {
+  const events = knownCount(status?.event_count)
+  return {
+    title: `Turn Together off with ${friendName}?`,
+    loses: [
+      'The shared timeline closes for both of you.',
+      events === null
+        ? 'Every milestone recorded for the two of you is deleted — your firsts, your streak marks, the things you both saved.'
+        : events === 0
+          ? 'Nothing has been recorded yet, so there is nothing to delete.'
+          : `${plural(events, 'recorded milestone is', 'recorded milestones are')} deleted — your firsts, your streak marks, the things you both saved.`,
+      'Nothing recorded again until you both turn it back on, and turning it back on starts from today.',
+    ],
+    keeps: [
+      `Your scrapbook is untouched. Everything you and ${friendName} added stays readable to you both, and only the person who added an entry can remove it.`,
+    ],
+    confirmLabel: 'Turn off and delete',
+  }
+}
+
+// The other purge, and the only bulk delete one person may run on a shared
+// artifact: their OWN entries. `mine` and `theirs` are counted separately
+// because "delete the 11 entries here" and "delete 3 of the 11 entries here"
+// are different promises and only one of them is true.
+export function scrapbookPurgeCopy(status, friendName = 'they') {
+  const mine = knownCount(status?.my_item_count)
+  const total = knownCount(status?.item_count)
+  const theirs = mine === null || total === null ? null : Math.max(0, total - mine)
+  return {
+    title: mine === null ? 'Remove everything you added?' : `Remove ${plural(mine, 'entry', 'entries')} you added?`,
+    loses: [
+      mine === null
+        ? 'Every scrapbook entry you wrote goes, with its photos and voice notes.'
+        : `${plural(mine, 'entry', 'entries')} you wrote ${mine === 1 ? 'goes' : 'go'}, with ${mine === 1 ? 'its' : 'their'} photos and voice notes.`,
+      'The files are deleted from storage, not just hidden.',
+      "This can't be undone.",
+    ],
+    keeps: [
+      theirs === null
+        ? `Anything ${friendName} added stays. It is theirs to remove, not yours.`
+        : theirs === 0
+          ? `${friendName} has added nothing, so nothing of theirs is affected.`
+          : `The ${plural(theirs, 'entry', 'entries')} ${friendName} added ${theirs === 1 ? 'stays' : 'stay'}. Theirs to remove, not yours.`,
+    ],
+    confirmLabel: 'Remove mine',
+  }
+}
+
 const timeOf = (row) => {
   const stamp = row?.at ?? row?.created_at ?? null
   const parsed = stamp ? Date.parse(stamp) : NaN
@@ -75,6 +157,60 @@ const timeOf = (row) => {
 // for no gain.
 export function sortTimeline(rows) {
   return (rows ?? []).filter((r) => r && r.kind).slice().sort((a, b) => timeOf(b) - timeOf(a))
+}
+
+// ---------------------------------------------------------------------------
+// Filters per event type
+// ---------------------------------------------------------------------------
+// together_timeline() returns eleven kinds from two halves — some derived on
+// read from durable rows, some recorded by trigger at the moment they happened
+// — and the reader does not care which half a card came from. They care what
+// sort of thing it is, so the chips group by meaning, not by provenance.
+export const TIMELINE_GROUPS = [
+  { id: 'firsts',    label: 'Firsts',    kinds: ['friends', 'first_snap', 'first_call', 'first_voice'] },
+  { id: 'years',     label: 'Years',     kinds: ['anniversary_start', 'anniversary'] },
+  { id: 'streaks',   label: 'Streaks',   kinds: ['streak', 'streak_milestone'] },
+  { id: 'kept',      label: 'Kept',      kinds: ['first_kept', 'kept', 'mutual_save'] },
+  { id: 'scrapbook', label: 'Scrapbook', kinds: ['scrapbook_photo', 'scrapbook_voice', 'scrapbook_note'] },
+]
+
+// A kind this bundle has never heard of still has to be reachable. A database
+// one migration ahead of the phone is the normal state for a few minutes after
+// every deploy, and a filter that silently drops the rows it does not recognise
+// is a screen that lies about what is on it.
+const OTHER_GROUP = { id: 'other', label: 'Other', kinds: [] }
+
+const GROUP_OF_KIND = new Map(
+  TIMELINE_GROUPS.flatMap((group) => group.kinds.map((kind) => [kind, group.id]))
+)
+
+export function groupOfKind(kind) {
+  return GROUP_OF_KIND.get(kind) ?? OTHER_GROUP.id
+}
+
+// null/undefined in, null/undefined out. `[]` here would mean "this timeline
+// has no filters", which is an answer — and a failed read is not an answer.
+export function timelineFilters(rows) {
+  if (rows == null) return rows
+  const counts = new Map()
+  for (const row of rows) {
+    if (!row?.kind) continue
+    const id = groupOfKind(row.kind)
+    counts.set(id, (counts.get(id) ?? 0) + 1)
+  }
+  const present = [...TIMELINE_GROUPS, OTHER_GROUP]
+    .filter((group) => counts.get(group.id))
+    .map((group) => ({ id: group.id, label: group.label, count: counts.get(group.id) }))
+  // One chip beside "All" is not a choice, it is a second button that does the
+  // same thing. Below two groups the row is not drawn at all.
+  if (present.length < 2) return []
+  return [{ id: 'all', label: 'All', count: rows.length }, ...present]
+}
+
+export function filterTimeline(rows, filterId) {
+  if (rows == null) return rows
+  if (!filterId || filterId === 'all') return rows
+  return rows.filter((row) => row?.kind && groupOfKind(row.kind) === filterId)
 }
 
 export function groupTimelineByYear(rows) {

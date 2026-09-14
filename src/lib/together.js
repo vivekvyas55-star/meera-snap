@@ -32,10 +32,26 @@ async function uploadScrapbookMedia(path, blob) {
   }
 }
 
+// The counts default to null, not 0. A row that came back without them — a
+// database still on 202609090025, where together_status() had five columns —
+// means "we do not know how much is here", and optOutCopy()/scrapbookPurgeCopy()
+// say so in words. Quoting a confident zero on a confirmation sheet is how
+// somebody agrees to delete something they were told was nothing.
 export async function getTogetherStatus(otherId) {
   const { data, error } = await supabase.rpc('together_status', { other: otherId })
   if (error) throw error
-  return data?.[0] ?? { mine: false, theirs: false, active: false, started_on: null, item_count: 0 }
+  const row = data?.[0]
+  if (!row) {
+    return {
+      mine: false, theirs: false, active: false, started_on: null,
+      item_count: 0, event_count: null, my_item_count: null,
+    }
+  }
+  return {
+    ...row,
+    event_count: row.event_count ?? null,
+    my_item_count: row.my_item_count ?? null,
+  }
 }
 
 export async function setTogetherOptIn(otherId, joined) {
@@ -122,6 +138,24 @@ export async function addVoice(me, otherId, blob, caption = '', onDate = null) {
   })
   if (error) throw error
   return data
+}
+
+// The author-scoped bulk delete. `set_together_optin(other, false)` purges the
+// pair's RECORDED events — observations nobody wrote — and deliberately leaves
+// the scrapbook alone, because half of it belongs to the other person. This is
+// the separate, explicit act for somebody who wants their own contributions
+// gone as well; the RPC refuses to touch anything they did not author.
+//
+// Every cached signed URL for the removed objects has to go with them, or the
+// grid keeps pointing at files the cleanup worker is about to delete. The RPC
+// returns the count and not the rows, so the caller reloads.
+export async function purgeMyScrapbook(otherId, items = []) {
+  const { data, error } = await supabase.rpc('purge_my_scrapbook', { other: otherId })
+  if (error) throw error
+  for (const item of items) {
+    for (const path of [item?.media_path, item?.thumb_path]) if (path) forgetSignedUrl(path)
+  }
+  return typeof data === 'number' ? data : 0
 }
 
 export async function removeScrapbookItem(item) {

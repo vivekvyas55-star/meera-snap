@@ -1,17 +1,24 @@
 import { expect, test } from 'vitest'
 import {
   NOTE_MAX,
+  TIMELINE_GROUPS,
   TOGETHER_PRIVACY_LABEL,
   canDelete,
+  filterTimeline,
   fullPath,
   gridPath,
+  groupOfKind,
   groupTimelineByYear,
   isFutureDate,
+  knownCount,
   optInCopy,
   optInState,
+  optOutCopy,
   scrapbookCounts,
   scrapbookDateLabel,
+  scrapbookPurgeCopy,
   sortTimeline,
+  timelineFilters,
   yearsAgoLabel,
 } from '../src/lib/togetherState'
 
@@ -38,9 +45,17 @@ test('opt-in has four states and one side is never enough', () => {
   expect(optInState({ mine: true, theirs: true, active: true })).toBe('on')
 })
 
-test('turning it off promises nothing is deleted, because nothing is', () => {
-  expect(optInCopy('on', 'Sneha').body).toMatch(/nothing is deleted/i)
-  expect(optInCopy('on', 'Sneha').action).toBe('Turn off')
+// This test used to assert the opposite — "nothing is deleted" — and it was
+// true until 202609140034 gave opt-out a purge. The copy is not decoration
+// here: it is the only place a user learns that turning a switch off deletes
+// something, so it moves when the behaviour moves, and it has to name BOTH
+// halves or the sentence is a half-truth in the direction that costs data.
+test('turning it off names what is deleted and what is not', () => {
+  const copy = optInCopy('on', 'Sneha')
+  expect(copy.body).toMatch(/deletes the milestones already recorded/i)
+  expect(copy.body).toMatch(/scrapbook is not touched/i)
+  expect(copy.body).not.toMatch(/nothing is deleted/i)
+  expect(copy.action).toBe('Turn off')
   expect(optInCopy('waiting', 'Sneha').body).toMatch(/Sneha/)
 })
 
@@ -137,4 +152,135 @@ test('a date renders in the day it names, not the browser’s timezone', () => {
   // as local time is how "28 May" becomes "27 May" for anyone west of UTC.
   expect(scrapbookDateLabel('2018-05-28')).toBe('28 May 2018')
   expect(scrapbookDateLabel(null)).toBe('')
+})
+
+// ---------------------------------------------------------------------------
+// Filters per event type (202609140034)
+// ---------------------------------------------------------------------------
+test('filters group by what a card means, not which half of the timeline made it', () => {
+  // together_timeline() returns eleven kinds from two halves — derived on read
+  // from durable rows, and recorded by trigger at the moment they happened. The
+  // reader does not care which; `mutual_save` (recorded) and `kept` (derived)
+  // are the same thing to them and belong under the same chip.
+  expect(groupOfKind('mutual_save')).toBe('kept')
+  expect(groupOfKind('kept')).toBe('kept')
+  expect(groupOfKind('streak_milestone')).toBe('streaks')
+  expect(groupOfKind('streak')).toBe('streaks')
+  expect(groupOfKind('first_call')).toBe('firsts')
+  expect(groupOfKind('scrapbook_voice')).toBe('scrapbook')
+  // No group claims a kind twice, or a card would filter into two chips and be
+  // counted twice in the one row that reports how much is here.
+  const seen = TIMELINE_GROUPS.flatMap((g) => g.kinds)
+  expect(seen.length).toBe(new Set(seen).size)
+})
+
+test('a kind this bundle has never heard of is still reachable', () => {
+  // A database one migration ahead of the phone is the normal state for a few
+  // minutes after every deploy. A filter row that silently drops what it does
+  // not recognise is a screen lying about what is on it.
+  expect(groupOfKind('first_kiss_2027')).toBe('other')
+  const rows = [{ kind: 'friends' }, { kind: 'first_kiss_2027' }]
+  expect(timelineFilters(rows).map((f) => f.id)).toEqual(['all', 'firsts', 'other'])
+  expect(filterTimeline(rows, 'other')).toEqual([{ kind: 'first_kiss_2027' }])
+})
+
+test('a failed timeline has no filters, and that is different from having none', () => {
+  // `[]` is an answer: "this timeline has nothing to filter by". A read that
+  // failed is not an answer, and the seven bugs this rule comes from are all
+  // the same substitution.
+  expect(timelineFilters(null)).toBe(null)
+  expect(timelineFilters(undefined)).toBe(undefined)
+  expect(filterTimeline(null, 'kept')).toBe(null)
+  expect(filterTimeline(undefined, 'kept')).toBe(undefined)
+})
+
+test('one kind of thing is not a choice, so no chips are drawn', () => {
+  const oneGroup = [{ kind: 'friends' }, { kind: 'first_snap' }, { kind: 'first_call' }]
+  expect(timelineFilters(oneGroup)).toEqual([])
+  const two = [...oneGroup, { kind: 'streak_milestone' }]
+  expect(timelineFilters(two)).toEqual([
+    { id: 'all', label: 'All', count: 4 },
+    { id: 'firsts', label: 'Firsts', count: 3 },
+    { id: 'streaks', label: 'Streaks', count: 1 },
+  ])
+})
+
+test('"All" is every row, including kinds no chip is drawn for', () => {
+  const rows = [{ kind: 'friends' }, { kind: 'kept' }, { kind: 'nonsense' }]
+  expect(filterTimeline(rows, 'all')).toBe(rows)
+  expect(filterTimeline(rows, null)).toBe(rows)
+})
+
+// ---------------------------------------------------------------------------
+// The purge, and the sentence it is allowed to say
+// ---------------------------------------------------------------------------
+test('a count that never came back is never rendered as zero', () => {
+  // together_status() grew event_count in 202609140034; a database still on
+  // 202609090025 answers without it. Reporting that absence as 0 would tell
+  // somebody "nothing will be deleted" on the one screen where being wrong
+  // about it costs them data.
+  expect(knownCount(undefined)).toBe(null)
+  expect(knownCount(null)).toBe(null)
+  expect(knownCount(0)).toBe(0)
+  expect(knownCount(7)).toBe(7)
+  expect(knownCount(-1)).toBe(null)
+})
+
+test('opting out states the deletion in numbers when it knows them', () => {
+  const copy = optOutCopy({ event_count: 12 }, 'Sneha')
+  expect(copy.title).toMatch(/Turn Together off with Sneha\?/)
+  expect(copy.loses.join(' ')).toMatch(/12 recorded milestones are deleted/)
+  expect(copy.confirmLabel).toMatch(/delete/i)
+})
+
+test('opting out says "everything recorded" rather than a number it does not have', () => {
+  const copy = optOutCopy({ event_count: undefined }, 'Sneha')
+  expect(copy.loses.join(' ')).toMatch(/Every milestone recorded/)
+  expect(copy.loses.join(' ')).not.toMatch(/\b0\b/)
+})
+
+test('opting out with nothing recorded says so instead of threatening a deletion', () => {
+  expect(optOutCopy({ event_count: 0 }, 'Sneha').loses.join(' '))
+    .toMatch(/nothing has been recorded yet/i)
+})
+
+test('opting out promises the scrapbook survives, because it does', () => {
+  // The line the whole feature turns on: the purge deletes what the system
+  // OBSERVED and never what a person MADE. A confirmation that merged the two
+  // is how somebody deletes the other person's photos believing they flipped a
+  // switch off — and the fear that it might is what would stop them using a
+  // control they are entitled to.
+  const copy = optOutCopy({ event_count: 4 }, 'Sneha')
+  expect(copy.keeps.join(' ')).toMatch(/scrapbook is untouched/i)
+  expect(copy.keeps.join(' ')).toMatch(/only the person who added an entry can remove it/i)
+  expect(copy.loses.join(' ')).not.toMatch(/scrapbook/i)
+})
+
+test('a singular milestone is not "1 recorded milestones are deleted"', () => {
+  expect(optOutCopy({ event_count: 1 }).loses.join(' ')).toMatch(/1 recorded milestone is deleted/)
+})
+
+test('purging your own entries counts yours and theirs separately', () => {
+  // "Delete the 11 entries here" and "delete 3 of the 11 entries here" are
+  // different promises and only one of them is true.
+  const copy = scrapbookPurgeCopy({ item_count: 11, my_item_count: 3 }, 'Sneha')
+  expect(copy.title).toBe('Remove 3 entries you added?')
+  expect(copy.keeps.join(' ')).toMatch(/The 8 entries Sneha added stay/)
+  expect(copy.loses.join(' ')).toMatch(/deleted from storage/i)
+  expect(copy.loses.join(' ')).toMatch(/can't be undone/i)
+})
+
+test('purging your own entries is vague rather than wrong when the counts are missing', () => {
+  const copy = scrapbookPurgeCopy({}, 'Sneha')
+  expect(copy.title).toBe('Remove everything you added?')
+  expect(copy.keeps.join(' ')).toMatch(/Anything Sneha added stays/)
+  // Never "0 entries", which would read as "this does nothing".
+  expect(copy.loses.join(' ')).not.toMatch(/\b0\b/)
+})
+
+test('the singular of a scrapbook purge reads like English', () => {
+  const copy = scrapbookPurgeCopy({ item_count: 2, my_item_count: 1 }, 'Sneha')
+  expect(copy.title).toBe('Remove 1 entry you added?')
+  expect(copy.loses[0]).toMatch(/1 entry you wrote goes, with its photos/)
+  expect(copy.keeps[0]).toMatch(/The 1 entry Sneha added stays/)
 })

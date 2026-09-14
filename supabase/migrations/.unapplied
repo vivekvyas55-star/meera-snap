@@ -10,3 +10,22 @@
 #
 # Remove the line in the same change that applies the migration.
 202609090026_intimate_games
+
+# 202609140034 puts two AFTER triggers on `messages` — the hottest write path in
+# the app — and starts recording a durable, personal record of a pair that
+# nothing previously kept. Both halves want a human read before they are live,
+# the same call 202609070011 makes about money: the triggers because a mistake
+# there is felt on every send, and the recording because an opt-in that begins
+# collecting is not something to switch on for somebody else.
+#
+# The client is safe in the meantime and does not need this migration to work.
+# together_timeline() and set_together_optin() keep their existing signatures, so
+# an un-migrated production returns the derived half of the timeline exactly as
+# it does today; the filter chips simply find fewer groups, and together_status()
+# answers without event_count, which the client reads as "unknown" and phrases
+# around rather than rendering as a confident zero.
+#
+# Applying it: run the migration in the SQL editor, then
+# supabase/operations/schedule_together_purge.sql standalone (cron statements
+# have aborted batched transactions on some projects), then delete these lines.
+202609140034_timeline_events

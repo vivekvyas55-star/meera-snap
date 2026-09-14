@@ -29,7 +29,7 @@ vi.mock('../src/lib/db', () => ({
 
 const {
   getTogetherStatus, setTogetherOptIn, listTimeline, listOnThisDay,
-  listScrapbook, addNote, removeScrapbookItem,
+  listScrapbook, addNote, removeScrapbookItem, purgeMyScrapbook,
 } = vi.hoisted(() => ({
   getTogetherStatus: vi.fn(),
   setTogetherOptIn: vi.fn(),
@@ -40,6 +40,7 @@ const {
   addPhoto: vi.fn(async () => ({})),
   addVoice: vi.fn(async () => ({})),
   removeScrapbookItem: vi.fn(async () => {}),
+  purgeMyScrapbook: vi.fn(async () => 0),
 }))
 
 vi.mock('../src/lib/together', () => ({
@@ -52,13 +53,14 @@ vi.mock('../src/lib/together', () => ({
   addPhoto: vi.fn(async () => ({})),
   addVoice: vi.fn(async () => ({})),
   removeScrapbookItem,
+  purgeMyScrapbook,
 }))
 
 const { default: Together } = await import('../src/screens/Together')
 
 const ME = 'me-1'
-const OFF = { mine: false, theirs: false, active: false, started_on: null, item_count: 0 }
-const ON = { mine: true, theirs: true, active: true, started_on: '2018-05-28', item_count: 2 }
+const OFF = { mine: false, theirs: false, active: false, started_on: null, item_count: 0, event_count: 0, my_item_count: 0 }
+const ON = { mine: true, theirs: true, active: true, started_on: '2018-05-28', item_count: 2, event_count: 6, my_item_count: 1 }
 
 const openFriend = async () => {
   render(<Together me={ME} onBack={() => {}} />)
@@ -112,11 +114,15 @@ test('turning it on is one call and re-reads what it unlocked', async () => {
   await waitFor(() => expect(listTimeline).toHaveBeenCalledWith('f-1'))
 })
 
-test('turning it off says nothing is deleted, because nothing is', async () => {
+test('turning it off says what it deletes, on the card, before the tap', async () => {
   getTogetherStatus.mockResolvedValue(ON)
   await openFriend()
   await screen.findByText('Together is on')
-  expect(screen.getByText(/nothing is deleted/i)).toBeTruthy()
+  // It used to promise "nothing is deleted". 202609140034 made that untrue, and
+  // the card somebody reads while deciding is the wrong place to leave a stale
+  // promise — the confirmation sheet is a second chance, not the first one.
+  expect(screen.getByText(/deletes the milestones already recorded/i)).toBeTruthy()
+  expect(screen.queryByText(/nothing is deleted/i)).toBe(null)
   expect(screen.getByRole('button', { name: 'Turn off' })).toBeTruthy()
 })
 
@@ -373,6 +379,173 @@ test('the date the memory happened defaults to the IST today, never the browser�
   // And it refuses to be postdated, because add_scrapbook_item() would clamp it
   // to today and never say so.
   expect(picker.getAttribute('max')).toBe('2026-09-09')
+})
+
+// ---------------------------------------------------------------------------
+// Typed events, filters and the purge (202609140034)
+// ---------------------------------------------------------------------------
+const RECORDED = [
+  { kind: 'friends', at: '2018-05-28T04:00:00Z', on_date: '2018-05-28', title: 'You became friends', detail: null, ref: null, thumb_path: null },
+  { kind: 'first_call', at: '2018-06-02T04:00:00Z', on_date: '2018-06-02', title: 'Your first call', detail: null, ref: 'e1', thumb_path: null },
+  { kind: 'streak_milestone', at: '2026-08-01T04:00:00Z', on_date: '2026-08-01', title: '30 days in a row', detail: 'Past a month', ref: 'e2', thumb_path: null },
+  { kind: 'mutual_save', at: '2026-09-01T04:00:00Z', on_date: '2026-09-01', title: 'A photo you both saved', detail: null, ref: 'e3', thumb_path: null },
+]
+
+test('a recorded milestone reads as history alongside the derived rows', async () => {
+  getTogetherStatus.mockResolvedValue(ON)
+  listTimeline.mockResolvedValue(RECORDED)
+  await openFriend()
+  // Half of these are computed on read from durable rows and half were written
+  // by a trigger at the moment they happened. Nothing on screen distinguishes
+  // them, which is the point — provenance is the database's problem.
+  await screen.findByText('Your first call')
+  expect(screen.getByText('30 days in a row')).toBeTruthy()
+  expect(screen.getByText('A photo you both saved')).toBeTruthy()
+  // And a recorded event carries no thumb_path at all, so a timeline of forty
+  // milestones is still one RPC and zero downloads.
+  expect(signedUrl).not.toHaveBeenCalled()
+})
+
+test('the timeline filters per event type, and All brings everything back', async () => {
+  getTogetherStatus.mockResolvedValue(ON)
+  listTimeline.mockResolvedValue(RECORDED)
+  await openFriend()
+  await screen.findByText('Your first call')
+  fireEvent.click(screen.getByRole('button', { name: /Streaks 1/ }))
+  await waitFor(() => expect(screen.queryByText('Your first call')).toBe(null))
+  expect(screen.getByText('30 days in a row')).toBeTruthy()
+  fireEvent.click(screen.getByRole('button', { name: /All 4/ }))
+  await screen.findByText('Your first call')
+})
+
+test('a filter that hides everything says it was the filter', async () => {
+  getTogetherStatus.mockResolvedValue(ON)
+  listTimeline.mockResolvedValue(RECORDED)
+  await openFriend()
+  await screen.findByText('Your first call')
+  fireEvent.click(screen.getByRole('button', { name: /Kept 1/ }))
+  await screen.findByText('A photo you both saved')
+  fireEvent.click(screen.getByRole('button', { name: /Streaks 1/ }))
+  // ...and never "Nothing on the timeline yet", which reads identically and
+  // hides the way out of it.
+  await waitFor(() => expect(screen.queryByText('A photo you both saved')).toBe(null))
+  expect(screen.queryByText('Nothing on the timeline yet.')).toBe(null)
+})
+
+test('one kind of card draws no chip row at all', async () => {
+  getTogetherStatus.mockResolvedValue(ON)
+  listTimeline.mockResolvedValue([RECORDED[0], RECORDED[1]])
+  await openFriend()
+  await screen.findByText('Your first call')
+  // Two chips that both mean "show me everything" is chrome for its own sake.
+  expect(document.querySelector('.tg-filters')).toBe(null)
+})
+
+test('a timeline that failed to load never reads as an empty history', async () => {
+  // The seventh instance of this bug was in these very panes. `[]` is an
+  // answer; a rejected fetch is not one, and "Nothing on the timeline yet" is
+  // a claim about their relationship that nobody verified.
+  getTogetherStatus.mockResolvedValue(ON)
+  listTimeline.mockRejectedValue(new Error('network'))
+  await openFriend()
+  await screen.findByText(/could not read it/i)
+  expect(screen.queryByText('Nothing on the timeline yet.')).toBe(null)
+})
+
+test('one pane failing does not empty the other two', async () => {
+  getTogetherStatus.mockResolvedValue(ON)
+  listTimeline.mockRejectedValue(new Error('network'))
+  listScrapbook.mockResolvedValue([
+    { id: 'n1', kind: 'note', author: ME, on_date: '2026-09-01', body: 'still here', media_path: null, thumb_path: null },
+  ])
+  await openFriend()
+  await screen.findByText(/could not read it/i)
+  fireEvent.click(screen.getByRole('tab', { name: 'Scrapbook' }))
+  // allSettled, not all: one rejected RPC turning the other two into "nothing
+  // here" is the same bug wearing a Promise.
+  await screen.findByText('still here')
+})
+
+test('a scrapbook that failed to open does not claim to be empty', async () => {
+  getTogetherStatus.mockResolvedValue(ON)
+  listScrapbook.mockRejectedValue(new Error('network'))
+  await openFriend()
+  await screen.findByText('Together is on')
+  fireEvent.click(screen.getByRole('tab', { name: 'Scrapbook' }))
+  await screen.findByText(/It is not empty/i)
+  expect(screen.queryByText('The scrapbook is empty.')).toBe(null)
+})
+
+test('turning Together off states the purge before it runs it', async () => {
+  getTogetherStatus.mockResolvedValue(ON)
+  setTogetherOptIn.mockResolvedValue({ ...ON, mine: false, active: false, event_count: 0 })
+  await openFriend()
+  fireEvent.click(await screen.findByRole('button', { name: 'Turn off' }))
+  await screen.findByText('Turn Together off with Sneha?')
+  // The number comes from together_status(), so the person agreeing knows the
+  // size of what they are agreeing to.
+  expect(screen.getByText(/6 recorded milestones are deleted/)).toBeTruthy()
+  // ...and the half that does NOT go is on the same sheet. Without it, the
+  // reasonable fear is that this takes the other person's photos too.
+  expect(screen.getByText(/scrapbook is untouched/i)).toBeTruthy()
+  // Nothing has happened yet.
+  expect(setTogetherOptIn).not.toHaveBeenCalled()
+  fireEvent.click(screen.getByText('Turn off and delete'))
+  await waitFor(() => expect(setTogetherOptIn).toHaveBeenCalledWith('f-1', false))
+})
+
+test('cancelling the opt-out changes nothing', async () => {
+  getTogetherStatus.mockResolvedValue(ON)
+  await openFriend()
+  fireEvent.click(await screen.findByRole('button', { name: 'Turn off' }))
+  await screen.findByText('Turn Together off with Sneha?')
+  fireEvent.click(screen.getByText('Cancel'))
+  await waitFor(() => expect(screen.queryByText('Turn Together off with Sneha?')).toBe(null))
+  expect(setTogetherOptIn).not.toHaveBeenCalled()
+})
+
+test('turning it ON is not a destructive act and asks nothing', async () => {
+  getTogetherStatus.mockResolvedValue(OFF)
+  setTogetherOptIn.mockResolvedValue({ ...OFF, mine: true })
+  await openFriend()
+  fireEvent.click(await screen.findByRole('button', { name: 'Turn on' }))
+  await waitFor(() => expect(setTogetherOptIn).toHaveBeenCalledWith('f-1', true))
+  expect(screen.queryByText(/Turn Together off/)).toBe(null)
+})
+
+test('the bulk purge is scoped to your own entries and says whose stay', async () => {
+  getTogetherStatus.mockResolvedValue({ ...ON, item_count: 3, my_item_count: 2 })
+  listScrapbook.mockResolvedValue([
+    { id: 'n1', kind: 'note', author: ME, on_date: '2026-09-01', body: 'mine one', media_path: null, thumb_path: null },
+    { id: 'n2', kind: 'note', author: ME, on_date: '2026-09-02', body: 'mine two', media_path: null, thumb_path: null },
+    { id: 'n3', kind: 'note', author: 'f-1', on_date: '2026-09-03', body: 'theirs', media_path: null, thumb_path: null },
+  ])
+  await openFriend()
+  await screen.findByText('Together is on')
+  fireEvent.click(screen.getByRole('tab', { name: 'Scrapbook' }))
+  fireEvent.click(await screen.findByText('Remove the 2 entries you added'))
+  await screen.findByText('Remove 2 entries you added?')
+  // A shared scrapbook where one person can clear the other's contributions is
+  // a lever, not a scrapbook — so the sheet says which entries survive, and the
+  // RPC refuses anything this user did not author.
+  expect(screen.getByText(/The 1 entry Sneha added stays/)).toBeTruthy()
+  expect(purgeMyScrapbook).not.toHaveBeenCalled()
+  fireEvent.click(screen.getByText('Remove mine'))
+  await waitFor(() => expect(purgeMyScrapbook).toHaveBeenCalled())
+  expect(purgeMyScrapbook.mock.calls[0][0]).toBe('f-1')
+  expect(purgeMyScrapbook.mock.calls[0][1].map((i) => i.id)).toEqual(['n1', 'n2'])
+})
+
+test('a scrapbook with nothing of yours in it offers no bulk purge', async () => {
+  getTogetherStatus.mockResolvedValue({ ...ON, item_count: 1, my_item_count: 0 })
+  listScrapbook.mockResolvedValue([
+    { id: 'n3', kind: 'note', author: 'f-1', on_date: '2026-09-03', body: 'theirs', media_path: null, thumb_path: null },
+  ])
+  await openFriend()
+  await screen.findByText('Together is on')
+  fireEvent.click(screen.getByRole('tab', { name: 'Scrapbook' }))
+  await screen.findByText('theirs')
+  expect(screen.queryByText(/Remove the .* you added/)).toBe(null)
 })
 
 test('going back from a conversation lands on the picker, not out of the screen', async () => {

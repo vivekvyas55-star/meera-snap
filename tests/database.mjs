@@ -238,6 +238,112 @@ await asUser(B,async()=>{
  assert.equal(items.length >= 1, true)
 })
 console.log('PASS together opt-in needs both sides, and a stranger gets nothing')
+// --- Typed timeline events (202609140034) ----------------------------------
+// These are MATERIALISED rather than derived, and only because the rows they
+// are about do not survive: messages are purged at 31 days and cleared after
+// three visits, and `streaks` keeps a COUNT, not a history — bump_streak
+// destroys "we once reached 100" with the same statement that resets it. The
+// trigger is the only chance to write any of it down, which makes this block
+// the only thing that can catch a broken one.
+await asUser(A,async()=>{
+ const kinds=(await query('select kind from public.together_events')).map(e=>e.kind)
+ // Turning it on cannot invent a past, but it does seed from evidence still on
+ // disk — the call log and the snaps inserted further up, both from before
+ // either of them had opted in.
+ assert.equal(kinds.includes('first_call'),true)
+ assert.equal(kinds.includes('first_snap'),true)
+ // ...and deliberately seeds NO streak milestone. The day a streak crossed 30
+ // is recorded nowhere, and guessing a date on a surface two people share is
+ // how a memory becomes a small lie.
+ assert.equal(kinds.includes('streak_milestone'),false)
+ // A recorded row reaches the timeline beside the derived ones, carrying no
+ // media: a milestone is text and a date, because the message it names is
+ // going to be purged and its object collected with it.
+ const line=await query('select kind,title,thumb_path from together_timeline($1)',[B])
+ assert.equal(line.some(r=>r.kind==='first_call' && r.title==='Your first call'),true)
+ assert.equal(line.filter(r=>['first_snap','first_call','mutual_save','streak_milestone'].includes(r.kind))
+   .every(r=>r.thumb_path===null),true)
+})
+// An observation a user can write is a fabrication. SELECT and nothing else.
+await asUser(A,async()=>{
+ await assert.rejects(query("insert into together_events(user_a,user_b,kind,on_date) values($1,$2,'streak_milestone',current_date)",[A,B]),/permission denied/)
+ await assert.rejects(query('update together_events set magnitude=365'),/permission denied/)
+ await assert.rejects(query('delete from together_events'),/permission denied/)
+})
+// Not discoverable, by RLS rather than by the screen.
+await asUser(C,async()=>assert.equal((await query('select count(*)::int n from together_events'))[0].n,0))
+// Opt-out purges the OBSERVATIONS in the same transaction, and never the
+// scrapbook — which is authored, attributed, and half of it the other person's.
+await db.exec('begin')
+assert.equal((await query('select count(*)::int n from together_events'))[0].n > 0,true)
+await asUser(A,()=>query('select set_together_optin($1,false)',[B]))
+assert.equal((await query('select count(*)::int n from together_events'))[0].n,0)
+assert.equal((await query('select count(*)::int n from scrapbook_items'))[0].n > 0,true)
+// ...and nothing accrues again while it is off. Opt-in is a COLLECTION gate:
+// the trigger refuses to write rather than the read filtering it out. If it
+// were the other way round, an opt-out would delete a pile that started
+// refilling on the next message.
+await db.query("insert into storage.objects(bucket_id,name) values('media',$1)",[`${A}/voice/gate.webm`])
+await db.query(`insert into public.messages(user_a,user_b,sender_id,kind,media_path) values($1,$2,$1,'voice',$3)`,[A,B,`${A}/voice/gate.webm`])
+assert.equal((await query('select count(*)::int n from together_events'))[0].n,0)
+await db.exec('rollback')
+// Milestones come from their OWN trigger on `streaks`, not from a line inside
+// bump_streak — which is redefined across four files under last-applied-wins,
+// so a hook in it is one future migration away from being dropped in silence.
+await db.exec('begin')
+await db.query('insert into public.streaks(user_a,user_b,count) values($1,$2,0) on conflict (user_a,user_b) do nothing',[A,B])
+await db.query('update public.streaks set count=8,last_increment=now() where user_a=$1 and user_b=$2',[A,B])
+assert.deepEqual((await query("select magnitude from together_events where kind='streak_milestone' order by magnitude")).map(r=>r.magnitude),[7])
+// A streak that breaks and climbs back past 7 does not re-announce 7: a
+// timeline is a list of firsts and highs, and a card you have already read is
+// what made the bot quotes feel cheap.
+await db.query('update public.streaks set count=0 where user_a=$1 and user_b=$2',[A,B])
+await db.query('update public.streaks set count=31 where user_a=$1 and user_b=$2',[A,B])
+assert.deepEqual((await query("select magnitude from together_events where kind='streak_milestone' order by magnitude")).map(r=>r.magnitude),[7,30])
+await db.exec('rollback')
+// "Mutually saved" means BOTH ids in saved_by, not the one-sided
+// cardinality > 0 the derived row calls "kept together".
+await db.exec('begin')
+await db.query("insert into storage.objects(bucket_id,name) values('media',$1)",[`${A}/snaps/kept-forever.jpg`])
+const keptMsg=(await db.query(`insert into public.messages(user_a,user_b,sender_id,kind,media_path,media_type) values($1,$2,$1,'snap',$3,'image') returning id`,[A,B,`${A}/snaps/kept-forever.jpg`])).rows[0]
+await asUser(A,()=>query('select toggle_saved($1)',[keptMsg.id]))
+assert.equal((await query("select count(*)::int n from together_events where kind='mutual_save'"))[0].n,0)
+await asUser(B,()=>query('select toggle_saved($1)',[keptMsg.id]))
+const mutual=await query("select dedupe,subject from together_events where kind='mutual_save'")
+assert.equal(mutual.length,1)
+assert.equal(mutual[0].subject,'photo')
+assert.equal(mutual[0].dedupe,keptMsg.id)
+// Unsaving and saving again is a retry, not a second memory.
+await asUser(B,()=>query('select toggle_saved($1)',[keptMsg.id]))
+await asUser(B,()=>query('select toggle_saved($1)',[keptMsg.id]))
+assert.equal((await query("select count(*)::int n from together_events where kind='mutual_save'"))[0].n,1)
+await db.exec('rollback')
+// A block deletes the friendship on purpose, so that stories, presence, calls
+// and push all stop. The old together_active() counted opt-in rows only, and
+// those reference profiles — so an unfriended or blocked pair kept a working
+// shared timeline. The sweep is what collects the rows a tap never reached.
+await db.exec('begin')
+await db.query('delete from public.friendships where user_a=$1 and user_b=$2',[A,B])
+assert.equal((await query('select public.together_pair_active($1,$2) ok',[A,B]))[0].ok,false)
+await asUser(A,async()=>{
+ assert.equal((await query('select count(*)::int n from together_events'))[0].n,0)
+ assert.equal((await query('select * from together_timeline($1)',[B])).length,0)
+})
+assert.equal((await query('select public.purge_together_events() n'))[0].n > 0,true)
+assert.equal((await query('select count(*)::int n from together_events'))[0].n,0)
+await db.exec('rollback')
+// The other purge, and the only bulk delete one person may run on a shared
+// artifact: their OWN entries. Executed as a real authenticated user, because
+// reading the function body cannot catch the author scoping being wrong.
+await db.exec('begin')
+await asUser(B,()=>query("select * from add_scrapbook_item(other=>$1,item_kind=>'note',item_body=>'hers to keep')",[A]))
+const mineCount=(await query('select count(*)::int n from scrapbook_items where author=$1',[A]))[0].n
+assert.equal(mineCount > 0,true)
+await asUser(A,async()=>assert.equal((await query('select public.purge_my_scrapbook($1) n',[B]))[0].n,mineCount))
+assert.equal((await query('select count(*)::int n from scrapbook_items where author=$1',[A]))[0].n,0)
+assert.equal((await query('select count(*)::int n from scrapbook_items where author=$1',[B]))[0].n,1)
+await db.exec('rollback')
+console.log('PASS milestones are recorded only while both have opted in, cannot be forged, and an opt-out purges them without touching the scrapbook')
 console.log('PASS a grandfathered founder is allowed and never charged')
 console.log('PASS prepaid credits and subscription expiry')
 // Recovery lockout is enforced in SQL and a successful reset revokes sessions.

@@ -513,14 +513,124 @@ other person too — messages are pair-keyed with ON DELETE CASCADE on both halv
 SQL deliberately, so they can be CREATED on a database that is behind on later
 migrations.
 
-## The Together layer (`202609090025_together.sql`)
+## The Together layer (`202609090025_together.sql`, `202609140034_timeline_events.sql`)
 
 A pair surface: an opt-in timeline, a shared scrapbook, and "On this day".
+**0034 is written and deliberately NOT applied** — see `.unapplied` for why, and
+for the fact that the client works without it.
 
 **The narrative is opt-in and needs BOTH sides.** `together_status()` returns
 `mine` / `theirs` / `active` separately, and one person cannot switch on a
 shared timeline for the pair. Opting out hides the narrative but leaves the
 scrapbook readable — read is always shared, write is what the opt-in gates.
+
+**The timeline is half derived and half materialised, and the line between them
+is a rule: materialise a fact whose evidence is deleted; derive a fact whose
+source outlives it.** CLAUDE.md's own argument about the game series score — a
+second write is a second thing that can fail alone — is why most of this stays
+derived, and it holds only where the evidence survives. Here most of it does
+not: `messages` are purged at 31 days and cleared after three visits, and
+`streaks` keeps a **count, not a history**, so `bump_streak` destroys "we once
+reached 100" with the same statement that resets it. A derived "first snap" is
+true for a month and then silently disappears. So `together_events` records
+`first_snap` / `first_call` / `first_voice` / `mutual_save` /
+`streak_milestone` by trigger at the moment each happens, and
+`together_timeline()` still derives the friendship date, the anniversary and its
+rollovers, and the scrapbook. Deriving the durable half is correctness, not
+laziness — the anniversary date is editable, and a materialised "4 years
+together" would keep saying four after the date behind it moved.
+
+- Every recording trigger wraps its work in `begin … exception when others then
+  null`, exactly like `chat_backup.sql`, because it is the same hot path. A
+  milestone that fails to record costs a card; one that fails a send costs the
+  message.
+- **The streak hook is its OWN trigger on `streaks`, not a line inside
+  `bump_streak`** — that function is redefined across four files under
+  last-applied-wins, so a hook in it is one migration from being dropped in
+  silence. Same reasoning as the signup credit grant not being an edit to
+  `handle_new_user()`.
+- `(user_a, user_b, kind, dedupe)` is unique, and that index is the whole
+  idempotency story: a retried trigger, a replayed statement and a re-seed after
+  a purge each cost one row. A milestone fires **once per pair, ever** — a streak
+  that breaks at 40 and climbs back past 30 does not re-announce 30.
+- **`together_events` grants SELECT and nothing else.** An observation a user can
+  write is a fabrication; every write goes through definer functions that are not
+  granted to `authenticated` either.
+
+**Opt-in is a COLLECTION gate, not a display gate.** The triggers ask
+`together_pair_active()` and return without writing, so nothing accrues for a
+pair that has not both opted in. That is what makes the purge mean anything — if
+events accrued regardless and opt-in merely hid them, an opt-out would delete a
+pile that started refilling on the next message. The honest cost is that turning
+it on does not invent a past: `together_seed_events()` backfills only from
+evidence still on disk, and seeds **no streak milestone**, because the day a
+streak crossed 30 is recorded nowhere and guessing a date on a surface two
+people share is how a memory becomes a small lie.
+
+**The purge deletes what the system OBSERVED, never what a person MADE.** That
+sentence is the whole semantics. `together_events` are observations: nobody
+wrote them, nobody owns half of one, and "you reached a 30 day streak" cannot be
+split down the middle — they exist only because both people consented to their
+being collected, so **either** side withdrawing ends them immediately, in the
+same transaction as the opt-out. Waiting for the second person would turn an
+opt-out into a request and hand the other party a veto over it.
+`scrapbook_items` are contributions — authored, attributed, and half of them the
+other person's — so the purge does not touch that table, and
+`purge_my_scrapbook(other)` is the separate, **author-scoped** act for somebody
+who wants their own entries gone too (item by item through
+`delete_scrapbook_item()`, so every object is still queued for the cleanup
+worker). The derived half of the timeline is not purged because it is not
+stored. **That the derived/materialised split lands exactly on the purge
+boundary is not a coincidence: a fact you can recompute was never yours to
+delete.**
+
+- The copy moved with the behaviour. `optInCopy('on')` used to promise "nothing
+  is deleted" and 0034 made that false; both halves are now named on the card
+  **and** in a `Confirm` that lists what goes and what stays, because the house
+  rule is that a destructive action states its loss first (`DELETION_LOSES` in
+  `privacy.js`). Two tests that asserted the old promise were rewritten, not
+  relaxed.
+- `together_status()` gained `event_count` and `my_item_count` so the
+  confirmation can quote a number instead of asking someone to agree to an
+  unnamed quantity. A database still on 0025 answers without them, so the client
+  reads them as `null` = **unknown** and says "every milestone recorded" rather
+  than a confident zero — `knownCount()` in `togetherState.js`.
+- `operations/schedule_together_purge.sql` sweeps every 15 min. It exists
+  because the synchronous purge only fires on a tap: `block_user()` and
+  `removeFriend()` delete the friendship while the `together_optin` rows (which
+  reference profiles) survive. Data minimisation, not enforcement — the rows are
+  already invisible.
+- **0034 also closes a live hole:** the old `together_active()` counted opt-in
+  rows only, so an unfriended or **blocked** pair kept a working shared
+  timeline. `together_pair_active(a, b)` now requires an accepted friendship and
+  no block, and `together_active(other)` is a wrapper over it so the two cannot
+  disagree.
+
+**Recorded events carry no media at all — not even a thumbnail**, which is
+stricter than the capsule rule below and deliberately so. A `mutual_save` names
+a message that will be purged at 31 days and its object collected with it, so
+carrying `thumb_path` would force one of two bad options: teach
+`claim_media_cleanup()` that an event is a reference, pinning a file in storage
+forever for a card nobody asked to keep (the `toggle_saved` pinning bug with
+better manners), or ship a tile whose signed URL 404s. An event is text and a
+date; the photo lives in the scrapbook, which is the surface built to be
+durable. No image means no tile, which means no tap target that does nothing.
+
+**Filters group by meaning, not provenance** (`TIMELINE_GROUPS` /
+`filterTimeline` in `togetherState.js`): Firsts / Years / Streaks / Kept /
+Scrapbook, so `mutual_save` (recorded) and `kept` (derived) sit under one chip —
+a reader does not care which half of the timeline made a card. A kind this
+bundle has never heard of falls into **Other** rather than vanishing, because a
+phone one deploy behind the database is normal for a few minutes after every
+deploy. Below two groups no chip row is drawn at all, and a filter that empties
+the view says it was the filter — otherwise it reads exactly like the empty
+state and hides the way out of it.
+
+**The panes distinguish "failed" from "empty".** `undefined` is not asked,
+`null` is the read failed, an array is an answer; the three reads go through
+`Promise.allSettled`, because one rejected RPC turning the other two into
+"nothing here" is the seven-times bug wearing a Promise. CLAUDE.md already lists
+"Together panes: 'The scrapbook is empty'" as one of those seven.
 
 **Capsule thumbnails are the egress rule made concrete.**
 `together_on_this_day()` deliberately returns `thumb_path` and **never**

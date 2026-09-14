@@ -126,6 +126,38 @@
 }
 
 /* --------------------------------------------------------------------------
+   Timeline filters — pill chips, the ABC metadata form, with the count in the
+   chip rather than a separate label. It scrolls sideways instead of wrapping:
+   at 320px six chips on two lines push the first year heading below the fold,
+   and the point of the row is to be reachable without scrolling the thread.
+   -------------------------------------------------------------------------- */
+.tg-filters {
+  display: flex;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-3);
+  overflow-x: auto;
+  scrollbar-width: none;
+  /* The chips are 34px circles of tap target inside a scroller; without this
+     the focus ring and the pressed state clip against the overflow edge. */
+  padding: 2px;
+  margin-left: -2px;
+}
+.tg-filters::-webkit-scrollbar { display: none; }
+.tg-filters .pill-btn {
+  flex: 0 0 auto;
+  background: var(--card);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.tg-filters .pill-btn.on { background: var(--action); color: var(--action-ink); }
+.tg-filters .pill-btn em {
+  font-style: normal;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.6;
+}
+
+/* --------------------------------------------------------------------------
    Timeline
    -------------------------------------------------------------------------- */
 .tg-year { margin-bottom: var(--sp-4); }
@@ -231,6 +263,50 @@
   flex: 0 0 auto;
 }
 .tg-remove:active { background: var(--card-press); }
+
+/* The author-scoped bulk delete. Quiet and at the bottom on purpose: it is a
+   real control somebody is entitled to, not something to put a thumb next to
+   the scrapbook it empties. Coral is this sheet's danger colour; it is not
+   given a full vibrant card, because a destructive action dressed as a feature
+   card is an invitation. */
+.tg-purge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-height: 40px;
+  margin-top: var(--sp-4);
+  padding: 0 var(--sp-4);
+  border: none;
+  border-radius: var(--r-pill);
+  background: var(--card);
+  color: var(--coral);
+  font-size: var(--fs-meta);
+  font-weight: 550;
+}
+.tg-purge:active { background: var(--card-press); }
+.tg-purge:disabled { opacity: 0.5; }
+
+/* The two halves of a destructive confirmation. Shaped like .pc-loses in
+   privacy.css deliberately — the account-deletion sheet reads this way and a
+   second visual grammar for "here is what you are about to lose" would be one
+   too many — but declared here rather than borrowed, because privacy.css is
+   imported by Profile.jsx and this screen must not depend on another screen
+   having been opened first for its warning to be legible.
+   Losses in ink, what stays in muted, in that order: the eye should meet the
+   cost before the reassurance, not skim past it to get there. */
+.tg-loses,
+.tg-keeps {
+  margin: 0;
+  padding-left: 18px;
+  font-size: var(--fs-meta);
+  line-height: 1.55;
+}
+.tg-loses { color: var(--ink); }
+.tg-keeps { color: var(--muted); margin-top: var(--sp-3); }
+.tg-loses li,
+.tg-keeps li { margin-bottom: 6px; }
+.tg-loses li:last-child,
+.tg-keeps li:last-child { margin-bottom: 0; }
 
 /* --------------------------------------------------------------------------
    Composer
