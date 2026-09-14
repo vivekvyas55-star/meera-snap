@@ -84,10 +84,13 @@ export function rowSignal(state = {}) {
     return {
       kind: 'question',
       text: 'Your turn',
+      // "today" is not padding. The count is pending_questions_all()'s, which
+      // is scoped to the current IST day, so the chip is a claim about today
+      // and not about everything ever left unanswered.
       label:
         pending === 1
-          ? 'They asked you a question'
-          : `They asked you ${pending} questions`,
+          ? 'They asked you a question today'
+          : `They asked you ${pending} questions today`,
       tone: ACTION,
     }
   }

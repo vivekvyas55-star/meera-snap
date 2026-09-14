@@ -25,7 +25,13 @@ export async function getEntitlement() {
   const { data, error } = await supabase.rpc('entitlement')
   // A missing RPC means the migration isn't applied. Fail OPEN: a billing
   // outage must never lock people out of their own conversations.
-  if (error) return OPEN
+  //
+  // `unknown: true` marks the difference between "the server said you have no
+  // subscription" and "we could not ask". Access is the same either way — that
+  // is the point of failing open — but a screen that REPORTS your billing must
+  // not read the fallback back to you as fact. Callers that only gate on
+  // `allowed` can ignore it; the Billing screen cannot.
+  if (error) return { ...OPEN, unknown: true }
   return data?.[0] ?? OPEN
 }
 
@@ -71,6 +77,113 @@ export function daysLeft(until) {
 }
 
 // ---------------------------------------------------------------------------
+// What the subscription row is actually saying
+// ---------------------------------------------------------------------------
+
+/**
+ * Classify the subscription half of an entitlement, for a screen that has to
+ * EXPLAIN it. This decides nothing: `ent.allowed` is the server's answer and
+ * the only one that counts. Credits can allow an account this function calls
+ * `covering: false`, and the Billing screen says so in that order.
+ *
+ * The state worth naming is `active-undated`. entitlement() reads:
+ *
+ *     status = 'active' and current_period_end > now()
+ *
+ * and in SQL `NULL > now()` is NULL, not true — so an `active` row with no
+ * period end recorded does not cover anybody. It is not "expired" in the sense
+ * of having run out; nothing was ever written for it to run out of. The
+ * Razorpay webhook is the only thing that may set that column, so the state is
+ * reachable the moment a subscription is marked active without one.
+ * `active-expired` is the ordinary version: a period end that has passed.
+ *
+ * @param {object|null|undefined} ent  entitlement() row, or null/undefined if unread
+ * @param {number} now
+ * @returns {{key: string, title: string, detail: string, covering: boolean|null}}
+ */
+export function subscriptionStanding(ent, now = Date.now()) {
+  // `unknown` is set by getEntitlement() when the RPC could not be read. The
+  // fallback it returns looks exactly like a real "no subscription" row, and
+  // repeating that back as a fact is how a failure becomes an answer.
+  if (!ent || typeof ent !== 'object' || ent.unknown) {
+    return {
+      key: 'unknown',
+      title: 'We couldn’t read your subscription',
+      detail: 'Nothing has changed — this screen just could not ask. Try again in a moment.',
+      // null, not false: "we do not know" is not "you are not covered".
+      covering: null,
+    }
+  }
+  const status = ent.status ?? 'none'
+  const untilMs = ent.until ? new Date(ent.until).getTime() : null
+  const dated = Number.isFinite(untilMs)
+  const future = dated && untilMs > now
+
+  if (status === 'grandfathered') {
+    return {
+      key: 'grandfathered',
+      title: 'Founding account',
+      detail:
+        'You were here before Meera had plans. entitlement() allows you whatever the balance says, and the monthly job skips you entirely.',
+      covering: true,
+    }
+  }
+  if (status === 'trialing') {
+    return future
+      ? { key: 'trialing', title: 'Trial', detail: 'Your trial is still running.', covering: true }
+      : {
+          key: 'trial-over',
+          title: 'Trial ended',
+          detail: 'The trial is one-shot — start_trial() cannot re-arm one that has been used.',
+          covering: false,
+        }
+  }
+  if (status === 'active') {
+    if (future) {
+      return { key: 'active', title: 'Active', detail: 'Paid up to the date below.', covering: true }
+    }
+    if (!dated) {
+      return {
+        key: 'active-undated',
+        title: 'Active, but with no renewal date',
+        detail:
+          'The row says active and no period end was ever recorded. The check is “period end is in the future”, and a date that does not exist cannot be — so this state pays for nothing on its own.',
+        covering: false,
+      }
+    }
+    return {
+      key: 'active-expired',
+      title: 'Active, but the period has ended',
+      detail:
+        'The row still says active while the period it paid for is over. A renewal writes a new date; until one does, this covers nothing.',
+      covering: false,
+    }
+  }
+  if (status === 'past_due') {
+    return {
+      key: 'past_due',
+      title: 'Past due',
+      detail: 'A payment did not go through. Credits, if you have them, are what is keeping you in.',
+      covering: false,
+    }
+  }
+  if (status === 'canceled') {
+    return {
+      key: 'canceled',
+      title: 'Cancelled',
+      detail: 'Nothing renews. What is left in credits is what is left.',
+      covering: false,
+    }
+  }
+  return {
+    key: 'none',
+    title: 'No subscription',
+    detail: 'You have never been subscribed. Nothing is scheduled and nothing is owed.',
+    covering: false,
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Credits
 // ---------------------------------------------------------------------------
 
@@ -93,13 +206,16 @@ export async function getBillingSettings() {
 // Your own ledger rows, newest first. Reading these is how "why is my balance
 // what it is" gets answered without asking anyone — RLS scopes the table to
 // your own rows, so this needs no filter to be safe.
+// null = the read failed (or the table isn't there yet); [] = you genuinely
+// have no ledger rows. Those are different sentences on a screen about money,
+// and "there is no record of your credits" is not one to say by accident.
 export async function listCreditHistory(limit = 12) {
   const { data, error } = await supabase
     .from('credit_ledger')
     .select('id, delta, reason, period, created_at')
     .order('created_at', { ascending: false })
     .limit(limit)
-  if (error) return []
+  if (error) return null
   return data ?? []
 }
 

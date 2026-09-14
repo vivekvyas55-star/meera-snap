@@ -14,6 +14,7 @@ import {
   sendFriendRequest,
   streakState,
 } from '../lib/db'
+import { daySnapshot, istDay, pendingForDay } from '../lib/questionDay'
 import { matchesSearch } from '../lib/alias'
 import { bestFriendFrom, rowSignal } from '../lib/rowSignal'
 import { statusFor } from '../lib/status'
@@ -47,7 +48,13 @@ export default function ChatList({ active = true, onOpenChat, onOpenProfile, onO
   const [adding, setAdding] = useState(false)
   const [notes, setNotes] = useState({}) // user_id -> status note
   const [birthdays, setBirthdays] = useState(new Set())
-  const [prompts, setPrompts] = useState({}) // user_id -> { mine_done, theirs_done }
+  // undefined = not asked yet. Never {} — an empty map is the answer "nobody is
+  // waiting on you", and this badge is a claim about another person. When it is
+  // set it is a DATED snapshot, { day, byUser }: the count came from
+  // pending_questions_all(), which counts only rows whose on_date is
+  // public.ist_date(), so it describes one IST day and stops being true at that
+  // day's end whether or not a fetch has happened since.
+  const [prompts, setPrompts] = useState(undefined)
 
   // One round trip for the previews, not one per friend. This runs on every
   // realtime event below, so it has to stay cheap — it used to pull a 200-row
@@ -73,10 +80,43 @@ export default function ChatList({ active = true, onOpenChat, onOpenProfile, onO
     // Cosmetic extras — never let them fail the list.
     listStatusNotes().then(setNotes).catch(() => {})
     birthdaysToday().then(setBirthdays).catch(() => {})
-    listPromptStatus().then(setPrompts).catch(() => {})
     } catch (err) { if (request === requestRef.current) setError(err.message) }
     finally { if (request === requestRef.current) setLoading(false) }
   }, [me])
+
+  // The question badge is fetched on its OWN schedule, not with the list.
+  //
+  // Two reasons it cannot ride on load(). A question is not a message, so
+  // nothing in the postgres_changes subscription below fires when one is asked
+  // — the badge would appear only when some unrelated event happened to
+  // refresh the list. And the count expires by the clock: pending_questions_all
+  // counts `on_date = public.ist_date()`, so at IST midnight yesterday's count
+  // becomes a claim about a day that is over. pendingForDay refuses a stale
+  // snapshot at render, and this poll is what replaces it with a current one.
+  const refreshPrompts = useCallback(async () => {
+    const before = istDay()
+    const byUser = await listPromptStatus().catch(() => null)
+    // null = the fetch failed or the RPC is missing. Keep whatever is already
+    // on screen: replacing a true badge with "nobody is waiting" because one
+    // request dropped is the bug, not the fix.
+    if (byUser === null) return
+    const snapshot = daySnapshot(byUser, before, istDay())
+    if (snapshot) setPrompts(snapshot)
+  }, [])
+
+  useEffect(() => {
+    if (!active) return undefined
+    const refresh = () => { if (document.visibilityState === 'visible') refreshPrompts() }
+    refresh()
+    const interval = setInterval(refresh, 30000)
+    window.addEventListener('focus', refresh)
+    document.addEventListener('visibilitychange', refresh)
+    return () => {
+      clearInterval(interval)
+      window.removeEventListener('focus', refresh)
+      document.removeEventListener('visibilitychange', refresh)
+    }
+  }, [active, refreshPrompts])
 
   // Runs on mount (active defaults true) and again whenever the pane becomes
   // active. A separate mount effect duplicated the whole six-query load. It no longer
@@ -241,7 +281,9 @@ export default function ChatList({ active = true, onOpenChat, onOpenProfile, onO
           const signal = rowSignal({
             streakCount: streak.count,
             streakExpiring: streak.expiring,
-            pendingQuestions: prompts[f.profile.id]?.pending ?? 0,
+            // Day-scoped at the point of use, so a snapshot that was true when
+            // it was fetched cannot outlive the IST day it counted.
+            pendingQuestions: pendingForDay(prompts, f.profile.id),
             birthday: birthdays.has(f.profile.id),
             note: notes[f.profile.id],
             bestFriend: f.profile.id === bestFriendId,

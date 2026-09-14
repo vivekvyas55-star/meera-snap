@@ -451,8 +451,33 @@ statements have aborted batched transactions on some projects).
   `getBillingSettings`, `listCreditHistory`) still **fails open** — a missing
   RPC leaves `credits: null`, and the UI renders nothing rather than a
   confident zero. Plans shows the balance as the hero card and the rupee prices
-  as context; Profile carries a lime credit tile that is also the only route
-  into Plans. Credit maths is tested in `tests/credits.test.js`.
+  as context; Profile carries a lime credit tile into Plans and a
+  **Billing & credits** row into the explainer. Credit maths is tested in
+  `tests/credits.test.js`.
+- **`getEntitlement()` marks its fail-open fallback `unknown: true`.** Access is
+  unchanged — a billing outage must never lock anyone out — but the fallback is
+  byte-for-byte what a real `status: 'none'` row looks like, and a screen that
+  *reports* your billing cannot read that back to you as fact. Anything that
+  only gates on `allowed` ignores the flag. Likewise `listCreditHistory()`
+  answers `null` on a failed read: `[]` is "you have no ledger rows", which is
+  not a thing to say about somebody's money by accident.
+- **`src/screens/Billing.jsx` is the explainer; Plans is the shop.** It opens on
+  the state of the switch — "Plans are off. Nothing is being charged" — because
+  every number under it is inert while `enforced` is false, and a screen of
+  balances that did not say so would read as a bill. Then the balance (only if
+  the server gave one), the subscription standing, the renewal date, what
+  "active but expired" means, how prepaid credits work, and the ledger. The two
+  screens are **siblings**, not nested: the link between them swaps one for the
+  other so Back from either lands on Profile.
+- **`subscriptionStanding(ent)` explains; it never decides.** `ent.allowed` is
+  the server's answer and the only one that counts. The state worth naming is
+  `active-undated` — the M13 finding: `entitlement()` reads
+  `status = 'active' and current_period_end > now()`, and `NULL > now()` is NULL,
+  so an `active` row with no period end covers nobody. It is not expired; there
+  was never a date to expire. Only the Razorpay webhook may write that column,
+  so the state is reachable the moment a subscription is marked active without
+  one. `active-expired` is the ordinary version. **Both are explained on screen
+  and neither is silently "fixed" in SQL** — see ROADMAP.md.
 - **Never put `formatRunway()` in front of a user directly** — it only knows
   months, and a zero or negative balance is zero months, which it renders as
   "Less than a month". Both screens said that to someone with nothing, and on
@@ -513,6 +538,40 @@ other person too — messages are pair-keyed with ON DELETE CASCADE on both halv
 SQL deliberately, so they can be CREATED on a database that is behind on later
 migrations.
 
+**There is NO multi-account, and no switcher pretending there is.** supabase-js
+holds one session per browser profile (`lib/authStorage.js`), and Meera has no
+notion of a second signed-in identity to keep beside it. A "switcher" would be a
+menu that signs you out and shows a login form — the sign-out button with extra
+steps — while implying sessions are being kept for accounts that are not. The
+Privacy Centre says so in as many words, next to the device list, for the same
+reason that list refuses to fake per-device revocation.
+
+**What IS confirmed is which account the realtime channels are bound to**
+(`lib/realtimeAccount.js`, `hooks/useRealtimeAccount.js`,
+`components/RealtimeAccount.jsx` for the standing readout,
+`components/RealtimeAccountBar.jsx` for the strip). Signing in as somebody else
+does not reload the page: the session changes under a running app and every
+private channel keyed on the old user id has to be torn down and rebuilt. When
+that works there is nothing to see — which is also what a channel stuck on the
+previous account looks like.
+
+- The evidence is a **private topic only its own account may read**,
+  `updates:<me>:account`. `realtime_allowed` allows `updates:<uuid>:<label>` for
+  reading only when the uuid is `auth.uid()`, so a successful join is proof the
+  socket is authenticated as that account — it is the same shape ChatList opens
+  for its own `postgres_changes`, which is what makes it representative.
+- **One probe, refcounted** for however many surfaces display it.
+- `accountNotice(previous, next, state)` is pure and holds the whole rule.
+  Nothing is said while the join is in flight; a **first** connection is not a
+  switch (announcing every sign-in makes the banner meaningless on the day it
+  matters); a switch is announced only once the NEW account's channel has
+  actually joined, never when the session merely changed; and a **failed** join
+  is announced whether or not anything switched, because the app looks entirely
+  normal and silently receives nothing.
+- The last live account is remembered in `localStorage` and the comparison is
+  held in a **ref**, not in state captured at mount — otherwise A → B → A is
+  silent.
+
 ## The Together layer (`202609090025_together.sql`)
 
 A pair surface: an opt-in timeline, a shared scrapbook, and "On this day".
@@ -560,6 +619,50 @@ client mirrors it with `istToday()` in db.js (`Intl` with `Asia/Kolkata`,
 `en-CA` so the format is the `YYYY-MM-DD` a Postgres `date` wants) — filtering
 on the browser's own date would put someone past their local midnight on a
 different "today" than the row they just wrote.
+
+**There is now ONE client definition of that day: `lib/questionDay.js`.**
+`istToday()` delegates to its `istDay()`. The module also holds `istDayEnd` /
+`resetLabel` (when the three asks come back — IST has no DST, so the offset is
+a constant rather than a lookup) and the two functions that keep the chat-list
+badge honest:
+
+- **`daySnapshot(byUser, dayBefore, dayAfter)`** dates a fetched badge map. The
+  IST day is read either side of the request; if it rolled over *during* the
+  request the rows describe a day that is already over, and the snapshot is
+  refused rather than dated to the day it does not describe.
+- **`pendingForDay(snapshot, friendId)`** is what the row actually renders
+  through. A count fetched yesterday cannot support a claim about today, so a
+  stale snapshot reports 0 — which draws no chip at all. Zero is safe *here*
+  precisely because `rowSignal` makes a chip only above zero: an absent badge
+  claims nothing, while a badge claims someone is waiting on you.
+
+**The badge and the server count the same rows, and that is not a coincidence
+to be maintained by hand.** `pending_questions_all()`
+(`202609070012_integrity_followup.sql`) counts
+`asker = them and answer is null and on_date = public.ist_date()`. Its
+day-scoping is pinned in `tests/database.mjs` (a question dated 2000-01-01
+reports 0); the client half is pinned in `tests/question-day.test.js`. The
+badge is also fetched on its **own** 30s/focus/visibility schedule in
+ChatList, not inside `load()` — a question is not a message, so nothing in the
+`postgres_changes` subscription fires when one is asked, and the count expires
+by the clock whether or not anything refetches.
+
+**`listPromptStatus()` answers `null` when it could not read, never `{}`.** An
+empty map is the answer "nobody is waiting on you"; giving it for a dropped
+request wipes a badge that was true. The caller keeps what it already had.
+
+**The three-a-day cap is stated, and the in-flight guard is a REF.** A disabled
+Ask button with no sentence beside it reads as a bug, so `QuestionCards` says
+"that's your three for today", when they come back, and that the day turns over
+at midnight IST — and that answering is not capped. A refused ask re-reads the
+quota instead of leaving "3 asks left" on screen against a server that said
+zero (that exact wrong number is in the failures-as-answers table below).
+`askingRef` / `replyingRef` are refs because two submits in the same tick both
+read the pre-render value of a state flag: `if (asking) return` stops nothing,
+and for an answer the loser is refused by `unique (user_a, user_b, responder,
+on_date)` on a write that is final the moment it lands. The composer is
+rendered from `open && !spent`, so a quota that runs out under an open form
+closes it rather than leaving a composer above a header offering to cancel it.
 
 **The reveal rule is RLS, not UI.** You see their answer only once you've
 written yours. `prompt_read` allows your own row always, theirs only when
@@ -1047,8 +1150,10 @@ notifier has to know what else is on screen. The strip is `column-reverse`:
 priority 1 sits nearest the tab bar where the thumb and the eye are, and the
 rest grow **upward, away from the bar**, which is what keeps the strip out of it
 however much is in it. Priorities live in `lib/notifications.js` (offline 1,
-game 2, toast 3, drift 4, install 5) — a value module, because a file that
-exports both components and constants breaks fast refresh.
+game 2, toast 3, drift 4, **account 5**, install 6) — a value module, because a
+file that exports both components and constants breaks fast refresh. The
+numbers are relative, so inserting one only means renumbering what sits below
+it.
 
 Add a notifier by wrapping it in `<StackSlot priority={PRIORITY.x}>` and giving
 it **no positioning of its own**. The offline bar moved off the top of the
@@ -1085,7 +1190,7 @@ turn and be rejected by the server.
 
 ## Failures must not render as answers
 
-Seven instances of one bug have been found and fixed in this codebase, which
+Ten instances of one bug have been found and fixed in this codebase, which
 makes it a habit rather than a coincidence. In each, a `.catch` mapped a
 *failure* onto a value that means something specific and false:
 
@@ -1098,6 +1203,9 @@ makes it a habit rather than a coincidence. In each, a `.catch` mapped a
 | Question of the day | her question gone, and 3 asks left when there were 0 |
 | Together panes | "The scrapbook is empty" |
 | Snap Map's own row | Ghost Mode, while still broadcasting |
+| Chat-list question badge | nobody is waiting on you — `listPromptStatus` returned `{}` |
+| Billing status | "No subscription", which is exactly what failing open looks like |
+| Credit history | an empty ledger, on a screen about money |
 
 **The rule: a fallback value must mean "we do not know".** In practice that is
 three states, not two — and JS gives you two empties, so use them deliberately:

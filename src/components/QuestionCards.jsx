@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { answerQuestion, askQuestion, listPairQuestions } from '../lib/db'
+import { resetLabel } from '../lib/questionDay'
 import { useToast } from '../hooks/useToast'
 import { CloseIcon, PlusIcon } from './Icons'
 
@@ -10,6 +11,20 @@ import { CloseIcon, PlusIcon } from './Icons'
 //
 // Both the cap and the "only the person asked may answer" rule are enforced in
 // the database; this component would happily render whatever comes back.
+//
+// THE CAP IS A DAY, AND THE DAY IS IST. ask_question() counts against
+// public.ist_date(), so "three left" is a statement about the current IST day
+// and the screen says when it resets rather than leaving someone to guess
+// whether it is their midnight or somebody else's.
+//
+// THE IN-FLIGHT GUARD IS A REF, NOT THE `asking` STATE. Two submits in the
+// same tick both read the pre-render value of a state variable, so `if
+// (asking) return` stops nothing: both calls pass and both reach the server.
+// One of them then loses — against the three-a-day cap, or (for an answer)
+// against `unique (user_a, user_b, responder, on_date)` and the deliberate
+// absence of an UPDATE grant on prompt_answers, where an answer is final the
+// moment it is written. A ref is assigned synchronously, so the second call
+// sees it.
 function questionTime(iso) {
   return new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
 }
@@ -63,10 +78,16 @@ export default function QuestionCards({ me, friend, friendName }) {
     if (rows.some((q) => q.asker !== me && !q.answer)) setExpanded(true)
   }, [touched, rows, me])
 
+  const askingRef = useRef(false)
+  const replyingRef = useRef(null)
+
   const ask = async (e) => {
     e.preventDefault()
     const text = draft.trim()
-    if (!text || asking) return
+    // The ref, not `asking`: see the note at the top of the file. A double tap
+    // (or a submit while the first is still in the air) must cost one ask.
+    if (!text || askingRef.current || asksLeft === 0) return
+    askingRef.current = true
     setAsking(true)
     try {
       await askQuestion(friend.id, text)
@@ -75,14 +96,24 @@ export default function QuestionCards({ me, friend, friendName }) {
       await load()
     } catch (err) {
       toast(err.message)
+      // Re-read the quota from the server. The cap is the usual reason an ask
+      // is refused, and leaving "3 asks left" on screen after the server has
+      // said otherwise is the "failure rendered as an answer" bug this feature
+      // has already shipped once. The draft stays put.
+      await load().catch(() => {})
     } finally {
+      askingRef.current = false
       setAsking(false)
     }
   }
 
   const reply = async (id) => {
     const text = (replies[id] ?? '').trim()
-    if (!text || busy) return
+    // An answer cannot be edited or re-sent, so a duplicate submit is not a
+    // harmless retry — the second one is refused by the server and reads as an
+    // error on an answer that in fact went through.
+    if (!text || replyingRef.current) return
+    replyingRef.current = id
     setBusy(id)
     try {
       await answerQuestion(id, text)
@@ -90,13 +121,23 @@ export default function QuestionCards({ me, friend, friendName }) {
       await load()
     } catch (err) {
       toast(err.message)
+      await load().catch(() => {})
     } finally {
+      replyingRef.current = null
       setBusy(null)
     }
   }
 
   if (unavailable) return null
   const waitingOnYou = rows.filter((q) => q.asker !== me && !q.answer).length
+  // asks_left is computed by pair_questions_today() for the current IST day.
+  // It is the server's number; nothing here recounts the rows, because the
+  // count that matters is the one ask_question() will check.
+  const spent = asksLeft === 0
+  // The composer follows the quota, not the toggle. Once the server says none
+  // are left the form goes whether or not it was open — otherwise a refused
+  // ask left an open composer above a header still offering to cancel it.
+  const composerOpen = open && !spent
   const activityLabel = waitingOnYou > 0
     ? `${waitingOnYou} question${waitingOnYou === 1 ? '' : 's'} waiting for your answer`
     : rows.length > 0
@@ -120,7 +161,7 @@ export default function QuestionCards({ me, friend, friendName }) {
               : 'Question of the day'}
         </span>
         <span className="dq-chip-more">
-          {waitingOnYou > 0 ? 'Answer' : asksLeft > 0 ? 'Ask' : 'Open'} ›
+          {waitingOnYou > 0 ? 'Answer' : spent ? 'Open' : 'Ask'} ›
         </span>
       </button>
     )
@@ -138,11 +179,11 @@ export default function QuestionCards({ me, friend, friendName }) {
         <button
           className="qcards-ask"
           onClick={() => setOpen((v) => !v)}
-          disabled={asksLeft === 0 && !open}
-          aria-expanded={open}
+          disabled={spent}
+          aria-expanded={composerOpen}
         >
-          {open ? <CloseIcon width={15} height={15} /> : <PlusIcon width={15} height={15} />}
-          {open ? 'Cancel' : asksLeft === 0 ? 'None left today' : `Ask (${asksLeft})`}
+          {composerOpen ? <CloseIcon width={15} height={15} /> : <PlusIcon width={15} height={15} />}
+          {composerOpen ? 'Cancel' : spent ? 'None left today' : `Ask (${asksLeft})`}
         </button>
         <button
           className="qcards-close"
@@ -153,13 +194,29 @@ export default function QuestionCards({ me, friend, friendName }) {
         </button>
       </div>
 
-      {rows.length === 0 && !open && (
+      {rows.length === 0 && !composerOpen && !spent && (
         <div className="qcards-empty">
           Ask each other up to three questions a day.
         </div>
       )}
 
-      {open && (
+      {/* The cap, said plainly and only when it is reached. A disabled button
+          with no sentence beside it reads as a bug; "you've used today's three,
+          here is when they come back" reads as a rule. The reset is IST because
+          ask_question() counts against public.ist_date() — a friend past their
+          own midnight in another timezone would otherwise be told the wrong
+          hour. Answering is untouched: the cap is on asking. */}
+      {spent && (
+        <div className="qcards-limit" role="status">
+          <span className="chip qcards-limit-chip">3 of 3 asked</span>
+          <span className="qcards-limit-text">
+            That’s your three questions for today. {resetLabel()} — the day turns
+            over at midnight IST. You can still answer {friendName}.
+          </span>
+        </div>
+      )}
+
+      {composerOpen && (
         <form className="qcard qcard-new" onSubmit={ask}>
           <textarea
             value={draft}
@@ -168,6 +225,7 @@ export default function QuestionCards({ me, friend, friendName }) {
             rows={2}
             maxLength={300}
             autoFocus
+            disabled={asking}
             aria-label={`Question for ${friendName}`}
           />
           <div className="qcard-newfoot">

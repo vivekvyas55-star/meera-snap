@@ -123,3 +123,38 @@ test('the chip is announced in words, not left as a glyph', async () => {
   await waitFor(() => expect(chips(view)).toHaveLength(1))
   expect(screen.getByText('Birthday today')).toBeTruthy()
 })
+
+// --------------------------------------------------------------------------
+// The question badge is a claim about the CURRENT IST DAY
+// --------------------------------------------------------------------------
+// pending_questions_all() counts only rows whose on_date is public.ist_date(),
+// so the chat list has to scope what it shows the same way. The boundary
+// arithmetic is tested in question-day.test.js; what matters here is that the
+// row goes through it, and that a dropped request is never read back as
+// "nobody is waiting on you".
+
+test('a question they asked today shows as a turn to take', async () => {
+  mocks.friends.mockResolvedValue([friend('ann')])
+  mocks.prompts.mockResolvedValue({ ann: { pending: 1 } })
+  const view = await show()
+  await waitFor(() => expect(chips(view)).toHaveLength(1))
+  expect(chips(view)[0].textContent).toContain('Your turn')
+  // "today" is the server's scope, said out loud.
+  expect(chips(view)[0].textContent).toContain('They asked you a question today')
+})
+
+test('a failed prompt read never turns into "nobody is waiting"', async () => {
+  mocks.friends.mockResolvedValue([friend('ann')])
+  mocks.prompts.mockResolvedValue({ ann: { pending: 1 } })
+  const view = await show()
+  await waitFor(() => expect(chips(view)).toHaveLength(1))
+
+  // listPromptStatus answers null when it could not read. The badge was true
+  // when it was fetched and nothing has said otherwise, so it stays — wiping
+  // it is the failure-rendered-as-an-answer bug, one screen further on.
+  mocks.prompts.mockResolvedValue(null)
+  window.dispatchEvent(new Event('focus'))
+  await waitFor(() => expect(mocks.prompts.mock.calls.length).toBeGreaterThan(1))
+  expect(chips(view)).toHaveLength(1)
+  expect(chips(view)[0].textContent).toContain('Your turn')
+})

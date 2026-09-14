@@ -85,8 +85,10 @@ test('a hundred days changes the face, not the rank', () => {
 })
 
 test('question wording counts, so a single ask is not "1 questions"', () => {
-  expect(rowSignal({ pendingQuestions: 1 }).label).toBe('They asked you a question')
-  expect(rowSignal({ pendingQuestions: 4 }).label).toBe('They asked you 4 questions')
+  // "today" is load-bearing: pending_questions_all() counts only rows whose
+  // on_date is public.ist_date(), so the chip must not imply a running total.
+  expect(rowSignal({ pendingQuestions: 1 }).label).toBe('They asked you a question today')
+  expect(rowSignal({ pendingQuestions: 4 }).label).toBe('They asked you 4 questions today')
   expect(rowSignal({ pendingQuestions: 1 }).text).toBe('Your turn')
 })
 
