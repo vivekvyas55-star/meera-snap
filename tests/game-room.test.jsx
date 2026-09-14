@@ -12,8 +12,13 @@ vi.mock('../src/lib/db', async (original) => ({
   clearViewedChats: vi.fn(async () => {}), markChatsOpened: vi.fn(async () => {}),
 }))
 import { TicTacToe } from '../src/screens/PlayTogether'
+import { currentAlias } from '../src/lib/alias'
 const base = () => ({ status: 'accepted', revision: 0, board: Array(9).fill(''), expires_at: new Date(Date.now()+60000).toISOString() })
-const mount = () => render(<TicTacToe me="me" friend={{ id: 'friend', display_name: 'Sneha' }} incoming={false} inviteId="invite" room="room" mark="X" onClose={() => {}} />)
+const PEER = { id: 'friend', display_name: 'Sneha' }
+// The room addresses the peer by her rotating alias, and which one that is
+// turns over every 30 minutes — so derive it rather than hard-coding a label.
+const peerLabel = () => currentAlias(PEER)
+const mount = () => render(<TicTacToe me="me" friend={PEER} incoming={false} inviteId="invite" room="room" mark="X" onClose={() => {}} />)
 beforeEach(() => { m.sync.mockResolvedValue(base()); m.rows=[] })
 afterEach(() => { cleanup(); vi.resetAllMocks() })
 test('pending room disables every square', async () => {
@@ -51,7 +56,7 @@ test('game chat hides cleared messages and quick replies preserve the draft', as
   mount(); await screen.findByText('Your turn')
   fireEvent.click(screen.getByRole('button',{name:'💬 Chat while playing'}))
   expect(screen.queryByText('cleared secret')).toBeNull()
-  const input=screen.getByLabelText('Message Sneha')
+  const input=screen.getByLabelText(`Message ${peerLabel()}`)
   fireEvent.change(input,{target:{value:'My unfinished note'}})
   fireEvent.click(screen.getByRole('button',{name:'Nice move 🔥'}))
   await waitFor(()=>expect(m.chat).toHaveBeenCalled())

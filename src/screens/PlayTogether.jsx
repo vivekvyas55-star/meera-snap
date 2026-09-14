@@ -3,6 +3,8 @@ import Confirm from '../components/Confirm'
 import DinoRun from '../components/DinoRun'
 import { BackIcon, CheckIcon, CloseIcon } from '../components/Icons'
 import { useAuth } from '../hooks/useAuth'
+import { useAlias } from '../hooks/useAliasClock'
+import { peerAlias } from '../lib/alias'
 import { rematchGame, listFriendsWithProfiles, resolveGameInvite, syncGameRoom, endGameRoom, listActiveGameRooms, isVisibleTo, clearViewedChats, listMessages, sendChat, pairKey, markChatsOpened } from '../lib/db'
 import { useToast } from '../hooks/useToast'
 import { sendSignal, signalReceiver } from '../lib/privateRealtime'
@@ -20,9 +22,27 @@ import '../styles/games.css'
 const BOARDS = { ttt: TicTacToeBoard, c4: ConnectFourBoard, checkers: CheckersBoard }
 
 const BEST_KEY = 'meera:dino-best'
-const nameOf = (p) => p?.display_name || p?.username || 'friend'
+
+// EVERY name on these screens is the rotating alias, never display_name.
+//
+// A game is played with the phone flat on a table, handed round, or sitting in
+// somebody's eyeline for a whole round — it is the one surface in the app that
+// is routinely looked at by a third person. So the partner is "S5" here, the
+// same label the chat list and the send sheets use, rather than her name.
+//
+// Be honest about what that buys: the alias is derived FROM the name, so it
+// raises the cost of a glance and nothing more. Someone who already knows who
+// you play with can map it back instantly, and no copy on these screens claims
+// otherwise. See peerAlias() in lib/alias.js.
+//
+// `alias` is the function useAlias() returns, stable until the 30-minute bucket
+// turns. Every call below is in render, never in a dependency array — the polls
+// in this file (3s room sync, 6s room list) must not be re-armed by a label.
+const nameOf = (alias, p) => peerAlias(alias, p, 'Your friend')
+
 function Invite({ invite, onAccept, onDismiss, busy }) {
-  return <div className="game-invite" role="status"><div><strong>{nameOf(invite.peer)}</strong> wants to play {titleOf(invite.game)}<span>Private to you both · invitation lasts 24 hours</span></div><div className="game-invite-actions"><button type="button" className="pill-btn" disabled={busy} onClick={onDismiss}><CloseIcon width={15} height={15} /> Dismiss</button><button type="button" className="btn-dark" disabled={busy} onClick={onAccept}><CheckIcon width={15} height={15} /> Play</button></div></div>
+  const alias = useAlias()
+  return <div className="game-invite" role="status"><div><strong>{nameOf(alias, invite.peer)}</strong> wants to play {titleOf(invite.game)}<span>Private to you both · invitation lasts 24 hours</span></div><div className="game-invite-actions"><button type="button" className="pill-btn" disabled={busy} onClick={onDismiss}><CloseIcon width={15} height={15} /> Dismiss</button><button type="button" className="btn-dark" disabled={busy} onClick={onAccept}><CheckIcon width={15} height={15} /> Play</button></div></div>
 }
 
 function GameChat({ me, friend }) {
@@ -36,6 +56,8 @@ function GameChat({ me, friend }) {
   const sendingRef = useRef(false)
   const chatVersion = useRef(0)
   const toast = useToast()
+  const alias = useAlias()
+  const friendName = nameOf(alias, friend)
   openRef.current = open
 
   useEffect(() => {
@@ -121,7 +143,7 @@ function GameChat({ me, friend }) {
     </button>
     {open && <><div className="game-chat-messages" ref={scroll} aria-live="polite">
       {messages.length === 0 ? <span className="game-chat-empty">Say something before the next move.</span> : messages.map((message) => <div key={message.id} data-message-id={message.sender_id !== me ? message.id : undefined} className={`game-chat-bubble ${message.sender_id === me ? 'mine' : ''}`}>{message.body}</div>)}
-    </div><div className="game-chat-quick" aria-label="Quick replies">{['Your turn 👀', 'Nice move 🔥', '😂', 'Good game 🤝'].map((text) => <button type="button" key={text} onClick={() => send(text)} disabled={sending}>{text}</button>)}</div><form className="game-chat-compose" onSubmit={submit}><input value={draft} onChange={(event) => setDraft(event.target.value)} maxLength={300} placeholder={`Message ${nameOf(friend)}`} aria-label={`Message ${nameOf(friend)}`} /><button type="submit" disabled={!draft.trim() || sending}>Send</button></form></>}
+    </div><div className="game-chat-quick" aria-label="Quick replies">{['Your turn 👀', 'Nice move 🔥', '😂', 'Good game 🤝'].map((text) => <button type="button" key={text} onClick={() => send(text)} disabled={sending}>{text}</button>)}</div><form className="game-chat-compose" onSubmit={submit}><input value={draft} onChange={(event) => setDraft(event.target.value)} maxLength={300} placeholder={`Message ${friendName}`} aria-label={`Message ${friendName}`} /><button type="submit" disabled={!draft.trim() || sending}>Send</button></form></>}
   </div>
 }
 
@@ -145,7 +167,11 @@ export function GameRoom({ me, friend, incoming, inviteId, room, mark, game, onC
   const alive = useRef(false)
   const moving = useRef(false)
   const syncRef = useRef(() => {})
-  const friendName = nameOf(friend)
+  const alias = useAlias()
+  // Render-only. The room's effects key on `friend.id`, never on this label, so
+  // a 30-minute alias turnover cannot restart the 3s sync or re-broadcast the
+  // acceptance signal.
+  const friendName = nameOf(alias, friend)
   const apply = (row) => {
     if (!row || !alive.current) return
     setState((current) => !current || row.revision >= current.revision ? row : current)
@@ -311,6 +337,7 @@ export default function PlayTogether({ onBack }) {
   }, [])
   const toast = useToast()
   const actionBusy = useRef(false)
+  const alias = useAlias()
   const { profile } = useAuth(); const me = profile.id
   const [best, setBest] = useState(0); const [open, setOpen] = useState(null)
   const [actionLoading, setActionLoading] = useState(false)
@@ -420,7 +447,7 @@ export default function PlayTogether({ onBack }) {
               {rooms.map((game) => {
                 const peer = friends.find((f) => f.id === (game.sender_id === me ? game.recipient_id : game.sender_id))
                 return <button type="button" className="game-resume-card" key={game.id} onClick={() => resume(game)}>
-                  <span><strong>{titleOf(game.game)} with {nameOf(peer)}</strong><small>{game.status === 'pending' ? game.sender_id === me ? 'Invitation pending' : 'Invited you to play' : game.result ? 'Round finished' : 'Your board is saved'}</small></span>
+                  <span><strong>{titleOf(game.game)} with {nameOf(alias, peer)}</strong><small>{game.status === 'pending' ? game.sender_id === me ? 'Invitation pending' : 'Invited you to play' : game.result ? 'Round finished' : 'Your board is saved'}</small></span>
                   <span>{game.status === 'pending' && game.recipient_id === me ? 'Review' : 'Resume'} →</span>
                 </button>
               })}
@@ -460,7 +487,16 @@ export default function PlayTogether({ onBack }) {
               : <div className="pg-setup-row">
                   <select aria-label="Choose a friend to play" value={selected} onChange={(e) => setSelected(e.target.value)}>
                     <option value="">Choose friend</option>
-                    {friends.map((f) => <option key={f.id} value={f.id}>{nameOf(f)}</option>)}
+                    {/* The one place on this screen that carries the @handle as
+                        well as the alias, and for the same reason the send and
+                        add sheets do: this is where you COMMIT to opening a
+                        private room with a particular person. Aliases are three
+                        characters derived from a name, so two friends can wear
+                        the same one for half an hour — inviting the wrong person
+                        into a private game is a worse privacy failure than the
+                        handle sitting in a collapsed dropdown. Still never
+                        display_name. */}
+                    {friends.map((f) => <option key={f.id} value={f.id}>{nameOf(alias, f)}{f.username ? ` · @${f.username}` : ''}</option>)}
                   </select>
                   <button type="button" className="btn-dark" disabled={!chosen || actionLoading} onClick={inviteGame}>{actionLoading ? 'Sending…' : 'Invite'}</button>
                 </div>}

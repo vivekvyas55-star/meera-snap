@@ -90,3 +90,23 @@ export function matchesSearch(profile, query, alias) {
   const haystacks = [alias, profile?.username, profile?.display_name]
   return haystacks.some((h) => h && String(h).toLowerCase().includes(q))
 }
+
+// The label to put in front of ANOTHER person on a surface someone else may be
+// looking at — the Play screens are the reason this exists.
+//
+// `aliasFn` is whatever useAlias() returned. The fallback chain deliberately
+// stops SHORT of display_name: a fallback that prints the real name defeats the
+// one thing the alias is for. currentAlias() already uses the username as its
+// base when there is no display name, so it answers '?' only for a profile that
+// carries neither — and then there is nothing left to show but a neutral word.
+//
+// The honest limit: an alias is DERIVED from the name (VIVEK → V5, SNEHA → S5),
+// so it raises the cost of a glance. It is not anonymity. Anyone who already
+// knows which two people are playing maps it back without effort, and nothing
+// here should be described to a user as hiding who they are talking to.
+export function peerAlias(aliasFn, profile, fallback = 'Your friend') {
+  if (!profile) return fallback
+  const label = aliasFn(profile)
+  if (label && label !== '?') return label
+  return profile.username ? `@${profile.username}` : fallback
+}
