@@ -355,3 +355,31 @@ export const GamepadIcon = (p) => (
     <path d="M15.4 11.4h.01M17.6 13.4h.01" />
   </svg>
 )
+
+// Biometric unlock. Two glyphs rather than one, picked by platform in
+// lib/biometric.js: a fingerprint next to the words "Face ID" is the kind of
+// small wrongness that makes a screen feel like it was not looked at.
+export const FingerprintIcon = (p) => (
+  <svg {...base} {...p}>
+    <path d="M4.3 9.3A9 9 0 0 1 12 4.8a9 9 0 0 1 4.8 1.4" />
+    <path d="M4.6 15.8a9 9 0 0 1-.3-2.4V13" />
+    <path d="M18.8 8.9a9 9 0 0 1 .9 4v1.6a15 15 0 0 1-.4 3.2" />
+    <path d="M6.6 13a5.4 5.4 0 0 1 9.8-3.2" />
+    <path d="M17.4 12.6V14a17 17 0 0 1-.6 4.4" />
+    <path d="M7.4 18.5a11 11 0 0 0 1.1-4.5V13a3.5 3.5 0 0 1 6.5-1.8" />
+    <path d="M14.6 14.2a19 19 0 0 1-.7 5.3" />
+    <path d="M11.6 19.6a17 17 0 0 0 .4-3.6" />
+  </svg>
+)
+
+export const FaceIdIcon = (p) => (
+  <svg {...base} {...p}>
+    <path d="M4.6 8.6V6.9a2.3 2.3 0 0 1 2.3-2.3h1.7" />
+    <path d="M15.4 4.6h1.7a2.3 2.3 0 0 1 2.3 2.3v1.7" />
+    <path d="M19.4 15.4v1.7a2.3 2.3 0 0 1-2.3 2.3h-1.7" />
+    <path d="M8.6 19.4H6.9a2.3 2.3 0 0 1-2.3-2.3v-1.7" />
+    <path d="M9.2 9.9v1.6M14.8 9.9v1.6" />
+    <path d="M12 9.9v3.4h-1.1" />
+    <path d="M9.4 15.4a3.7 3.7 0 0 0 5.2 0" />
+  </svg>
+)

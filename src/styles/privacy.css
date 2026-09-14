@@ -264,6 +264,10 @@
   color: var(--ink);
 }
 .pc-nav:active { background: var(--card-press); }
+/* A pc-nav that performs an action rather than navigating can be busy — the
+   biometric enrollment waits on a platform prompt. Dimmed so a second tap
+   during the ceremony is visibly not on offer. */
+.pc-nav:disabled { opacity: 0.5; }
 .pc-nav-icon {
   width: 36px;
   height: 36px;

@@ -48,6 +48,7 @@ import { blockedReason, disablePush, enablePush, isEnabled } from '../lib/push'
 import SettingsGroup from '../components/SettingsGroup'
 import SaveState from '../components/SaveState'
 import ActiveSessions from '../components/ActiveSessions'
+import BiometricUnlock from '../components/BiometricUnlock'
 import BlockedContacts from '../components/BlockedContacts'
 import LocationSharing from '../components/LocationSharing'
 import StorageUsage from '../components/StorageUsage'
@@ -664,6 +665,11 @@ export default function Profile({ onBack, openPlay = false, onPlayOpened }) {
             error={pinSave.error}
             savedLabel="Passcode changed on this device"
           />
+
+          {/* An ADDITIONAL way past the pad, never a replacement. There is no
+              control anywhere on this screen that turns the passcode off —
+              the lock is mandatory, and the component says so to the user. */}
+          <BiometricUnlock />
 
           <BlockedContacts me={me} />
 

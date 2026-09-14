@@ -16,6 +16,8 @@
 // that someone who copies localStorage off the device still has to spend real
 // compute, instead of recognising the digest instantly.
 
+import { clearBiometric } from './biometric'
+
 const SALT_KEY = 'meera:pinsalt'
 const HASH_KEY = 'meera:pinhash'
 const DEFAULT_FLAG = 'meera:pindefault'
@@ -130,7 +132,17 @@ export async function ensurePin() {
   }
 }
 
+// Forget every way this device has of getting in.
+//
+// The biometric enrollment goes with the passcode deliberately, and it is
+// cleared HERE rather than at the one call site so that a future caller cannot
+// forget: clearPin() means "this device no longer holds a route past the pad",
+// and a credential that still unlocks Meera after a sign-out is exactly such a
+// route. It is the "Forgot passcode?" path — the owner has just landed on the
+// login screen, and a stale credential left behind would let the next person to
+// pick up the phone walk past a pad that is now seeded with a fresh default.
 export function clearPin() {
+  clearBiometric()
   try {
     localStorage.removeItem(SALT_KEY)
     localStorage.removeItem(HASH_KEY)

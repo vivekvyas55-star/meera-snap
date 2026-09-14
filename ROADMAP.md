@@ -49,6 +49,11 @@ Status as of **9 Sep 2026**. `CLAUDE.md` says how things work; this says what is
 ---
 
 ## In flight
+- [ ] Biometric unlock — BUILT, not deployed and never tested against a real
+      authenticator (there is no way to answer a Face ID prompt headlessly).
+      An ADDITIONAL route past the pad: the passcode stays mandatory, the
+      15-minute lockout is not bypassable, and the copy is honest that nothing
+      verifies the assertion because there is no server to verify it.
 - [ ] Profile UI/UX design pass — structure is right, visual pass is not done.
 - [ ] Market decoy depth — India/US, Watchlist/Orders/Funds/Research, market-hours clock.
 
@@ -69,7 +74,6 @@ Status as of **9 Sep 2026**. `CLAUDE.md` says how things work; this says what is
 **Privacy**
 - [ ] Mute and report (blocking is done).
 - [ ] Per-snap controls before sending: audience, expiry, replay limit, save policy.
-- [ ] WebAuthn / biometric unlock.
 - [ ] Lock screen still exposed to assistive tech.
 - [ ] **End-to-end encryption** — see below.
 

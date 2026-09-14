@@ -1207,6 +1207,31 @@ input, textarea { font: inherit; }
   margin-top: var(--sp-5); background: none; border: 0; color: var(--muted);
   font-size: var(--fs-meta); text-decoration: underline; text-underline-offset: 3px;
 }
+/* Biometric unlock: an alternative route, drawn as one. A quiet pill under the
+   pad rather than a dark circular primary — the pad is the primary, and the
+   route that always works should not be the one that looks secondary. It never
+   renders during a lockout (PinLock returns the decoy first), so there is no
+   state in which this is the way past the fifteen minutes. */
+.pin-bio {
+  margin-top: var(--sp-5);
+  display: inline-flex; align-items: center; gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-5);
+  border-radius: var(--r-pill);
+  background: var(--tint); color: var(--ink);
+  font-size: var(--fs-sm); font-weight: 500; letter-spacing: -0.01em;
+  max-width: 300px; text-align: left;
+  transition: background 120ms ease, transform 120ms ease;
+}
+.pin-bio:active { background: var(--tint-press); transform: scale(0.97); }
+.pin-bio:disabled { opacity: 0.6; }
+/* Muted, not coral. A prompt the owner dismissed is not an error, and an alarm
+   on a lock screen reads as "your phone is broken" when the answer is the pad
+   directly above it. */
+.pin-bio-note {
+  margin-top: var(--sp-3); max-width: 290px;
+  color: var(--muted); font-size: var(--fs-meta); line-height: 1.45; text-align: center;
+}
+
 /* The pad is centred by .pinlock on the lock screen; a sheet is a plain column. */
 .pin-setup { display: flex; flex-direction: column; align-items: center; }
 /* Behind the lock, never on it: on the pad this would tell whoever is holding
@@ -1253,6 +1278,7 @@ input, textarea { font: inherit; }
   .pin-dots { margin: 22px 0 28px; }
   .pin-pad { grid-template-columns: repeat(3, 68px); gap: 16px 20px; }
   .pin-key { width: 68px; height: 68px; font-size: 25px; }
+  .pin-bio { margin-top: var(--sp-4); padding: var(--sp-2) var(--sp-4); }
 }
 
 @keyframes shake {

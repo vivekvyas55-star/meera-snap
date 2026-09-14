@@ -677,12 +677,86 @@ the repo. That is said plainly in Profile — and **only** in Profile:
   offline) and clears the hash. The hash exists only on that device, so without
   it a forgotten code strands the owner on their own phone. It gives nothing
   away — whoever taps it lands on the login screen, which is the boundary that
-  actually protects the data.
+  actually protects the data. `clearPin()` also calls `clearBiometric()`, and it
+  does so **inside `clearPin` rather than at the call site** so a later caller
+  cannot forget: the path reseeds the shipped default, so a credential left
+  behind would be a live route past a pad whose code is public knowledge.
 - Where Web Crypto is missing (an insecure context) the pad says so and stays
   shut. Letting someone through because verification is unavailable would make
   the lock a suggestion.
 - `PinPad.jsx` is shared by the lock screen and the set/change sheet, so the two
   cannot drift about how many digits a code has.
+
+### Biometric unlock is a SECOND door, never a different lock
+
+`lib/biometric.js` + the button on `PinLock` + `components/BiometricUnlock.jsx`
+in Profile → Privacy and lock. A WebAuthn platform credential (Face ID / Touch
+ID / fingerprint), remembered by its credential id in `localStorage`.
+
+- **There is no server, so nothing verifies the assertion.** Meera is a static
+  bundle; there is no relying party to check a signature against a registered
+  public key. We deliberately do **not** store the public key and "verify"
+  locally — that is checking our own maths against a key sitting in the same
+  `localStorage` as the thing it guards, and anyone who can run script in the
+  page (which is what defeating this takes at all) skips it entirely. The
+  challenge is random so the ceremony is well-formed, not because anything
+  checks it came back, and `attestation` is `'none'` because evidence nobody
+  can check is data collected for the look of rigour. What it actually buys is
+  that **the platform refused to answer until it had seen a face or a finger** —
+  deterrence of exactly the class the passcode already is. The Profile copy says
+  this in words; do not let it drift into sounding like security.
+- **The passcode is never removed and never optional.** Every failure path here
+  lands back on the pad, and there is no control anywhere that turns the pad
+  off. The credential lives in the platform keystore and the owner cannot
+  rebuild it from anything they know, so a state where the only way in is a
+  biometric would be a way to be locked out of your own phone.
+- **It cannot touch the lockout.** `PinLock` returns `MarketDecoy` before
+  anything biometric renders, and both the attempt effect and the silent
+  capability probe bail on `locked` — the platform is not so much as *asked* a
+  question while the decoy is up. An unlock the fifteen minutes cannot stop
+  would make them fictional, the same reason there is no bypass gesture.
+- **A cancelled or failed biometric is NOT a wrong passcode.** Nothing in that
+  path writes `FAIL_KEY`. The three tries belong to the pad; a Face ID the owner
+  dismissed twice must not leave them one typo from the decoy.
+- **The probe has FOUR answers** (`probeBiometric()` → `available` / `none` /
+  `unsupported` / `unknown`) and never rejects. `unknown` is the probe having
+  *thrown*, and rendering it as `unsupported` is precisely the "failures must
+  not render as answers" bug. The two surfaces treat it differently on purpose:
+  **Profile keeps offering the button** (the cost of being wrong is one
+  dismissed prompt; the confident version tells someone their phone lacks a
+  feature it has), while the **lock screen shows it only on `available`**,
+  because there a button that may not work is a dead end under the thumb with
+  the pad right above it.
+- **`doneRef` in PinLock is a one-way latch, and is not the guard ref CLAUDE.md
+  warns about.** That one was set *before* a check and cleared after, so an
+  abandoned attempt left it stuck and the pad went dead. This one is set only on
+  success and never cleared, and after success the screen is gone. It exists
+  because a ~200ms key derivation and a platform prompt can be in flight
+  simultaneously — without it both call `onUnlock()`, and a wrong code landing
+  after a biometric unlock would bank a failure against the next session.
+- **The prompt only ever fires from a tap.** No effect on mount, no timer, no
+  `visibilitychange`. A Face ID sheet that raises itself on every return is the
+  repeated-permission-prompt problem `useCamera`'s `retry()` rule exists to
+  stop, and on iOS that sheet covers the pad — hiding the fallback at the moment
+  it is needed. Enrollment likewise runs straight off the tap (Safari rejects a
+  ceremony with no user activation), the same rule `enablePush()` follows.
+- **The pad is first in the DOM**, so a keyboard, switch or screen reader
+  reaches the route that always works first. Nothing autofocuses.
+- `userVerification: 'required'` and `authenticatorAttachment: 'platform'` are
+  both load-bearing: without the first the platform may answer on presence alone
+  (a tap) and the "biometric" is just a button; without the second a USB key
+  left in the phone would unlock it. `rp.id` is deliberately **omitted** so the
+  browser fills in the effective domain — hard-coding it breaks localhost and
+  every preview deployment.
+- **A deleted credential and a user who tapped Cancel are indistinguishable**
+  (both surface as `NotAllowedError` after the same timeout), so `verifyBiometric`
+  reports `'cancelled'` for both and **never auto-clears the enrollment** — the
+  owner's own cancel would silently un-enroll them. Not knowing is survivable
+  only because the pad is on screen regardless.
+- Naming is detected, not guessed: "Face ID or Touch ID" on Apple, "Fingerprint
+  unlock" on Android, "Biometric unlock" elsewhere, with a matching line icon
+  (`FaceIdIcon` / `FingerprintIcon`). Telling an Android user about Face ID is
+  worse than saying nothing specific.
 - **The app re-locks when it is backgrounded** (`RELOCK_GRACE_MS`, 30s). Without
   this the lock only ever applied to a cold start, which is no lock at all
   against the threat it exists for: a phone handed over with Meera already open,
