@@ -50,6 +50,7 @@ import SaveState from '../components/SaveState'
 import ActiveSessions from '../components/ActiveSessions'
 import BlockedContacts from '../components/BlockedContacts'
 import LocationSharing from '../components/LocationSharing'
+import ScreenTime from '../components/ScreenTime'
 import StorageUsage from '../components/StorageUsage'
 import AccountData from '../components/AccountData'
 import { useSaveState } from '../lib/useSaveState'
@@ -676,7 +677,7 @@ export default function Profile({ onBack, openPlay = false, onPlayOpened }) {
         <SettingsGroup
           eyebrow="Account and data"
           title="Your account"
-          hint="Recovery, devices, what Meera is holding, and the way out."
+          hint="Recovery, devices, your own time here, what Meera is holding, and the way out."
           icon={<KeyIcon width={19} height={19} />}
         >
           <div className="pc-label-row">
@@ -735,6 +736,13 @@ export default function Profile({ onBack, openPlay = false, onPlayOpened }) {
           />
 
           <ActiveSessions />
+
+          {/* Next to Storage on purpose: both are read-outs about the owner's
+              own footprint and nobody else's. Screen time is deliberately NOT
+              in "Shared moments" — that group is defined as what friends can
+              see, and this is the one panel on the screen that must never
+              become a shared surface. See lib/screenTime.js. */}
+          <ScreenTime />
 
           <StorageUsage />
 

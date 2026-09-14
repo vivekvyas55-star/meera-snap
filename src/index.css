@@ -312,7 +312,8 @@
 .pc-hero,
 .pc-card.lavender,
 .pc-card.lime,
-.pc-card.coral {
+.pc-card.coral,
+.st-hero {
   --ink: #16161a;
   /* 0.62 left the sub-line on a lavender card at 3.7:1. */
   --muted: rgba(22, 22, 26, 0.72);
@@ -2507,3 +2508,153 @@ button:disabled { cursor: not-allowed; }
   overflow-y: auto;
   overscroll-behavior: contain;
 }
+
+
+/* ==========================================================================
+   SCREEN TIME — Profile → Your account (components/ScreenTime.jsx)
+
+   Your own day on Meera, measured and kept on the phone that drew it. The
+   own-eyes-only invariant is stated at the top of lib/screenTime.js; nothing
+   in this block is ever rendered about another person.
+
+   It borrows the Privacy Centre's card vocabulary (.pc-card-head, .pc-chip,
+   .pc-card-sub) rather than restating it, and adds only what that vocabulary
+   has no word for: a hero number, a seven-day column chart, and a stacked
+   distribution bar. Every size, radius and gap is a token — the display
+   number is the one exception and it is a clamp() in the same shape as
+   --fs-display, one step up from .pc-card-num because it is the point of the
+   whole screen.
+   ========================================================================== */
+
+/* Lavender: on this screen lavender already means "you" (privacy.css pins one
+   job per hue), and this is the most purely about-you number on it. It is
+   painted from CSS, not from an inline style, and it is listed in the
+   fixed-light context above — an inline vibrant fill never enters that context
+   and ends up near-white text on lavender after dark, which is exactly how
+   .fp-stat went wrong. */
+.st-hero {
+  background: var(--lavender);
+  border-radius: var(--r-card);
+  padding: var(--sp-5) var(--sp-4);
+  color: var(--ink);
+}
+.st-hero-num {
+  font-size: clamp(38px, 12vw, 50px);
+  font-weight: 300;
+  letter-spacing: -0.04em;
+  line-height: 1;
+  overflow-wrap: anywhere;
+}
+
+/* A plain neutral card for the two charts — the hero is the only fill, or the
+   section turns into bunting. */
+.st-card {
+  background: var(--card);
+  border-radius: var(--r-card);
+  padding: var(--sp-4);
+  margin-top: var(--sp-3);
+}
+
+/* The insight line. A row rather than a card: it is one sentence, and giving
+   one sentence a card of its own would make it look like a warning. */
+.st-note {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-2);
+  margin-top: var(--sp-3);
+  padding: var(--sp-3);
+  border-radius: var(--r-row);
+  background: var(--tint);
+  font-size: var(--fs-sm);
+  line-height: 1.45;
+  color: var(--ink);
+}
+.st-note svg { flex: 0 0 auto; margin-top: 1px; color: var(--accent); }
+.st-note-quiet { background: var(--card); color: var(--muted); }
+.st-note-quiet svg { color: var(--muted); }
+
+/* --------------------------------------------------------------------------
+   Seven days. Columns, because the eye reads "which day was bigger" off
+   heights far faster than off numbers, and seven numbers at 320px is a wall.
+   -------------------------------------------------------------------------- */
+.st-week {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--sp-2);
+  height: 96px;
+  margin-bottom: var(--sp-3);
+}
+.st-day { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: var(--sp-1); height: 100%; }
+.st-bar-track { flex: 1; display: flex; align-items: flex-end; }
+.st-bar {
+  width: 100%;
+  min-height: 3px;
+  border-radius: var(--r-pill);
+  background: var(--wash);
+  /* One-shot on mount, so the global reduced-motion rule collapses it to its
+     finished state rather than leaving a bar at zero height. Nothing in this
+     block loops. */
+  animation: st-grow 420ms cubic-bezier(0.2, 0.7, 0.3, 1) both;
+  transform-origin: bottom;
+}
+.st-bar.is-today { background: var(--lavender); }
+/* A day Meera was never opened is absent from the store, not a zero — a
+   hairline says "we have nothing here", a full-height empty column would say
+   "you used it for no time at all", and only one of those is true. */
+.st-bar.is-blank { background: var(--hairline); min-height: 2px; }
+@keyframes st-grow { from { transform: scaleY(0); } }
+
+.st-day-label {
+  font-size: var(--fs-micro);
+  text-align: center;
+  color: var(--muted);
+  letter-spacing: 0.04em;
+}
+.st-day-label.is-today { color: var(--ink); font-weight: 600; }
+
+/* --------------------------------------------------------------------------
+   When you are here. One stacked bar over a legend; the four fills run light
+   to dark across the day, so the bar reads as a day passing even before the
+   legend is read. Coral is absent on purpose — on this screen coral means
+   danger and nothing else.
+   -------------------------------------------------------------------------- */
+.st-parts {
+  display: flex;
+  height: 14px;
+  border-radius: var(--r-pill);
+  overflow: hidden;
+  background: var(--wash);
+  margin-bottom: var(--sp-3);
+}
+.st-part { flex-basis: 0; min-width: 2px; }
+
+.st-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2) var(--sp-3);
+  font-size: var(--fs-micro);
+  color: var(--muted);
+}
+.st-key { display: inline-flex; align-items: center; gap: 6px; color: var(--ink); }
+.st-key em { font-style: normal; color: var(--muted); }
+.st-dot { width: 9px; height: 9px; border-radius: 50%; flex: 0 0 auto; }
+
+/* --------------------------------------------------------------------------
+   Erase. Quiet by default — it is an escape hatch, not an action anybody came
+   here for — and the confirm is inline rather than a Confirm sheet, because
+   nothing here is recoverable from elsewhere and nothing here is precious.
+   -------------------------------------------------------------------------- */
+.st-erase-row { display: flex; gap: var(--sp-2); margin-top: var(--sp-3); }
+.st-erase {
+  margin-top: var(--sp-3);
+  padding: 10px var(--sp-4);
+  min-height: 44px;
+  border-radius: var(--r-pill);
+  background: var(--card);
+  color: var(--muted);
+  font-size: var(--fs-meta);
+  font-weight: 500;
+}
+.st-erase-row .st-erase { margin-top: 0; flex: 1; }
+.st-erase:active { background: var(--card-press); }
+.st-erase.danger { background: var(--danger-bg); color: var(--danger-ink); }

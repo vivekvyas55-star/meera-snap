@@ -33,6 +33,7 @@ import Portal from './components/Portal'
 import { clearHidden, hiddenTooLong, isUnlocked, markHidden, wasHiddenPastGrace } from './lib/appLock'
 import { isCallActive } from './lib/callState'
 import { trackDeviceSessions } from './lib/devices'
+import { installScreenTime, setScreenTimeLocked } from './lib/screenTimeTracker'
 import { useBackLayer } from './hooks/useBackLayer'
 import { signalReceiver } from './lib/privateRealtime'
 
@@ -379,6 +380,12 @@ function SessionShell() {
 // counts once its owner happens to open Settings.
 trackDeviceSessions()
 
+// Screen time is measured from here for the same reason devices are: Profile
+// is lazy-imported, so a tracker installed by the screen that DISPLAYS the
+// number would only ever measure people who opened Settings. It counts nothing
+// until the passcode is lifted — see setScreenTimeLocked below.
+installScreenTime()
+
 export default function App() {
   // Keep the focused composer above the on-screen keyboard. Rather than resize
   // the whole app (which fought iOS's own keyboard scroll and left a white gap),
@@ -449,6 +456,12 @@ export default function App() {
       window.removeEventListener('pagehide', markHidden)
     }
   }, [])
+  // The pad is an overlay over a mounted app, so "visible" is not the same as
+  // "the owner is here". One line, driven from the single `unlocked` state
+  // above rather than a second copy of the lock's listeners that could drift
+  // out of step with it.
+  useEffect(() => { setScreenTimeLocked(!unlocked) }, [unlocked])
+
   return (
     <ErrorBoundary>
     <AuthProvider>
