@@ -33,6 +33,7 @@ import Portal from './components/Portal'
 import { clearHidden, hiddenTooLong, isUnlocked, markHidden, wasHiddenPastGrace } from './lib/appLock'
 import { isCallActive } from './lib/callState'
 import { trackDeviceSessions } from './lib/devices'
+import { installTelemetryFlush } from './lib/telemetry'
 import { useBackLayer } from './hooks/useBackLayer'
 import { signalReceiver } from './lib/privateRealtime'
 
@@ -378,6 +379,12 @@ function SessionShell() {
 // them: Profile is lazy-imported, so waiting for it would mean a device only
 // counts once its owner happens to open Settings.
 trackDeviceSessions()
+
+// Module scope for the same reason: the buffer has to be drained when the phone
+// is backgrounded, and a component that mounts late would miss everything
+// recorded before it. PinLock already fires on `hidden` — that is the last
+// moment a mobile page reliably gets.
+installTelemetryFlush()
 
 export default function App() {
   // Keep the focused composer above the on-screen keyboard. Rather than resize

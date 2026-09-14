@@ -15,6 +15,7 @@
 //    outright — always call enablePush() from a click handler.
 import { supabase } from './supabase'
 import { isIOS, isStandalone } from './pwa'
+import { record, failureCode } from './telemetry'
 
 const VAPID_PUBLIC = import.meta.env.VITE_VAPID_PUBLIC_KEY
 
@@ -140,8 +141,17 @@ export async function notify(to, kind) {
   if (!to || !kind) return { data: null, error: new Error('Nothing to notify') }
   try {
     const { data, error } = await supabase.functions.invoke('push', { body: { to, kind } })
+    // Only the invoke FAILING is counted here. When the function runs it counts
+    // its own attempts and outcomes server-side, where there is no user and no
+    // sampling — counting the same send from both ends would double every
+    // number the dashboard shows. What the client knows and the server cannot
+    // is precisely this case: the function never ran at all. A cold start reads
+    // identically to a friend with no device, and telling the two apart is why
+    // `data` and `error` are kept distinct in the first place.
+    if (error) record('push_attempt', failureCode('invoke', error))
     return error ? { data: null, error } : { data: data ?? null, error: null }
   } catch (error) {
+    record('push_attempt', failureCode('invoke', error))
     return { data: null, error }
   }
 }

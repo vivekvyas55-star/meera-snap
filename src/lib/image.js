@@ -6,6 +6,11 @@
 // Best-effort by design: if decoding or encoding fails on some browser, the
 // caller gets the ORIGINAL blob back and the upload still succeeds. A failed
 // optimisation must never become a failed send.
+//
+// It is counted, though. Silently uploading full-size originals is the failure
+// this module exists to prevent, and it is invisible from the outside: nothing
+// errors, nothing looks wrong, and the bill arrives at the end of the month.
+import { record } from './telemetry'
 
 async function decode(blob) {
   if (typeof createImageBitmap === 'function') return createImageBitmap(blob)
@@ -48,6 +53,10 @@ export async function downscaleImage(blob, maxDim = 1600, quality = 0.8) {
     // Re-encoding can inflate an already-optimised file; keep the smaller one.
     return out && out.size < blob.size ? out : blob
   } catch {
+    // Reported under upload_fail because that is what it costs — an upload of
+    // the wrong size — even though nothing here threw at the caller. No error
+    // detail: a decode failure's message can name the object being decoded.
+    record('upload_fail', 'downscale_failed')
     return blob
   } finally {
     img?.close?.()

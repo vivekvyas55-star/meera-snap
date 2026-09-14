@@ -173,7 +173,18 @@ Deno.serve(async (req) => {
     .from('push_subscriptions')
     .select('id, endpoint, p256dh, auth')
     .eq('user_id', to)
-  if (!subs?.length) return json({ sent: 0, reason: 'no subscriptions' })
+  if (!subs?.length) {
+    // A real outcome, not an error: the friend has no subscribed device. It is
+    // counted because "push never reaches anyone" and "nobody has enabled push"
+    // are the same silence from the client's side and very different problems.
+    try {
+      await admin.rpc('record_ops_server_events', {
+        source: 'push',
+        events: [{ kind: 'push_outcome', code: 'no_subscription', count: 1 }],
+      })
+    } catch { /* never worth a failed response */ }
+    return json({ sent: 0, reason: 'no subscriptions' })
+  }
 
   const { data: sender } = await admin
     .from('profiles')
@@ -209,18 +220,35 @@ Deno.serve(async (req) => {
   // written yesterday.
   const PUSH_HOSTS = /^([a-z0-9-]+\.)*(googleapis\.com|push\.apple\.com|push\.services\.mozilla\.com|notify\.windows\.com)$/
 
+  // Delivery counting. This is the half of the telemetry with no privacy
+  // question attached: the function already knows both parties, deliberately
+  // records neither, and what goes to the sink is a tally of outcomes with no
+  // endpoint, no user and no host in it. Push failing wholesale is otherwise
+  // completely invisible — the sender sees a sent message and the recipient's
+  // phone simply never rings, which is exactly what a DER-encoded VAPID
+  // signature looks like from the outside.
+  const outcomes = new Map<string, number>()
+  const count = (code: string) => outcomes.set(code, (outcomes.get(code) ?? 0) + 1)
+
   let sent = 0
   const dead: string[] = []
   // Bounded. One user's device list should never be able to turn one send into
   // thousands of concurrent outbound requests.
-  await Promise.all(subs.slice(0, 20).map(async (s) => {
+  const targets = subs.slice(0, 20)
+  const attempted = targets.length
+  await Promise.all(targets.map(async (s) => {
     try {
       let origin: string
       try {
         const url = new URL(s.endpoint)
-        if (url.protocol !== 'https:' || !PUSH_HOSTS.test(url.hostname)) return
+        // A row that fails the host allowlist is one written before the CHECK
+        // constraint existed, or an attempt at using this function as an
+        // outbound HTTP client. Either is worth seeing a count of; neither is
+        // worth recording the host, which is the attacker-supplied half.
+        if (url.protocol !== 'https:' || !PUSH_HOSTS.test(url.hostname)) { count('endpoint_refused'); return }
         origin = url.origin
       } catch {
+        count('endpoint_invalid')
         return
       }
       const encrypted = await encryptPayload(payload, s.p256dh, s.auth)
@@ -236,13 +264,28 @@ Deno.serve(async (req) => {
         },
         body: encrypted,
       })
-      if (res.ok) sent++
+      if (res.ok) { sent++; count('delivered') }
       // 404/410 mean the browser threw this subscription away — so do we,
       // otherwise dead endpoints accumulate and every send retries them forever.
-      else if (res.status === 404 || res.status === 410) dead.push(s.id)
-    } catch { /* one bad endpoint must not fail the rest */ }
+      else if (res.status === 404 || res.status === 410) { dead.push(s.id); count('endpoint_gone') }
+      // The status is bucketed, never the body: a push service's error body can
+      // echo the endpoint back at you.
+      else count(res.status === 401 || res.status === 403 ? 'rejected_auth' : `rejected_http_${res.status}`)
+    } catch { count('send_error') /* one bad endpoint must not fail the rest */ }
   }))
 
   if (dead.length) await admin.from('push_subscriptions').delete().in('id', dead)
+
+  // Best-effort and last, after the real work: a telemetry problem must never
+  // turn a delivered notification into a failed response. Nothing is awaited
+  // that could change what the caller is told.
+  try {
+    const events: unknown[] = [{ kind: 'push_attempt', code: 'attempted', count: attempted }]
+    for (const [code, n] of outcomes) {
+      events.push({ kind: 'push_outcome', code: code.slice(0, 32), count: n })
+    }
+    await admin.rpc('record_ops_server_events', { source: 'push', events })
+  } catch { /* observability is never worth a failed send */ }
+
   return json({ sent, pruned: dead.length })
 })

@@ -572,6 +572,12 @@ await clientWrite('saveToMemory / deleteMemory',[
 await clientWrite('saveSubscription / disablePush',[{as:A},
  {sql:`insert into push_subscriptions(user_id,endpoint,p256dh,auth,user_agent) values($1,'https://fcm.googleapis.com/fcm/send/abc123','p','a','ua') on conflict (endpoint) do update set user_id=excluded.user_id,endpoint=excluded.endpoint,p256dh=excluded.p256dh,auth=excluded.auth,user_agent=excluded.user_agent`,args:[A],rows:1},
  {sql:`delete from push_subscriptions where endpoint='https://fcm.googleapis.com/fcm/send/abc123'`,args:[],rows:1}])
+// Telemetry is a client write like any other: a missing EXECUTE grant fails at
+// call time, before the function's own exception handler can swallow anything,
+// and would leave the sink silently dead on a legitimate phone.
+await clientWrite('record_ops_events',[{as:A},
+ {sql:`select public.record_ops_events($1::jsonb)`,args:[JSON.stringify([{kind:'upload_fail',code:'snaps_http_500',device:'android-chrome',retries:1,n:1}])]}])
+
 // --- Audit follow-up: the edges the boundary did not cover ----------------
 await asUser(A,async()=>{
  // H1: the push endpoint is a URL this project's Edge Function will FETCH, and
@@ -619,6 +625,75 @@ assert.equal(Number(wider.projected_daily_egress)-Number(wider.snap_bytes),10000
 assert.equal((await query('select count(*)::int n from ops_metrics'))[0].n,1)
 await asUser(B,()=>assert.rejects(query('select * from ops_metrics'),/permission denied/))
 console.log('PASS egress projection counts a story once per friend, and is idempotent per day')
+
+// Operational telemetry. The thing worth testing is not that a count goes up —
+// it is that the privacy filter is real. Every guarantee this feature makes is
+// a server-side check, because the anon key is in the bundle and a client-side
+// filter is a suggestion.
+const ev=(o)=>JSON.stringify([o])
+await asUser(A,async()=>{
+ assert.equal((await query('select public.record_ops_events($1::jsonb) n',[JSON.stringify([
+   {kind:'upload_fail',code:'snaps_http_500',device:'android-chrome',n:1},
+   {kind:'realtime_join',code:'join_signal',device:'android-chrome',n:20},
+ ])]))[0].n,2)
+ // A free-text code is how a message body ends up in a metrics table. Rejected
+ // outright rather than truncated into something plausible.
+ assert.equal((await query('select public.record_ops_events($1::jsonb) n',[ev({kind:'upload_fail',code:'meet me at 8 tonight',device:'desktop'})]))[0].n,0)
+ // Vocabulary, not free text — for kind and device class as well as code. A
+ // user agent in the device column would make every row a fingerprint.
+ assert.equal((await query('select public.record_ops_events($1::jsonb) n',[ev({kind:'keystrokes',code:'ok',device:'desktop'})]))[0].n,0)
+ assert.equal((await query('select public.record_ops_events($1::jsonb) n',[ev({kind:'upload_fail',code:'snaps_other',device:'Mozilla/5.0 (Linux; Android 14)'})]))[0].n,0)
+ // Nothing malformed may take the whole batch down with it, or one bad client
+ // stops reporting the failures it is in the middle of having.
+ assert.equal((await query('select public.record_ops_events($1::jsonb) n',[JSON.stringify([
+   {kind:'upload_fail',code:'not a code',device:'desktop'},
+   {kind:'upload_fail',code:'stories_other',device:'desktop'},
+ ])]))[0].n,1)
+ // An uncapped sampling denominator lets one event claim a million and move
+ // every threshold on its own.
+ assert.equal((await query('select public.record_ops_events($1::jsonb) n',[ev({kind:'upload_fail',code:'voice_other',device:'desktop',n:9999999})]))[0].n,1)
+ // A client can never read a row back, which also stops this table being a
+ // side channel between two users.
+ await assert.rejects(query('select * from public.ops_events'),/permission denied/)
+ await assert.rejects(query("insert into public.ops_events(on_hour,source,kind,code,device) values(now(),'push','cleanup_run','ok','server')"),/permission denied/)
+ for (const fn of ["public.record_ops_server_events('push','[]'::jsonb)","public.purge_ops_events()","public.ops_event_alerts()"]) {
+  assert.equal((await query(`select has_function_privilege('authenticated','${fn.replace(/\(.*/,'')}(${fn.includes('server_events')?'text,jsonb':''})','execute') ok`))[0].ok,false)
+ }
+})
+// The server sources are not a parameter a client can reach, so there is
+// nothing to forge: everything a signed-in caller writes is 'client'.
+assert.equal((await query("select count(*)::int n from public.ops_events where source<>'client'"))[0].n,0)
+assert.equal(Number((await query("select estimated from public.ops_events where kind='realtime_join'"))[0].estimated),20)
+assert.equal((await query("select count(distinct on_hour)::int n from public.ops_events"))[0].n,1)
+assert.equal(Number((await query("select max(estimated) e from public.ops_events where code='voice_other'"))[0].e),1000)
+// The budget is the only thing standing between an open write path and a table
+// one account can fill faster than the purge empties it.
+await asUser(C,async()=>{
+ const flood=Array.from({length:130},(_,i)=>({kind:'upload_fail',code:`snaps_http_${400+(i%99)}`,device:'desktop'}))
+ assert.equal((await query('select public.record_ops_events($1::jsonb) n',[JSON.stringify(flood)]))[0].n,120)
+ assert.equal((await query('select public.record_ops_events($1::jsonb) n',[ev({kind:'upload_fail',code:'snaps_other',device:'desktop'})]))[0].n,0)
+})
+// Retention, and the identifying half going first.
+await db.query("update public.ops_events set on_hour=now()-interval '40 days' where code='voice_other'")
+await db.query("update public.ops_event_budget set on_hour=now()-interval '5 days'")
+assert.equal((await query('select public.purge_ops_events() n'))[0].n,1)
+assert.equal((await query('select count(*)::int n from public.ops_event_budget'))[0].n,0)
+console.log('PASS telemetry rejects free text, foreign vocabularies and forged sources, caps a flood, and is unreadable to clients')
+
+// Alerts. A threshold computed off sampled counts without scaling them back up
+// is worse than no alert — it is confidently wrong in a fixed direction — so
+// the alert reads `estimated` and this proves the difference matters.
+await db.query('delete from public.ops_events')
+const bulk=(kind,code,observed,estimated)=>db.query(
+ "insert into public.ops_events(on_hour,source,kind,code,device,observed,estimated) values(date_trunc('hour',now()),'client',$1,$2,'desktop',$3,$4)",[kind,code,observed,estimated])
+// 5 observed joins at 1-in-20 are 100 real joins against 40 drops: healthy, and
+// exactly the case an unscaled reading would report as 40 drops to 5 joins.
+await bulk('realtime_join','join_signal',5,100)
+await bulk('realtime_drop','channel_error_signal',40,40)
+assert.equal((await query('select count(*)::int n from public.ops_event_alerts()'))[0].n,0)
+await db.query("update public.ops_events set estimated=200 where kind='realtime_drop'")
+assert.deepEqual((await query('select alert from public.ops_event_alerts()')).map(r=>r.alert),['realtime_drops_exceed_joins'])
+console.log('PASS the drop-rate alert reads the sampling-scaled figure, not the raw sample')
 // The drift check is only worth having if the version it reports is the real
 // newest one and a client can actually ask for it.
 const newest=fs.readdirSync('supabase/migrations').filter((f)=>f.endsWith('.sql')).sort().at(-1).replace(/\.sql$/,'')

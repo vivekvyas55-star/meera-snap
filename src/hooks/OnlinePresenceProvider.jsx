@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { recordChannelStatus } from '../lib/telemetry'
 import { watchFriends } from '../lib/privateRealtime'
 import { useAuth } from './useAuth'
 import { OnlineContext } from './useOnlinePresence'
@@ -18,7 +19,10 @@ export function OnlinePresenceProvider({ children }) {
         if (!alive) return
         const present = Object.keys(ch.presenceState()).length > 0
         setOnline(cur => { const next = new Set(cur); if (present) next.add(id); else next.delete(id); return next })
-      }).subscribe(status => { if (own && status === 'SUBSCRIBED') ch.track({ at: Date.now() }) })
+      }).subscribe(status => {
+        recordChannelStatus(`online:${id}`, status)
+        if (own && status === 'SUBSCRIBED') ch.track({ at: Date.now() })
+      })
       channels.set(id, ch)
     }
     attach(userId, true)

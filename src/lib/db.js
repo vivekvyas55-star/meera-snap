@@ -1,6 +1,7 @@
 import { supabase } from './supabase'
 import { downscaleImage, makeThumbnail } from './image'
 import { notify } from './push'
+import { record, failureCode } from './telemetry'
 
 // Storage objects are immutable once written (every upload gets a fresh uuid
 // path), so they can be cached hard. supabase-js defaults this to 3600.
@@ -279,12 +280,30 @@ async function insertMessage(row) {
   throw error
 }
 
+// Which SURFACE an upload belongs to, from the path's own fixed second segment
+// (`<me>/snaps/<id>.jpg`). Never the path itself: segment one is the uploader's
+// user id and segment three names an object. A failing story upload and a
+// failing voice note are different problems, and that distinction is the whole
+// analytic value — the rest of the path has none.
+const mediaStage = (path) => {
+  const seg = String(path ?? '').split('/')[1]
+  return ['snaps', 'voice', 'stories', 'memories', 'scrapbook', 'intimate'].includes(seg) ? seg : 'media'
+}
+
 async function uploadMedia(path, blob) {
+  const stage = mediaStage(path)
   // Durable cleanup work is registered BEFORE uploading; a crashed client cannot orphan it.
   const { error: queued } = await supabase.rpc('queue_media_cleanup', { object_path: path })
-  if (queued) throw queued
+  // Counted separately from the upload itself: a refused queue call is an RLS
+  // or grant problem and a refused upload is a storage problem, and the two
+  // have never once had the same cause. Telemetry is recorded before the throw
+  // so a failure that the caller turns into a retry is still counted once here.
+  if (queued) { record('upload_fail', failureCode(`${stage}_queue`, queued)); throw queued }
   const { error } = await supabase.storage.from('media').upload(path, blob, { contentType: blob.type || 'application/octet-stream', cacheControl: UPLOAD_CACHE })
-  if (error && String(error.statusCode) !== '409' && !/already exists|duplicate/i.test(error.message)) throw error
+  if (error && String(error.statusCode) !== '409' && !/already exists|duplicate/i.test(error.message)) {
+    record('upload_fail', failureCode(stage, error))
+    throw error
+  }
 }
 const mediaExtension = (blob) => ({ 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif', 'video/mp4': 'mp4', 'video/webm': 'webm', 'video/quicktime': 'mov', 'audio/webm': 'webm', 'audio/mp4': 'm4a', 'audio/ogg': 'ogg' }[blob.type?.split(';')[0]] || 'bin')
 

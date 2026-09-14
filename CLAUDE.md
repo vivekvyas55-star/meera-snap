@@ -837,6 +837,106 @@ supabase secrets set VAPID_PUBLIC_KEY=... VAPID_PRIVATE_KEY=... VAPID_SUBJECT=ma
 The public key ships in the bundle by design; the private key must never be in
 `.env` or the repo.
 
+## Operational telemetry — and the limits of calling it anonymous
+
+`202609140035_ops_telemetry.sql` (**SHELVED** — see
+`supabase/migrations/.unapplied`), `src/lib/telemetry.js`,
+`supabase/operations/schedule_ops_telemetry.sql`.
+
+Four things failed in total silence: an upload that never landed, a Realtime
+channel that died, a push nobody received, and a cleanup pass that stopped
+collecting. Each looks to the user like "the app is broken" and to the operator
+like nothing at all. ROADMAP.md listed push-delivery logs as needing the
+owner's decision because it is *exactly the metadata push keeps none of*; the
+decision was made, with the constraints below.
+
+Built on the `ops_metrics` pattern (RLS on, no policy, grants revoked, a
+SECURITY DEFINER writer, operator reads from the SQL editor). **The sink is
+Postgres.** No third party, no SDK, no npm dependency — an analytics vendor
+spends both of the things that are scarce here.
+
+**It is a COUNTER table, not a log.** A row is `(hour, source, kind, code,
+device class, retry bucket)` and two integers. There is no per-event row to
+correlate and no column an identifier could live in.
+
+**What is collected:** upload failures by surface (`snaps`/`stories`/`voice`/
+`memories`) and HTTP status bucket; downscale failures; Realtime joins and
+drops by topic KIND; push attempts and outcomes (delivered / endpoint gone /
+rejected / no subscription); cleanup pass results and objects removed.
+
+**What is NOT collected, anywhere:** message bodies, media paths or bytes,
+coordinates, user agents, IP addresses, push endpoints, Realtime topics,
+usernames, display names, recipient ids, error message *text*.
+
+**Where the anonymisation is real:**
+- No identifier column exists. Nothing to join a person to.
+- **Timestamps are truncated to the hour.** Precision is itself an identifier —
+  `messages.created_at` is right there, and a millisecond-stamped telemetry row
+  next to a send is that send with extra steps.
+- `code` is regex-validated server-side (`^[a-z][a-z0-9_]{0,31}$`), so it can
+  never become a free-text field somebody later pipes an error message into.
+  An error's **message** is never read on the client: supabase-js puts the
+  object path in an upload error, and a path's first segment is the user's id.
+- **Topics are bucketed to a kind.** The grammar is `signal:<recipient>:<sender>`,
+  so a raw topic name IS an edge of the social graph. `topicKind()` is where
+  that is enforced rather than remembered.
+- The client buffers and flushes on a jittered timer, so the *write* is not
+  stamped with the time of the user's action either.
+
+**Where it is only a convention, and this must not be glossed:**
+- A row written by an authenticated client over PostgREST is **attributable at
+  write time** no matter which columns are omitted. The request carries a JWT
+  and the platform's own request logs saw it. Omitting `user_id` stops the
+  database remembering who; it does not stop the infrastructure having known.
+- `ops_event_budget` is **deliberately identifying** — keyed by user, because
+  rate-limiting an open write path is impossible without knowing whom to limit.
+  It holds a count and an hour, no event content, and is purged after 2 days.
+  It is the one place an operator could narrow "who was emitting in hour H".
+- **There are three real users.** k-anonymity is arithmetically unavailable at
+  that size: an hour bucket holding one event is a one-in-three guess. This is
+  data with the identifiers left out, which is a weaker thing than anonymous
+  data. **Do not describe it to anyone as anonymous.**
+- There is a local opt-out (`setTelemetryEnabled`, `meera:telemetry-off`) and
+  **no UI for it yet**. Recorded as a gap rather than glossed; wiring it to a
+  Profile row is a component, not a redesign.
+
+**Sampling must not lie.** Realtime joins are sampled 1-in-20 (they are the
+routine case); failures are **never** sampled. Each event carries its
+denominator `n`, the server stores `observed` (events reported) beside
+`estimated` (scaled back up), and **every dashboard query and every alert
+threshold reads `estimated`**. A rate built from a sampled numerator and an
+unsampled denominator is wrong by exactly 20x in a fixed direction — worse than
+no alert. `tests/database.mjs` pins this with a case where the raw sample says
+"40 drops to 5 joins" and the scaled figure says "healthy".
+
+**Upload successes are deliberately not counted.** A failure *rate* needs a
+denominator, and logging every successful upload would record a beat of each
+user's activity all day to get one. `ops_metrics.object_count` is already
+collected server-side and serves as an approximate one — objects landed, not
+attempts, so a trend line and not a percentage. Said plainly in the operations
+file rather than quietly relied on.
+
+**Nothing here may break a real user action.** `record()` never touches the
+network — it increments a number in a Map — and swallows everything; `flush()`
+drops its batch rather than retrying (telemetry that queues indefinitely is a
+second outbox with none of the value); both Edge Functions report *after* the
+real work inside a `try`; and both SQL writers end in `exception when others
+then return 0`, the same reasoning as `chat_backup.sql`'s trigger.
+
+**CLOSED is not a drop.** Every `removeChannel()` reports it, so counting it
+would make the drop rate a measure of normal use and the alert on it fiction.
+Only `CHANNEL_ERROR` and `TIMED_OUT` count.
+
+**Clients cannot name their own source.** `record_ops_events(jsonb)` is
+authenticated-only, forces `source='client'`, and has no source parameter to
+forge; `record_ops_server_events(text, jsonb)` is service_role-only.
+`purge_ops_events()` (30-day events, 2-day budget) and `ops_event_alerts()` are
+operator-only. Cron for both is in `operations/`, standalone, per the usual rule.
+
+**The dashboard is the queries in `supabase/operations/schedule_ops_telemetry.sql`,
+run in the SQL editor.** There is no hosted dashboard and the file does not
+pretend there is one.
+
 ## Egress is the scarcest resource — media is the whole bill
 
 Free tier gives 5 GB/month. With ~250 MB stored and 17 users, egress was 1.11 GB
