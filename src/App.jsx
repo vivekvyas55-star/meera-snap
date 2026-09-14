@@ -1,6 +1,7 @@
 import ErrorBoundary from './components/ErrorBoundary'
 import OfflineBar from './components/OfflineBar'
 import SchemaDriftBar from './components/SchemaDriftBar'
+import RealtimeAccountBar from './components/RealtimeAccountBar'
 import NotificationStack from './components/NotificationStack'
 import { StackSlot } from './components/NotificationStack'
 import { PRIORITY } from './lib/notifications'
@@ -473,6 +474,7 @@ export default function App() {
               <NotificationStack />
               <OfflineBar />
               <SchemaDriftBar />
+              <RealtimeAccountBar />
               <SessionShell />
               <CallOverlay />
               {/* An OVERLAY, not an early return. This used to be

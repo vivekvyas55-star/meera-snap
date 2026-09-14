@@ -1,6 +1,7 @@
 import { supabase } from './supabase'
 import { downscaleImage, makeThumbnail } from './image'
 import { notify } from './push'
+import { istDay } from './questionDay'
 
 // Storage objects are immutable once written (every upload gets a fresh uuid
 // path), so they can be cached hard. supabase-js defaults this to 3600.
@@ -734,11 +735,20 @@ export async function getPairPrompt(otherId) {
 }
 
 // Every friend's question-of-the-day state in one round trip, so the chat list
-// can flag "they answered, you haven't" without a query per row. Degrades to an
-// empty map if the migration isn't applied, rather than blanking the list.
+// can flag "they answered, you haven't" without a query per row.
+//
+// The counts are for the CURRENT IST DAY — pending_questions_all() filters on
+// public.ist_date() (202609070012_integrity_followup.sql) — so a caller has to
+// date what it gets back before rendering it. lib/questionDay.js does that.
+//
+// A failure returns NULL, not {}. An empty map is an ANSWER — "nobody is
+// waiting on you" — and giving that answer for a dropped request wipes a badge
+// that was true, which is the failure-rendered-as-an-answer bug this codebase
+// has now found eight times. null means we do not know, and the caller keeps
+// whatever it already had on screen.
 export async function listPromptStatus() {
   const { data, error } = await supabase.rpc('pending_questions_all')
-  if (error) return {}
+  if (error) return null
   const map = {}
   for (const row of data ?? []) map[row.other] = { pending: row.pending }
   return map
@@ -747,9 +757,10 @@ export async function listPromptStatus() {
 // The users' local day, matching public.ist_date() server-side. Filtering on
 // the browser's own date would put someone in a different timezone (or just
 // past their midnight) on a different "today" than the row they wrote.
-// en-CA formats as YYYY-MM-DD, which is what a Postgres `date` wants.
-export const istToday = () =>
-  new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date())
+// ONE definition, in lib/questionDay.js: the three-a-day cap, the cards and
+// the chat-list badge all have to agree about where the day ends, or they
+// contradict each other across the boundary.
+export const istToday = (now = new Date()) => istDay(now)
 
 // Answers visible to you for today. RLS returns only your own until you've
 // answered, then both — the reveal is enforced server-side, not here.

@@ -9,6 +9,7 @@ import {
   streakState,
 } from '../lib/db'
 import { bestFriendFrom } from '../lib/rowSignal'
+import { daySnapshot, istDay, pendingForDay } from '../lib/questionDay'
 import { CalendarIcon, ChatIcon, FlameIcon, HeartIcon, NoteIcon } from './Icons'
 
 // Everything the chat-list row no longer has space for. The row shows one
@@ -47,7 +48,16 @@ export default function FriendSignals({ friend, friendName, me }) {
       birthdaysToday().then((s) => live && setBirthdayToday(s.has(friend.id))).catch(() => {})
       listStatusNotes().then((m) => live && setNote(m[friend.id] ?? '')).catch(() => {})
       getPromptStatus(friend.id).then((s) => live && setQotd(s)).catch(() => {})
-      listPromptStatus().then((m) => live && setPending(m[friend.id]?.pending ?? 0)).catch(() => {})
+      // Same dating as the chat-list badge, and for the same reason: the count
+      // is for the current IST day only. `m` is null when the read failed, and
+      // null must not be read as "nothing pending".
+      const askedOn = istDay()
+      listPromptStatus()
+        .then((m) => {
+          if (!live || m === null) return
+          setPending(pendingForDay(daySnapshot(m, askedOn, istDay()), friend.id))
+        })
+        .catch(() => {})
     } catch { /* a missing RPC is one row fewer, not a broken sheet */ }
     return () => { live = false }
   }, [friend.id, me])

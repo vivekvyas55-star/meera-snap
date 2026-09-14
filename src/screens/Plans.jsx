@@ -46,7 +46,9 @@ export default function Plans({ onBack }) {
   const [plans, setPlans] = useState([])
   const [ent, setEnt] = useState(null)
   const [rate, setRate] = useState(null)
-  const [history, setHistory] = useState([])
+  // undefined = not asked yet, null = the read failed, [] = no rows. Only the
+  // last of those is an answer, and only it draws the list.
+  const [history, setHistory] = useState(undefined)
   const [busy, setBusy] = useState(false)
 
   const load = () => {
@@ -167,7 +169,7 @@ export default function Plans({ onBack }) {
           </button>
         )}
 
-        {history.length > 0 && (
+        {history?.length > 0 && (
           <>
             <div className="section">Credit history</div>
             <ul className="credit-log">

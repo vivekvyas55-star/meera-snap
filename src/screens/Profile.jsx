@@ -13,6 +13,7 @@ import {
 import { useAuth } from '../hooks/useAuth'
 import Confirm from '../components/Confirm'
 import Plans from './Plans'
+import Billing from './Billing'
 import PlayTogether from './PlayTogether'
 import { useToast } from '../hooks/useToast'
 import Avatar from '../components/Avatar'
@@ -49,6 +50,7 @@ import SettingsGroup from '../components/SettingsGroup'
 import SaveState from '../components/SaveState'
 import ActiveSessions from '../components/ActiveSessions'
 import BiometricUnlock from '../components/BiometricUnlock'
+import RealtimeAccount from '../components/RealtimeAccount'
 import BlockedContacts from '../components/BlockedContacts'
 import LocationSharing from '../components/LocationSharing'
 import ScreenTime from '../components/ScreenTime'
@@ -108,6 +110,7 @@ export default function Profile({ onBack, openPlay = false, onPlayOpened }) {
   // holding the phone that the code is one they can look up.
   const [usingDefault, setUsingDefault] = useState(usingDefaultPin)
   const [showPlans, setShowPlans] = useState(false)
+  const [showBilling, setShowBilling] = useState(false)
   const [ent, setEnt] = useState(null)
   const [rate, setRate] = useState(null)
   const [showPlay, setShowPlay] = useState(openPlay)
@@ -277,6 +280,7 @@ export default function Profile({ onBack, openPlay = false, onPlayOpened }) {
   const closeMemories = useCallback(() => setShowMemories(false), [])
   const closeTogether = useCallback(() => setShowTogether(false), [])
   const closePlans = useCallback(() => setShowPlans(false), [])
+  const closeBilling = useCallback(() => setShowBilling(false), [])
   const closePlay = useCallback(() => setShowPlay(false), [])
 
   // Each sub-screen is its own Back layer. Without these, Android's Back from
@@ -285,11 +289,23 @@ export default function Profile({ onBack, openPlay = false, onPlayOpened }) {
   useBackLayer(showMemories, closeMemories)
   useBackLayer(showTogether, closeTogether)
   useBackLayer(showPlans, closePlans)
+  useBackLayer(showBilling, closeBilling)
   useBackLayer(showPlay, closePlay)
 
   if (showMemories) return <Memories me={me} onBack={closeMemories} />
   if (showTogether) return <Together me={me} onBack={closeTogether} />
   if (showPlans) return <Plans onBack={closePlans} />
+  // Billing and Plans are SIBLINGS, not nested: the link between them swaps one
+  // for the other, so Back from either lands on Profile rather than unwinding
+  // two screens the user only ever saw one of.
+  if (showBilling) {
+    return (
+      <Billing
+        onBack={closeBilling}
+        onOpenPlans={() => { setShowBilling(false); setShowPlans(true) }}
+      />
+    )
+  }
   if (showPlay) return <PlayTogether onBack={closePlay} />
 
   return (
@@ -357,6 +373,20 @@ export default function Profile({ onBack, openPlay = false, onPlayOpened }) {
               <ChevronIcon width={18} height={18} className="chev" />
             </button>
           )}
+
+          {/* Always here, even when there is no balance to show. "What is this
+              number and is anything being charged?" is a question worth
+              answering precisely when the tile above is absent, and the tile is
+              absent exactly when the credit meter is not live. */}
+          <button onClick={() => setShowBilling(true)} className="pc-nav">
+            <span className="pc-nav-icon" aria-hidden="true">
+              <CoinIcon width={19} height={19} />
+            </span>
+            <span className="pc-nav-title">Billing &amp; credits</span>
+            <span className="pc-nav-go" aria-hidden="true">
+              <ArrowIcon width={17} height={17} />
+            </span>
+          </button>
 
           <label className="pc-label" htmlFor="pc-name">Display name</label>
           <input
@@ -740,6 +770,12 @@ export default function Profile({ onBack, openPlay = false, onPlayOpened }) {
             error={securitySave.error}
             savedLabel="Security question saved"
           />
+
+          {/* Directly above the device list: both answer "what is this app
+              doing on my behalf right now", one about channels and one about
+              browsers, and both are honest about what the platform does not
+              give a client. */}
+          <RealtimeAccount />
 
           <ActiveSessions />
 

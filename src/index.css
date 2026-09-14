@@ -298,6 +298,9 @@
 .plan-note,
 .plan-card.best,
 .credit-tile,
+.bill-switch,
+.bill-switch.on,
+.qcards-limit,
 .game-invite,
 .game-banner-open,
 .game-status.your-turn,
@@ -2030,6 +2033,22 @@ button:disabled { cursor: not-allowed; }
   padding: 10px 2px 6px;
   font-size: 13px; color: var(--muted); line-height: 1.45;
 }
+/* The three-a-day cap, stated. A disabled button on its own reads as a broken
+   button; the same button beside a sentence reads as a rule. Lavender rather
+   than coral — nothing has gone wrong, you have simply used today's three. */
+.qcards-limit {
+  display: flex; align-items: flex-start; gap: var(--sp-3);
+  margin: var(--sp-2) 0 var(--sp-1);
+  padding: var(--sp-3);
+  border-radius: var(--r-row);
+  background: var(--lavender);
+  color: var(--ink);
+}
+.qcards-limit-chip {
+  background: var(--action); color: var(--action-ink);
+  font-size: var(--fs-micro); font-weight: 600; flex: 0 0 auto;
+}
+.qcards-limit-text { font-size: var(--fs-micro); line-height: 1.45; min-width: 0; }
 .qcard-time {
   margin-left: 8px; font-weight: 500; letter-spacing: 0;
   text-transform: none; opacity: 0.7;
@@ -2215,6 +2234,56 @@ button:disabled { cursor: not-allowed; }
 .credit-tile-label { font-size: 12.5px; margin-top: 6px; opacity: 0.75; }
 .credit-tile > svg:first-child { opacity: 0.7; align-self: flex-start; }
 .credit-tile .chev { opacity: 0.55; flex: 0 0 auto; }
+
+/* --------------------------------------------------------------------------
+   BILLING & CREDITS — the explainer screen.
+   The first card is the state of the switch, because every number under it is
+   inert while plans are off and a screen of balances that did not say so would
+   read as a bill. Lime for off (a fact, not a warning), coral for on (money is
+   now moving). Both are vibrant fills with words on them, so both are in the
+   fixed-light list above — the .fp-stat lesson: a fill that never enters that
+   context is near-white text on lavender after dark.
+   -------------------------------------------------------------------------- */
+.bill-title { margin: 4px 0 var(--sp-4); }
+.bill-switch {
+  margin: 0 0 var(--sp-3);
+  padding: var(--sp-4);
+  border-radius: var(--r-card);
+  background: var(--lime);
+  color: var(--ink);
+}
+.bill-switch.on { background: var(--coral); }
+.bill-switch-chip {
+  background: var(--action);
+  color: var(--action-ink);
+  font-size: var(--fs-micro);
+  font-weight: 600;
+}
+.bill-switch-text { margin: var(--sp-3) 0 0; font-size: var(--fs-meta); line-height: 1.5; }
+
+/* A subscription state that covers nothing is the one worth looking at twice,
+   so it takes a coral edge rather than a coral fill — it is information, not
+   an error, and the screen already explains it in full underneath. */
+.bill-standing { margin-top: var(--sp-2); }
+.bill-standing.st-active-undated,
+.bill-standing.st-active-expired,
+.bill-standing.st-past_due { box-shadow: inset 0 0 0 1.5px var(--coral); }
+.bill-row { margin-top: var(--sp-2); }
+.bill-facts { list-style: none; padding: 0; margin: 0; }
+.bill-facts li {
+  font-size: var(--fs-meta);
+  line-height: 1.5;
+  color: var(--muted);
+  padding: var(--sp-3) 0;
+  border-bottom: 1px solid var(--hairline);
+}
+.bill-facts li:last-child { border-bottom: 0; }
+.bill-facts strong { color: var(--ink); font-weight: 600; }
+.bill-foot { margin-top: var(--sp-4); }
+
+/* Live-updates state in the Privacy Centre. Only the failed state is painted;
+   "connected" is the expected case and does not need colour to say so. */
+.rt-account.rt-blocked { box-shadow: inset 0 0 0 1.5px var(--coral); }
 
 /* Runner. Drawn from rectangles on a canvas — no sprite sheet to download. */
 .dino { border-radius: var(--r-card); background: var(--card); padding: 12px; }
