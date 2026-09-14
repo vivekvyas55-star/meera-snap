@@ -679,6 +679,13 @@ await clientWrite('saveToMemory / deleteMemory',[
 await clientWrite('saveSubscription / disablePush',[{as:A},
  {sql:`insert into push_subscriptions(user_id,endpoint,p256dh,auth,user_agent) values($1,'https://fcm.googleapis.com/fcm/send/abc123','p','a','ua') on conflict (endpoint) do update set user_id=excluded.user_id,endpoint=excluded.endpoint,p256dh=excluded.p256dh,auth=excluded.auth,user_agent=excluded.user_agent`,args:[A],rows:1},
  {sql:`delete from push_subscriptions where endpoint='https://fcm.googleapis.com/fcm/send/abc123'`,args:[],rows:1}])
+// Scheduling writes through an RPC (the table has no INSERT grant on purpose),
+// but CANCELLING is a plain client DELETE and therefore needs its own case: the
+// policy can be right and the grant still missing, and only running the write
+// can tell them apart.
+await clientWrite('scheduleMessage / cancelScheduled',[{as:A},
+ {sql:`select public.schedule_message($1,'later',(public.ist_date()+1)::date,'09:00')`,args:[B]},
+ {sql:`delete from scheduled_messages where sender_id=$1`,args:[A],rows:1}])
 // --- Audit follow-up: the edges the boundary did not cover ----------------
 await asUser(A,async()=>{
  // H1: the push endpoint is a URL this project's Edge Function will FETCH, and
@@ -729,6 +736,129 @@ console.log('PASS egress projection counts a story once per friend, and is idemp
 // The intimate games (202609090026). Long enough to live in its own file; it
 // runs here, in this database, as these same three users.
 await checkIntimateGames({ db, query, asUser, A, B, C })
+// --- Scheduled messages ---------------------------------------------------
+// chat_backup.sql lives OUTSIDE supabase/migrations/, so the enumerating
+// harness has never once run it. It has to run here, because the one thing
+// that cannot be checked by reading is whether the delivery path actually
+// removes the backup copy the trigger makes — and a trigger that silently did
+// nothing would make the exemption look like it worked.
+await db.exec(fs.readFileSync('supabase/chat_backup.sql','utf8'))
+const istDay=async(offset)=>(await query('select (public.ist_date() + $1::int)::text d',[offset]))[0].d
+const tomorrow=await istDay(1)
+
+// The happy path, as the client calls it: a wall clock, never an instant.
+let scheduled
+await asUser(A,async()=>{
+ scheduled=(await query("select * from schedule_message($1,'good morning',$2,'09:00')",[B,tomorrow]))[0]
+ assert.ok(scheduled.id)
+ assert.equal(scheduled.sender_id,A)
+ assert.equal(scheduled.user_a < scheduled.user_b,true)   // pair-ordered like every pair table
+ // Resolved in IST server-side, not from the caller's clock.
+ const at=(await query("select to_char($1::timestamptz at time zone 'Asia/Kolkata','YYYY-MM-DD HH24:MI') s",[scheduled.send_at]))[0].s
+ assert.equal(at,`${tomorrow} 09:00`)
+})
+// SENDER-ONLY, and this is the assertion that says so: the recipient cannot
+// see a surprise before it fires. Every other pair table here is pair-readable.
+await asUser(B,async()=>{
+ assert.equal((await query('select count(*)::int n from scheduled_messages'))[0].n,0)
+ // Nor can they cancel it.
+ const res=await db.query('delete from public.scheduled_messages where id=$1',[scheduled.id])
+ assert.equal(res.affectedRows,0)
+})
+// The grant is the wall, the RPC is the door. A PATCH straight to PostgREST
+// must not be able to forge a row at all — that is the 202609090032 lesson,
+// where a hardened RPC left its column grant open and only closed the client.
+await asUser(A,async()=>{
+ await assert.rejects(query(
+   "insert into scheduled_messages(user_a,user_b,sender_id,recipient_id,body,send_at) values($1,$2,$1,$2,'forged',now()+interval '1 hour')",
+   [A,B]),/permission denied/)
+ await assert.rejects(query('update scheduled_messages set send_at=now() where id=$1',[scheduled.id]),/permission denied/)
+ // And the RPC refuses both edges of the horizon.
+ await assert.rejects(query("select schedule_message($1,'too far',$2,'09:00')",[B,await istDay(8)]),/7 days/)
+ await assert.rejects(query("select schedule_message($1,'too late',$2,'09:00')",[B,await istDay(-1)]),/already passed/)
+ await assert.rejects(query("select schedule_message($1,'   ',$2,'09:00')",[B,tomorrow]),/write something/)
+ await assert.rejects(query("select schedule_message($1,$2,$3,'09:00')",[B,'x'.repeat(2001),tomorrow]),/too long/)
+})
+// A stranger is not a friend — B and C have no friendship row at all.
+await asUser(B,()=>assert.rejects(
+ query("select schedule_message($1,'hello',$2,'09:00')",[C,tomorrow]),/only schedule a message to a friend/))
+// The CHECK bites even for a writer that is past the grants entirely — the
+// horizon is in the schema, not only in the picker and the RPC.
+await assert.rejects(db.query(
+ "insert into public.scheduled_messages(user_a,user_b,sender_id,recipient_id,body,send_at) values($1,$2,$1,$2,'forged',now()+interval '8 days')",
+ [A,B]),/scheduled_horizon/)
+await assert.rejects(db.query(
+ "insert into public.scheduled_messages(user_a,user_b,sender_id,recipient_id,body,send_at) values($1,$2,$1,$2,'forged',now()-interval '1 minute')",
+ [A,B]),/scheduled_horizon/)
+// The pair columns and the named columns cannot disagree.
+await assert.rejects(db.query(
+ "insert into public.scheduled_messages(user_a,user_b,sender_id,recipient_id,body,send_at) values($1,$2,$1,$3,'mismatched',now()+interval '1 hour')",
+ [A,B,C]),/scheduled_pair_matches/)
+// Firing the queue early is exactly the surprise this protects.
+await asUser(A,()=>assert.rejects(query('select deliver_scheduled_messages()'),/permission denied/))
+
+// The cap. Filled past the grants so the test is about the counter, not the door.
+await db.query(
+ "insert into public.scheduled_messages(user_a,user_b,sender_id,recipient_id,body,send_at) select $1,$2,$1,$2,'filler '||n,now()+interval '1 hour' from generate_series(1,19) n",
+ [A,B])
+await asUser(A,()=>assert.rejects(query("select schedule_message($1,'one too many',$2,'09:00')",[B,tomorrow]),/cancel one first/))
+await db.query("delete from public.scheduled_messages where body like 'filler %'")
+
+// Delivery. The pending row is gone in the SAME transaction that inserts the
+// message, so a retried cron sends nothing twice.
+// created_at moves with it: the horizon CHECK is re-evaluated on UPDATE too, so
+// even the table owner cannot backdate a row to fire early without rewriting
+// the day it was written. Nothing in production ever updates these rows.
+await db.query("update public.scheduled_messages set created_at=now()-interval '2 hours', send_at=now()-interval '1 minute' where id=$1",[scheduled.id])
+assert.equal((await query('select public.deliver_scheduled_messages() n'))[0].n,1)
+const delivered=(await query('select * from public.messages where client_id=$1',[scheduled.id]))[0]
+assert.equal(delivered.kind,'chat')
+assert.equal(delivered.body,'good morning')
+assert.equal(delivered.sender_id,A)
+assert.ok(delivered.delivered_at)
+assert.equal((await query('select count(*)::int n from public.scheduled_messages where id=$1',[scheduled.id]))[0].n,0)
+// No tombstone, and no second copy on a re-run.
+assert.equal((await query('select public.deliver_scheduled_messages() n'))[0].n,0)
+assert.equal((await query('select count(*)::int n from public.messages where client_id=$1',[scheduled.id]))[0].n,1)
+// THE BACKUP EXEMPTION. An ordinary send is copied into private.message_backup
+// and kept three days; a scheduled one has already spent up to a week in
+// plaintext and must not buy three more. Both halves are asserted, because an
+// exemption that "works" because the trigger is broken is not an exemption.
+let ordinary
+await asUser(A,async()=>{
+ ordinary=(await query("insert into messages(user_a,user_b,sender_id,kind,body,client_id) values($1,$2,$1,'chat','an ordinary message',gen_random_uuid()) returning id",[A,B]))[0]
+})
+assert.equal((await query('select count(*)::int n from private.message_backup where message_id=$1',[ordinary.id]))[0].n,1)
+assert.equal((await query('select count(*)::int n from private.message_backup where message_id=$1',[delivered.id]))[0].n,0)
+
+// Constraint 6, both doors. An unfriend (removeFriend does a direct DELETE)...
+await asUser(A,()=>query("select schedule_message($1,'see you tomorrow',$2,'09:00')",[C,tomorrow]))
+assert.equal((await query('select count(*)::int n from public.scheduled_messages'))[0].n,1)
+await db.query('delete from public.friendships where user_a=$1 and user_b=$2',[A,C])
+assert.equal((await query('select count(*)::int n from public.scheduled_messages'))[0].n,0)
+// ...and a block, on its own, with the friendship left in place — because the
+// bug found twice this session was a cleanup that only ran inside block_user().
+await db.query("insert into public.friendships(user_a,user_b,requested_by,status) values($1,$2,$1,'accepted')",[A,C])
+await asUser(A,()=>query("select schedule_message($1,'see you tomorrow',$2,'09:00')",[C,tomorrow]))
+await db.query('insert into public.blocks(blocker,blocked) values($1,$2)',[C,A])
+assert.equal((await query('select count(*)::int n from public.scheduled_messages'))[0].n,0)
+// And a blocked sender cannot start a new one, friendship row or not.
+await asUser(A,()=>assert.rejects(
+ query("select schedule_message($1,'let me back in',$2,'09:00')",[C,tomorrow]),
+ /only schedule a message to a friend/))
+await db.query('delete from public.blocks where blocker=$1 and blocked=$2',[C,A])
+
+// The delivery backstop: a row that got past both triggers is DELETED, never
+// delivered. deliver_scheduled_messages is the owner and so runs past
+// messages_insert, which is what would otherwise have refused it.
+await db.query('delete from public.friendships where user_a=$1 and user_b=$2',[A,C])
+await db.query(
+ "insert into public.scheduled_messages(user_a,user_b,sender_id,recipient_id,body,send_at,created_at) values($1,$2,$1,$2,'should never arrive',now()-interval '1 minute',now()-interval '2 hours')",
+ [A,C])
+assert.equal((await query('select public.deliver_scheduled_messages() n'))[0].n,0)
+assert.equal((await query('select count(*)::int n from public.scheduled_messages'))[0].n,0)
+assert.equal((await query("select count(*)::int n from public.messages where body='should never arrive'"))[0].n,0)
+console.log('PASS a scheduled message is sender-only, bounded to 7 days, exempt from the backup, and dies with the friendship')
 
 // The drift check is only worth having if the version it reports is the real
 // newest one and a client can actually ask for it.

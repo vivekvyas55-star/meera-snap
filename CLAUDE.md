@@ -718,9 +718,152 @@ looking at it depending on browser age. The month table is spelled out in
 `togetherState.js`. This is a shared-surface bug, not a cosmetic one.
 
 No playlists (there is no music integration and faking one is worse than
-omitting it) and no scheduled messages — a scheduled message sits in plaintext
-for days in an app that clears chats after three visits, and that needs a
-decision before it is built.
+omitting it). Scheduled messages were the other omission here and are now
+built, under the bounds in the next section.
+
+## Scheduled messages — the one plaintext exception, bounded and disclosed
+
+`202609150040_scheduled_messages.sql` (**shelved**, see `.unapplied`),
+`operations/schedule_scheduled_messages.sql`, `lib/scheduled.js`,
+`components/ScheduledMessages.jsx`, wired into `Chat.jsx`'s composer.
+
+**The decision, 15 Sep 2026.** Deferred three times on one objection, and the
+objection was right: a scheduled message sits in plaintext for days in an app
+that clears chats after three visits. Three options, two rejected:
+
+- **Device-local scheduling was rejected twice over.** It fails **silently** —
+  a phone that does not open Meera at 9am means the message never sends, and
+  the sender finds out afterwards, if ever. That is the worst failure this app
+  can have, because the entire point of scheduling is that you are not there.
+  And it is not even the more private half: localStorage sits behind a 4-digit
+  passcode whose default ships in the source and is documented here as public
+  knowledge, while Postgres sits behind RLS, which is the one boundary in this
+  app that actually holds.
+- **Real encryption was rejected** because there is no key infrastructure here
+  and building one is not a migration. Claiming encryption we do not have is
+  exactly the "claim the code does not back" failure this codebase keeps
+  catching in itself — see reverse-privacy, and screenshot detection.
+
+So: **server-side plaintext, with the window bounded and the user told.** Seven
+constraints, each of which IS the feature rather than trim around it:
+
+1. **7-day horizon in a CHECK constraint**, not only in the picker and the RPC.
+   Past a week this stops being scheduling and becomes storage. The CHECK
+   compares `send_at` to `created_at`, not to `now()` — a CHECK is evaluated on
+   write, so comparing to `now()` would make every row fail revalidation the
+   moment its time arrived. A side effect worth knowing: the constraint is
+   re-evaluated on UPDATE too, so even the table owner cannot backdate a row to
+   fire early without also rewriting the day it was written.
+2. **The pending row is deleted in the SAME transaction that inserts the real
+   message.** No "sent" tombstone — the moment it exists as a message it is an
+   ordinary message and inherits ordinary ephemerality (3-visit clear, the
+   31-day purge, unsend, all of it).
+3. **Exempt from `private.message_backup`.** A scheduled message has already
+   spent up to a week in plaintext; letting `chat_backup.sql`'s AFTER INSERT
+   trigger buy it three more days would undo the bound that made the feature
+   acceptable. **`private.backup_message()` is NOT modified.** Its insert is
+   wrapped in `begin…exception when others then null` precisely so a backup
+   problem can never roll back a real send, and it sits on the hottest path in
+   the app; teaching it about scheduling would put a new failure mode on every
+   message anyone ever sends for the sake of the rarest one. Instead the AFTER
+   INSERT trigger has already run by the time control returns to
+   `deliver_scheduled_messages()` **in the same transaction**, so it deletes the
+   copy the trigger just made, by `message_id`, behind a `to_regclass` guard and
+   dynamic SQL (the `export_my_data` pattern — the function must be creatable on
+   a database that never ran `chat_backup.sql`). Nothing ever observes the row:
+   `private` is not exposed by PostgREST and the delete commits atomically with
+   the insert.
+4. **Sender-only RLS — this INVERTS the convention.** `messages`, `friendships`,
+   `streaks` and `anniversaries` are all pair-readable; this one is not, because
+   a surprise the recipient can read early is not one. Do not "fix" it by adding
+   the recipient to `scheduled_read`.
+5. **Text only.** No media columns at all. A scheduled photo is a storage object
+   that is alive-but-unreferenced for a week, which fights
+   `claim_media_cleanup`'s reference check, and it multiplies the retention
+   problem by the size of the object.
+6. **Cancelled on unfriend AND on block — deleted, never delivered.** Two
+   triggers, not one. `block_user()` deletes the friendship, so the friendship
+   trigger alone would cover today's code — and that is exactly the reasoning
+   that produced this bug class twice in one audit session (Together consent
+   surviving an unfriend; a cleanup that only ran inside `block_user()`). A
+   direct `DELETE` on `friendships` (what `removeFriend` does), a status change,
+   and a row landing in `blocks` are three different doors. There is a third
+   check inside `deliver_scheduled_messages()` as a backstop, and it is
+   load-bearing: that function is the table owner and therefore runs **past**
+   `messages_insert`, which is the policy that would otherwise have refused the
+   send.
+7. **The disclosure is at the moment of choice**, in `ScheduledMessages.jsx`, in
+   plain words, on a lime card, and deliberately **not** inside a `<details>` —
+   a disclosure you have to open is one the person who most needed it never
+   read. It names the actual thing (plaintext, on a server, up to seven days)
+   rather than a softened version, because this is the one message in Meera that
+   does not behave like the rest and a user who does not know that cannot decide
+   whether they mind.
+
+**The cap is 20 pending per sender**, across every conversation. The real use is
+a handful — a birthday note, a good-morning for each day of a week you are away
+(seven), the odd reminder. 20 leaves room for all of that at once and bounds the
+worst case to 20 × 2000 characters, about 40 kB of plaintext per account for at
+most a week. It is deliberately a number a person will never reach and an
+automated client hits immediately. Past it this is not scheduling, it is an
+outbox with a retention policy, which is the thing nobody wanted.
+
+**The grant is the wall and the RPC is the door.** `scheduled_messages` grants
+`select, delete` to authenticated and **no insert, no update**. Every row is
+written by `schedule_message()`, which is what makes the horizon, the cap, the
+friendship-and-block gate and the IST resolution unforgeable rather than merely
+enforced in one place — the `202609090032` lesson, where a hardened RPC left its
+column grant open and only closed the client path. There is no update path at
+all: "edit" is cancel and reschedule, which cannot leave a half-moved row.
+
+**Times are an IST wall clock resolved server-side.** The client sends
+`local_date` + `local_time` — the date and time the user actually picked — and
+**never** an absolute instant computed from the device. This is the `status_notes`
+lesson: a note written from a skewed client clock was invisible forever, to
+everyone including its author, because the client overrode a timestamp the
+server could compute. The same trap here sends a message at the wrong hour, days
+later, with nobody watching. `at time zone 'Asia/Kolkata'` is exact (India has no
+DST) and independent of both the device's clock and its timezone; the clock only
+decides which day the picker opens on, and a skewed one produces an honest "that
+time has already passed" rather than a silent wrong send. `validateSchedule()`
+also refuses anything inside the next minute, because the server's `now()` moves
+on during the round trip.
+
+**Delivery is idempotent three ways over.** `deliver_scheduled_messages()` takes
+its batch `for update skip locked` (pg_cron will start a second run over a slow
+first one), deletes the pending row in the same transaction as the insert, and
+sets `messages.client_id` to the pending row's id so even a pathological double
+insert collides with `messages_sender_client_unique`. The cron runs **every
+minute**, not every fifteen: the sheet says "sends at 09:00" to somebody's face,
+and fifteen minutes of slop makes that sentence false for fourteen of them.
+
+**A delivered scheduled message does not push.** The push Edge Function
+authorises on the caller's JWT and cron has none, so the message appears in an
+open app via Realtime and otherwise waits to be seen. Stated here rather than
+worked around, because a half-working notification is worse than a known gap.
+
+**Failure states.** `loadScheduled()` returns `{ state, rows }` — `'ok'` with
+rows, `'failed'` with `rows: null`, or `'off'` with `rows: null` when the
+migration is not applied on this database. Three states, not two: a failed "what
+do I have scheduled?" rendered as "nothing" is the eighth instance of this
+codebase's oldest bug, and here somebody acts on it by scheduling the message a
+second time. `'off'` hides the clock button and the strip entirely, which is why
+the client half can ship while the migration is on the shelf.
+
+**Shelved deliberately** (`supabase/migrations/.unapplied`). Applying it is a
+decision about retention, not a deployment step: this is the one table in the
+app that holds a message body in plaintext on purpose. Apply the migration in
+the SQL editor, then `operations/schedule_scheduled_messages.sql` **standalone**,
+and remove the `.unapplied` line in the same change. **Without the cron job the
+rows accumulate and nothing ever sends** — and the sender's list goes on saying
+"sends at 09:00" about a message that never will.
+
+`tests/database.mjs` now also applies `chat_backup.sql`, which lives outside
+`supabase/migrations/` and had therefore never once executed against a real
+Postgres. The backup exemption is untestable without it, and an exemption that
+"works" because the trigger is broken is not an exemption — so both halves are
+asserted: an ordinary send IS in `private.message_backup`, a delivered scheduled
+one is not.
 
 ## Question of the day, status notes, birthdays (`together.sql`)
 

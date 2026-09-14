@@ -29,3 +29,16 @@
 # supabase/operations/schedule_together_purge.sql standalone (cron statements
 # have aborted batched transactions on some projects), then delete these lines.
 202609140034_timeline_events
+#
+# Scheduled messages. Shelved on arrival, not because it is unfinished but
+# because applying it is a decision about retention: it is the one table in
+# this app that holds a message body in plaintext on purpose, for up to a week.
+# Apply 202609150040 in the SQL editor, then operations/schedule_scheduled_messages.sql
+# standalone (cron statements have aborted batched transactions), and remove the
+# line below in the SAME change. Without the cron job the rows accumulate and
+# nothing ever sends.
+#
+# The client half ships either way and hides itself: loadScheduled() tells a
+# missing RPC apart from a failed one, so on a database without this migration
+# the clock button and the strip simply do not render.
+202609150040_scheduled_messages
