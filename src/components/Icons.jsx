@@ -383,3 +383,20 @@ export const FaceIdIcon = (p) => (
     <path d="M9.4 15.4a3.7 3.7 0 0 0 5.2 0" />
   </svg>
 )
+
+export const ClockIcon = (p) => (
+  <svg {...base} {...p}>
+    <circle cx="12" cy="12" r="8.5" />
+    <path d="M12 7.2V12l3.2 1.9" />
+  </svg>
+)
+
+// A four-point spark — the "here is something we noticed" glyph next to an
+// insight line. Not a lightbulb: a lightbulb reads as advice, and this panel
+// deliberately never advises.
+export const SparkIcon = (p) => (
+  <svg {...base} {...p}>
+    <path d="M12 3.6c0 3.9 1.9 5.8 5.8 5.8-3.9 0-5.8 1.9-5.8 5.8 0-3.9-1.9-5.8-5.8-5.8 3.9 0 5.8-1.9 5.8-5.8z" />
+    <path d="M17.8 16.2c0 1.6.8 2.4 2.4 2.4-1.6 0-2.4.8-2.4 2.4 0-1.6-.8-2.4-2.4-2.4 1.6 0 2.4-.8 2.4-2.4z" />
+  </svg>
+)

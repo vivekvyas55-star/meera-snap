@@ -605,6 +605,76 @@ RLS is consulted. Only month/day is ever shown; the year is never rendered.
 Snap Map's distance readout needs no schema — both coordinates are already on
 the map, so `distanceKm` is pure client maths.
 
+## Screen time — device-local, own-eyes-only
+
+`src/lib/screenTime.js` (boundary + bucketing + store), `src/lib/screenTimeTracker.js`
+(the lifecycle hook), `src/components/ScreenTime.jsx` (Profile → Your account).
+
+**It is own-eyes-only and must never become a shared surface.** This is a
+two-person app built around one couple, and a usage dashboard one partner can
+see about the other is a coercive-control vector. So: no pair-scoped table, no
+Together tile, nothing in a friend's sheet, no share affordance, no comparison
+between two people. `ScreenTime` deliberately takes **no props** — there is no
+id it could be pointed at — and `tests/screen-time-panel.test.jsx` asserts
+`ScreenTime.length === 0` so a `friend` prop added later fails the build. The
+honest version of "let her see mine" is a screenshot the owner chooses to send.
+
+**It is stored device-local in `localStorage`, with no table and no migration.**
+Same reasoning as "typing and presence are Realtime broadcast, never database
+rows", with more force: a row per person per day is a permanent record of when
+somebody was awake, costs an RLS policy, and is readable by anyone holding the
+service key. The honest cost — it does not follow you to another device and
+clearing site data clears it — is stated in one line on the panel, not buried.
+About 2 KB, 21 days (`KEEP_DAYS`), pruned on every write so this can never be
+the thing that fills the quota and breaks the **outbox**, which holds real
+messages somebody is waiting on.
+
+**The day resets at 07:00 IST, which is NOT `istToday()`.** `ist_date()` /
+`istToday()` are midnight IST and the question of the day, `pair_questions` and
+`friendship_charms` all depend on them — do not reuse them here and do not move
+them. `dayKeyAt()` / `dayStart()` compute 07:00 **Asia/Kolkata** through `Intl`,
+never from the browser's offset, so a phone carried abroad still rolls over on
+the owner's day. The key names the date the window OPENED, so 02:00 belongs to
+the previous calendar date. 07:00 also makes "night" (22:00→07:00) one
+contiguous block inside a day instead of being cut in half by midnight.
+
+**A phone that went to sleep is not screen time.** A suspend, a discarded tab
+or a closed laptop lid fires no `visibilitychange` — the process just resumes
+hours later, and `now - sessionStart` would report the night as usage. A 60s
+heartbeat runs **only while visible and unlocked**, and `creditableEnd()`
+credits at most one interval past the last beat: the gap is **discarded, not
+capped**, because a cap still invents time that never happened. A freeze
+therefore costs about a minute, not eight hours.
+
+**It counts nothing behind the passcode pad.** The pad is an overlay over a
+mounted app, so "visible" is not "the owner is here". App.jsx drives
+`setScreenTimeLocked(!unlocked)` from its existing `unlocked` state — one line,
+rather than a second copy of the lock's listeners that could drift out of step
+with the first. `installScreenTime()` is at **module scope in App.jsx**, next to
+`trackDeviceSessions()` and for the same reason: Profile is lazy-imported, so a
+tracker installed by the screen that displays the number would only ever measure
+people who opened Settings.
+
+**Three states, three screens.** `null` = storage could not be read (say so;
+never render `0m`), `undefined` = not measured yet, `0` = a measured zero.
+`summarize()` carries all three to the panel. A day the phone was off is
+**absent** from the store, not a zero — counting it would drag the baseline down
+and make every ordinary day read as "more than usual".
+
+**Tone is neutral, in both directions.** No goals, no limits, no red states, and
+in particular **no usage streak** — that is the Snapchat mechanic this app
+copies for messages and deliberately does not copy for attention. A panel that
+nudges usage up is a dark pattern; one that guilt-trips it down is a politer
+dark pattern. Shipped insights: today's total, longest stretch, times opened,
+today against your own 7-day baseline (silent until `MIN_BASELINE_DAYS`), a
+seven-day column strip, and a four-part distribution of when you are here.
+
+The distribution bar is lime → lavender → indigo → near-black and **never
+coral**: privacy.css pins one job per hue on that screen and coral's is danger.
+The hero is lavender (that screen's "you") and is painted from CSS and listed in
+the fixed-light context in `index.css` — an inline vibrant fill never enters
+that context, which is how `.fp-stat` ended up near-white on lavender at night.
+
 ## PIN lockout and the decoy screen
 
 `components/PinLock.jsx` — **3 wrong passcodes locks the app for 15 minutes**, and
