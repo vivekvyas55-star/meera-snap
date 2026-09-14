@@ -28,6 +28,7 @@ import { OnlinePresenceProvider } from './hooks/OnlinePresenceProvider'
 import { CameraIcon, ChatIcon, StoriesIcon } from './components/Icons'
 import InstallPrompt from './components/InstallPrompt'
 import OutboxDelivery from './components/OutboxDelivery'
+import PeerName from './components/PeerName'
 import PinLock from './components/PinLock'
 import Portal from './components/Portal'
 import { clearHidden, hiddenTooLong, isUnlocked, markHidden, wasHiddenPastGrace } from './lib/appLock'
@@ -340,7 +341,12 @@ function Shell() {
     {gameInvite && !playVisible && (
       <StackSlot priority={PRIORITY.game}>
       <div className="game-banner" role="status">
-        <div className="game-banner-copy"><strong>{gameInvite.peer?.display_name || gameInvite.peer?.username || 'A friend'}</strong> {gameInvite.response === 'accepted' ? 'accepted your invitation' : 'invited you to play'}<span>Private to you both · {titleOf(gameInvite.game)}</span></div>
+        {/* Aliased like every other name on a Play surface: this banner can sit
+            on screen while the phone is being looked at by someone else, and it
+            is the one piece of Play copy that appears OUTSIDE the Play screen.
+            A leaf component so Shell itself never subscribes to the alias
+            clock — see PeerName. */}
+        <div className="game-banner-copy"><strong><PeerName profile={gameInvite.peer} fallback="A friend" /></strong> {gameInvite.response === 'accepted' ? 'accepted your invitation' : 'invited you to play'}<span>Private to you both · {titleOf(gameInvite.game)}</span></div>
         <button type="button" className="game-banner-open" onClick={() => {
           if (gameInvite.response === 'accepted') {
             try { sessionStorage.setItem(`meera:resume-game:${profile.id}`, JSON.stringify(gameInvite)) } catch {}

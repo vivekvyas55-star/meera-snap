@@ -15,10 +15,15 @@ vi.mock('../src/lib/db', () => ({
   listMessages: async () => ({ messages: [] }), sendChat: vi.fn(), markChatsOpened: vi.fn(), pairKey: () => ({ user_a: 'me', user_b: 'friend' }),
 }))
 import PlayTogether from '../src/screens/PlayTogether'
+import { currentAlias } from '../src/lib/alias'
+// The friend picker names people by their rotating alias, never display_name —
+// which one is showing depends on the 30-minute bucket, so ask for it rather
+// than writing a label that is correct for half an hour a day.
+const aliasOf = (p) => currentAlias(p)
 afterEach(() => { cleanup(); sessionStorage.clear(); vi.clearAllMocks() })
 test('a saved invitation keeps the board open when realtime sending fails', async () => {
   render(<PlayTogether onBack={() => {}} />)
-  await screen.findByRole('option', { name: 'Sneha' })
+  await screen.findByRole('option', { name: aliasOf({ id: 'friend', display_name: 'Sneha' }) })
   fireEvent.change(screen.getByRole('combobox'), { target: { value: 'friend' } })
   fireEvent.click(screen.getByRole('button', { name: 'Invite' }))
   await screen.findByText('Waiting for them to accept…')

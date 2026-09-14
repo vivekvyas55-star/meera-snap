@@ -1455,6 +1455,45 @@ changed. Sync and try again", and a **replayed** move (same square, same piece,
 revision already advanced by one) returns the row instead of raising — a retried
 send after a flaky network must not read as an error.
 
+**No Play surface prints the partner's real name.** A game is the one screen
+that is routinely in a third person's eyeline — phone flat on a table, handed
+across, watched for a whole round — so every partner name here is the rotating
+alias, exactly as in the chat list and the send sheets. PlayTogether was the
+single screen in the app that had missed the convention: it never imported
+`useAlias` at all and its `nameOf` reached straight for `display_name`, so the
+invitation card, the in-room header, the turn and result lines, the scoreboard,
+the away line, the resume list and the game chat's placeholder all named her
+outright. `peerAlias(aliasFn, profile, fallback)` in `lib/alias.js` is the one
+entry point, and its fallback chain deliberately stops SHORT of `display_name`
+— a fallback that prints the real name defeats the only thing this does.
+
+- **The friend picker is the deliberate exception**, and carries the `@handle`
+  alongside the alias like the send/add sheets: an alias is three characters
+  derived from a name, so two friends can wear the same one for half an hour,
+  and inviting the wrong person into a private room is the worse failure.
+- **Every call is in render, never in a dependency array.** The polls here (3s
+  room sync, 6s room list, 6s `usePlayState`) key on `friend.id`; putting a
+  label in one would re-arm it on every 30-minute bucket turnover. No dep array
+  changed in this work.
+- `components/PeerName.jsx` exists so `Shell` can alias the game-invite banner
+  **without subscribing itself** to the alias clock — a bucket turnover would
+  otherwise re-render the whole pager and hand CameraScreen and Stories fresh
+  inline callbacks.
+- **Say what is true about it.** The alias is DERIVED from the name (SNEHA →
+  S5), so it raises the cost of a glance and is not anonymity: anyone who
+  already knows which two people are playing maps it back instantly. No comment
+  or user-facing copy claims otherwise.
+- **The push notification still carries the sender's real name**
+  (`KINDS` in `supabase/functions/push/index.ts`, shared by all seven kinds).
+  Aliasing the game kinds alone would be defeated the moment a chat
+  notification sits next to it under the real name, so this is left as an
+  owner decision about push as a whole, not patched for games only.
+- `tests/play-privacy.test.jsx` asserts structurally — "is the real name
+  anywhere in what this rendered?" — across the invitation card, the in-room
+  header, the turn and result lines, the scoreboard, the picker and GameChat,
+  and checks the alias IS shown so deleting the name cannot pass. Verified by
+  mutation: making `peerAlias` return `display_name` fails five of its six.
+
 **Signaling rides `signal:<recipient>:<sender>`, not a topic of its own.**
 There is no `game:` branch in `realtime_allowed`, which is why Ludo is not built:
 it would need one, added in the same change (see the Realtime table above).
