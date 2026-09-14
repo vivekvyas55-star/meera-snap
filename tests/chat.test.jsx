@@ -16,6 +16,9 @@ const mocks = vi.hoisted(() => {
     // and its clearViewedChats — on every single render.
     startRec: vi.fn(async () => true),
     stopRec: vi.fn(async () => null),
+    sendSnapMedia: vi.fn(async () => {}),
+    getSnapSaveDefault: vi.fn(async () => ({ mine: false, theirs: false, active: false })),
+    setSnapSaveConsent: vi.fn(async () => true),
     toast: vi.fn(),
   }
 })
@@ -37,7 +40,9 @@ vi.mock('../src/lib/db', () => ({
   reactToMessage: vi.fn(async () => {}),
   removeFriend: vi.fn(async () => {}),
   sendChat: vi.fn(async () => {}),
-  sendSnapMedia: vi.fn(async () => {}),
+  sendSnapMedia: mocks.sendSnapMedia,
+  getSnapSaveDefault: mocks.getSnapSaveDefault,
+  setSnapSaveConsent: mocks.setSnapSaveConsent,
   sendSticker: vi.fn(async () => {}),
   sendVoiceNote: vi.fn(async () => {}),
   setAnniversaryDate: vi.fn(async () => {}),
@@ -198,4 +203,51 @@ test('a long press away from the scrambled text still reaches the action menu', 
   act(() => { vi.advanceTimersByTime(500) })
 
   expect(screen.getByRole('dialog', { name: 'Message actions' })).toBeTruthy()
+})
+
+// --------------------------------------------------------------------------
+// Attaching a photo: the one decision that cannot be made after the fact.
+// --------------------------------------------------------------------------
+
+const pickFile = async (type = 'image/jpeg') => {
+  URL.createObjectURL = vi.fn(() => 'blob:preview')
+  URL.revokeObjectURL = vi.fn()
+  await openChat([])
+  const input = document.querySelector('input[type="file"]')
+  fireEvent.change(input, { target: { files: [new File(['x'], 'p.jpg', { type })] } })
+  return await screen.findByRole('dialog', { name: 'Send photo or video' })
+}
+
+test('picking a file asks before it sends, instead of sending on the change event', async () => {
+  // It used to fire sendSnapMedia straight out of the file input's onChange,
+  // which left the sender nowhere to say whether the recipient may keep it.
+  await pickFile()
+  expect(mocks.sendSnapMedia).not.toHaveBeenCalled()
+  expect(screen.getByRole('switch')).toBeTruthy()
+})
+
+test('the switch is prefilled from what the pair already agreed, and Send carries it', async () => {
+  mocks.getSnapSaveDefault.mockResolvedValue({ mine: true, theirs: true, active: true })
+  await pickFile()
+  await waitFor(() => expect(screen.getByRole('switch').getAttribute('aria-checked')).toBe('true'))
+  fireEvent.click(screen.getByRole('button', { name: 'Send' }))
+  await waitFor(() =>
+    expect(mocks.sendSnapMedia).toHaveBeenCalledWith('me', 'friend', expect.objectContaining({ allowSave: true })))
+})
+
+test('turning it off before sending is what the snap carries, not the standing default', async () => {
+  mocks.getSnapSaveDefault.mockResolvedValue({ mine: true, theirs: true, active: true })
+  await pickFile()
+  await waitFor(() => expect(screen.getByRole('switch').getAttribute('aria-checked')).toBe('true'))
+  fireEvent.click(screen.getByRole('switch'))
+  fireEvent.click(screen.getByRole('button', { name: 'Send' }))
+  await waitFor(() =>
+    expect(mocks.sendSnapMedia).toHaveBeenCalledWith('me', 'friend', expect.objectContaining({ allowSave: false })))
+})
+
+test('a failed default lands on off and says so, rather than presenting off as the agreement', async () => {
+  mocks.getSnapSaveDefault.mockRejectedValue(new Error('network'))
+  await pickFile()
+  await screen.findByText(/Couldn't check what you and/i)
+  expect(screen.getByRole('switch').getAttribute('aria-checked')).toBe('false')
 })

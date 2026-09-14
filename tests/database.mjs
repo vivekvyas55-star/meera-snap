@@ -541,6 +541,12 @@ await clientWrite('friend request, accept, decline',[{as:A},
 await clientWrite('sendChat and logCall',[{as:A},
  {sql:`insert into messages(user_a,user_b,sender_id,kind,body,client_id) values($1,$2,$1,'chat','hello',gen_random_uuid())`,args:[A,B],rows:1},
  {sql:`insert into messages(user_a,user_b,sender_id,kind,body,view_seconds,delivered_at) values($1,$2,$1,'call','voice|ended',95,now())`,args:[A,B],rows:1}])
+// sendSnap / sendSnapMedia now put the sender's answer on the row at INSERT.
+// A missing column grant fails 42501 before RLS is consulted, and reading the
+// policy cannot catch that — only running the write can.
+await clientWrite('sendSnap carrying the save permission',[
+ {sql:`insert into storage.objects(bucket_id,name) values('media',$1)`,args:[`${A}/snaps/grant.jpg`]},{as:A},
+ {sql:`insert into messages(user_a,user_b,sender_id,kind,media_path,media_type,view_seconds,allow_save,client_id) values($1,$2,$1,'snap',$3,'image',10,true,gen_random_uuid())`,args:[A,B,`${A}/snaps/grant.jpg`],rows:1}])
 await clientWrite('markOpened / markReplayed / markScreenshot',[{as:B},
  {sql:`update messages set opened_at=now() where user_a=$1 and user_b=$2 and sender_id=$1 and opened_at is null`,args:[A,B]},
  {sql:`update messages set replayed_at=now() where user_a=$1 and user_b=$2 and sender_id=$1`,args:[A,B]},
@@ -595,6 +601,90 @@ await asUser(A,async()=>{
  await assert.rejects(query('update messages set saved_by=array[$1::uuid] where user_a=$1',[A]),/permission denied/)
 })
 console.log('PASS a story expiry cannot be forged, and saved_by is not client-writable')
+
+// --- Snap save consent ----------------------------------------------------
+// The gate this replaces granted itself: SnapViewer allowed the export when
+// `saved_by` contained the VIEWER, and `toggle_saved()` may be called by either
+// party. Everything below is the part a client cannot be trusted with — that
+// the flag means what the SENDER said, and that no other route reaches it.
+const snapPath = `${A}/snaps/consent.jpg`
+await db.query(`insert into storage.objects(bucket_id,name) values('media',$1)`,[snapPath])
+await db.query(`insert into public.messages(user_a,user_b,sender_id,kind,media_path,media_type,view_seconds) values($1,$2,$1,'snap',$3,'image',10)`,[A,B,snapPath])
+const consentSnap=(await query("select id from public.messages where media_path=$1",[snapPath]))[0].id
+// Default false: applying this migration must not make anything already sent
+// exportable.
+assert.equal((await query('select allow_save from public.messages where id=$1',[consentSnap]))[0].allow_save,false)
+
+await asUser(B,async()=>{
+ // The recipient. Three routes at the flag, and all three are walls.
+ // 1. Straight at the column through PostgREST — the mistake 202609090022 made
+ //    with saved_by, where hardening the RPC closed only the client path.
+ await assert.rejects(query('update public.messages set allow_save=true where id=$1',[consentSnap]),/permission denied/)
+ // 2. The RPC itself, which is sender-only.
+ await assert.rejects(query('select public.set_snap_save_consent($1,true)',[consentSnap]),/Message unavailable/)
+ // 3. The audit log, which is operator-only (RLS on, no policy, grants revoked)
+ //    like ops_metrics and bot_quotes.
+ await assert.rejects(query('select * from public.save_consent_log'),/permission denied/)
+})
+await asUser(A,async()=>{
+ // The sender, who is the only one who may answer.
+ assert.equal((await query('select public.set_snap_save_consent($1,true) ok',[consentSnap]))[0].ok,true)
+ // Not a snap is not a save permission.
+ const chatId=(await query("select id from public.messages where kind='chat' limit 1"))[0].id
+ await assert.rejects(query('select public.set_snap_save_consent($1,true)',[chatId]),/Only a snap/)
+})
+assert.equal((await query('select allow_save from public.messages where id=$1',[consentSnap]))[0].allow_save,true)
+// The log records the transition, the actor and the timestamp — and NOTHING
+// about the content. A log carrying a body or a media_path would undo the
+// ephemerality it exists to police.
+const logCols=(await query("select column_name from information_schema.columns where table_schema='public' and table_name='save_consent_log'")).map(r=>r.column_name)
+assert.deepEqual(logCols.filter(c=>['body','media_path','thumb_path','caption','url'].includes(c)),[])
+assert.deepEqual((await query('select was_allowed,now_allowed,actor_id from public.save_consent_log where message_id=$1',[consentSnap])),
+ [{was_allowed:false,now_allowed:true,actor_id:A}])
+// Re-tapping the same answer is not an event. Logging it would bury the ones
+// that are.
+await asUser(A,async()=>{ await query('select public.set_snap_save_consent($1,true)',[consentSnap]) })
+assert.equal((await query('select count(*)::int n from public.save_consent_log where message_id=$1',[consentSnap]))[0].n,1)
+await asUser(A,async()=>{ await query('select public.set_snap_save_consent($1,false)',[consentSnap]) })
+assert.equal((await query('select count(*)::int n from public.save_consent_log where message_id=$1',[consentSnap]))[0].n,2)
+// The log dies with the message it describes. Keeping it would leave a
+// permanent record that a snap existed, in an app whose promise is that it
+// does not.
+await db.query('delete from public.messages where id=$1',[consentSnap])
+assert.equal((await query('select count(*)::int n from public.save_consent_log where message_id=$1',[consentSnap]))[0].n,0)
+
+// The per-contact default. Each side owns ONE half; a shared per-pair flag
+// would be the same self-granted consent one level up.
+await asUser(A,async()=>{
+ await query('select public.set_snap_save_default($1,true)',[B])
+ await assert.rejects(query('select public.set_snap_save_default($1,true)',[C]),/Friend unavailable/) // not friends
+})
+await asUser(B,async()=>{
+ // B cannot write A's half, by any route: no UPDATE grant on the table, and the
+ // RPC derives the column from auth.uid() rather than taking it as an argument.
+ await assert.rejects(query('update public.snap_save_prefs set a_allows=false'),/permission denied/)
+ await assert.rejects(query('insert into public.snap_save_prefs(user_a,user_b,a_allows) values($1,$2,true)',[A,B]),/permission denied/)
+ // Reading is shared — both people are entitled to know what the pair agreed.
+ assert.equal((await query('select a_allows,b_allows from public.snap_save_prefs'))[0].a_allows,true)
+ await query('select public.set_snap_save_default($1,true)',[A])
+})
+const prefs=(await query('select * from public.snap_save_prefs where user_a=$1 and user_b=$2',[A,B]))[0]
+assert.equal(prefs.a_allows,true); assert.equal(prefs.b_allows,true)
+// One side switching off does not switch the other side off with it.
+await asUser(A,async()=>{ await query('select public.set_snap_save_default($1,false)',[B]) })
+const prefsAfter=(await query('select * from public.snap_save_prefs where user_a=$1 and user_b=$2',[A,B]))[0]
+assert.equal(prefsAfter.a_allows,false); assert.equal(prefsAfter.b_allows,true)
+await asUser(C,async()=>{
+ // A stranger sees no row at all, so the pair's arrangement is not an oracle.
+ assert.equal((await query('select count(*)::int n from public.snap_save_prefs'))[0].n,0)
+})
+// A standing permission does not outlive the friendship. Unfriending (and
+// blocking, which deletes the same row) drops it, so adding each other again
+// does not silently restore a permission granted to a different relationship.
+await db.query('delete from public.friendships where user_a=$1 and user_b=$2',[A,B])
+assert.equal((await query('select count(*)::int n from public.snap_save_prefs where user_a=$1 and user_b=$2',[A,B]))[0].n,0)
+await db.query(`insert into public.friendships(user_a,user_b,requested_by,status) values($1,$2,$1,'accepted')`,[A,B])
+console.log('PASS snap save consent is the sender\'s alone, by every route, and the log keeps no content')
 console.log('PASS push endpoints, display names and blocks cannot be written around')
 console.log('PASS every client write succeeds for a legitimate user')
 

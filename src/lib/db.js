@@ -272,6 +272,17 @@ async function insertMessage(row) {
     const { thumb_path: _drop, ...rest } = row
     return insertMessage(rest)
   }
+  // Same treatment for the save-consent flag, and for the same reason: the
+  // bundle can ship before 202609140033 is applied, and a send must not fail
+  // over a permission column. Dropping it sends the snap with the column's
+  // default, which is `false` — so the degradation is always toward LESS
+  // permission, never more. A sender who said "yes" gets a snap the recipient
+  // cannot export, which is a broken promise in the safe direction; the reverse
+  // would be a broken promise in the direction that matters.
+  if ('allow_save' in row && /allow_save/.test(error.message ?? '')) {
+    const { allow_save: _drop, ...rest } = row
+    return insertMessage(rest)
+  }
   if (row.client_id) {
     const existing = await supabase.from('messages').select('*').eq('sender_id', row.sender_id).eq('client_id', row.client_id).maybeSingle()
     if (existing.data) return existing.data
@@ -328,24 +339,24 @@ async function uploadSnapThumb(me, clientId, blob) {
   }
 }
 
-export async function sendSnap(me, otherId, { blob, viewSeconds, caption, clientId = crypto.randomUUID() }) {
+export async function sendSnap(me, otherId, { blob, viewSeconds, caption, allowSave = null, clientId = crypto.randomUUID() }) {
   const body = await downscaleImage(blob, 1600, 0.85)
   const path = `${me}/snaps/${clientId}.${mediaExtension(body)}`
   await uploadMedia(path, body)
   const thumbPath = await uploadSnapThumb(me, clientId, body)
-  const data = await insertMessage({ ...pairFilter(me, otherId), sender_id: me, client_id: clientId, kind: 'snap', body: caption || null, media_path: path, thumb_path: thumbPath, media_type: 'image', view_seconds: viewSeconds, delivered_at: new Date().toISOString() })
+  const data = await insertMessage({ ...pairFilter(me, otherId), sender_id: me, client_id: clientId, kind: 'snap', body: caption || null, media_path: path, thumb_path: thumbPath, media_type: 'image', view_seconds: viewSeconds, allow_save: await resolveAllowSave(me, otherId, allowSave), delivered_at: new Date().toISOString() })
   notify(otherId, 'snap')
   return data
 }
 
-export async function sendSnapMedia(me, otherId, { file, viewSeconds, caption, replyTo = null, clientId = crypto.randomUUID() }) {
+export async function sendSnapMedia(me, otherId, { file, viewSeconds, caption, replyTo = null, allowSave = null, clientId = crypto.randomUUID() }) {
   const isVideo = file.type?.startsWith('video/')
   if (!isVideo && !file.type?.startsWith('image/')) throw new Error('Choose an image or video')
   const body = isVideo ? file : await downscaleImage(file, 1600, 0.8)
   const path = `${me}/snaps/${clientId}.${mediaExtension(body)}`
   await uploadMedia(path, body)
   const thumbPath = isVideo ? null : await uploadSnapThumb(me, clientId, body)
-  const data = await insertMessage({ ...pairFilter(me, otherId), sender_id: me, client_id: clientId, kind: 'snap', body: caption || null, media_path: path, thumb_path: thumbPath, media_type: isVideo ? 'video' : 'image', has_audio: Boolean(isVideo), reply_to: replyTo, view_seconds: viewSeconds === undefined ? (isVideo ? null : 45) : viewSeconds, delivered_at: new Date().toISOString() })
+  const data = await insertMessage({ ...pairFilter(me, otherId), sender_id: me, client_id: clientId, kind: 'snap', body: caption || null, media_path: path, thumb_path: thumbPath, media_type: isVideo ? 'video' : 'image', has_audio: Boolean(isVideo), reply_to: replyTo, view_seconds: viewSeconds === undefined ? (isVideo ? null : 45) : viewSeconds, allow_save: await resolveAllowSave(me, otherId, allowSave), delivered_at: new Date().toISOString() })
   notify(otherId, 'snap')
   return data
 }
@@ -440,6 +451,109 @@ export async function unsend(messageId) {
     .update({ unsent_at: new Date().toISOString() })
     .eq('id', messageId)
   if (error) throw error
+}
+
+// --------------------------------------------------------------------------
+// save consent — may the RECIPIENT put this snap in their camera roll?
+//
+// Read the whole block before changing any of it; the halves only make sense
+// together.
+//
+// What this is NOT. The media is in Storage behind a signed URL, and the
+// recipient has to be able to fetch those bytes to look at the snap at all.
+// Once they have looked at it they have it — a screenshot, a screen recording,
+// the URL out of devtools. This makes the sender's answer authoritative and
+// impossible for the client to forge; it does not, and cannot, stop a
+// determined recipient keeping a copy. Same standing as ephemerality itself: a
+// UI contract, not a security property. Never write copy that promises more.
+// --------------------------------------------------------------------------
+
+// THE one definition of export eligibility. Every surface that offers a "save
+// to device" on someone else's media must call this and nothing else — the
+// previous gate was re-derived inline in SnapViewer and was wrong for months.
+export function canExportToDevice(message, me) {
+  if (!message || !me) return false
+  // Your own media is yours.
+  if (message.sender_id === me) return true
+  // The sender said yes — at compose time, or afterwards from the message menu.
+  // `=== true` on purpose: a row from a database that predates 202609140033
+  // carries no `allow_save` at all, and "no answer" is a no. Consent is an act;
+  // its absence is not an unknown to be resolved generously.
+  if (message.allow_save === true) return true
+  // ...or you have BOTH saved it in the chat, which is the sender agreeing
+  // after the fact by an act only they can perform. Both halves are required.
+  // The old gate asked only whether `saved_by` contained the VIEWER — and
+  // `toggle_saved()` may be called by either party, so the recipient tapped
+  // "Save in chat" and thereby granted themselves the download. A gate that
+  // grants itself is not a gate.
+  const saved = message.saved_by ?? []
+  return saved.includes(message.sender_id) && saved.includes(me)
+}
+
+// Turn the sender's answer for one snap on or off after it has been sent
+// (message menu). Sender-only and snap-only, enforced in the RPC.
+export async function setSnapSaveConsent(messageId, allow) {
+  const { data, error } = await supabase.rpc('set_snap_save_consent', { msg: messageId, allow })
+  if (error) throw error
+  return data
+}
+
+// The pair's standing default. Each side owns its own half; the default is in
+// force only when BOTH are true. Returns null on failure, never a boolean — a
+// failed read must not render as "off" on a privacy control, which is the
+// mistake this codebase has made seven times.
+export async function getSnapSaveDefault(me, otherId) {
+  const { user_a, user_b } = pairKey(me, otherId)
+  const { data, error } = await supabase
+    .from('snap_save_prefs')
+    .select('*')
+    .eq('user_a', user_a)
+    .eq('user_b', user_b)
+    .maybeSingle()
+  if (error) throw error
+  // No row is a real answer: nobody has opted in. That is different from the
+  // throw above, which the caller turns into "we do not know".
+  const mine = Boolean(me === user_a ? data?.a_allows : data?.b_allows)
+  const theirs = Boolean(me === user_a ? data?.b_allows : data?.a_allows)
+  return { mine, theirs, active: mine && theirs }
+}
+
+// Sets only the caller's half; the RPC derives which column that is.
+export async function setSnapSaveDefault(me, otherId, allow) {
+  const { error } = await supabase.rpc('set_snap_save_default', { other: otherId, allow })
+  if (error) throw error
+  forgetSnapSaveDefault(me, otherId)
+  return getSnapSaveDefault(me, otherId)
+}
+
+// A send resolves the pair default at most once per pair per session. The
+// camera sends the same photo to several friends in a loop, and without this
+// each one is another round trip before the snap can go.
+const snapSaveDefaults = new Map()
+export function forgetSnapSaveDefault(me, otherId) {
+  const { user_a, user_b } = pairKey(me, otherId)
+  snapSaveDefaults.delete(`${user_a}:${user_b}`)
+}
+export function clearSnapSaveDefaults() { snapSaveDefaults.clear() }
+
+// `allowSave` from the UI is three-valued: true / false are the sender saying
+// so for this snap, and null means "whatever this pair has agreed". Resolving
+// null lives here so the rule exists once.
+async function resolveAllowSave(me, otherId, allowSave) {
+  if (allowSave === true || allowSave === false) return allowSave
+  const { user_a, user_b } = pairKey(me, otherId)
+  const key = `${user_a}:${user_b}`
+  if (!snapSaveDefaults.has(key)) {
+    // A failed lookup resolves to false. This is the one place a failure is
+    // allowed to become a value rather than an "unknown", because there is no
+    // third thing to write into a NOT NULL boolean column, and refusing the
+    // send instead would mean a flaky network stops people sending snaps. False
+    // is the restrictive answer, and the sender can still turn it on afterwards
+    // from the message menu.
+    const pref = await getSnapSaveDefault(me, otherId).catch(() => null)
+    snapSaveDefaults.set(key, pref?.active === true)
+  }
+  return snapSaveDefaults.get(key)
 }
 
 // --------------------------------------------------------------------------

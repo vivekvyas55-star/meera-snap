@@ -312,7 +312,8 @@
 .pc-hero,
 .pc-card.lavender,
 .pc-card.lime,
-.pc-card.coral {
+.pc-card.coral,
+.consent-card {
   --ink: #16161a;
   /* 0.62 left the sub-line on a lavender card at 3.7:1. */
   --muted: rgba(22, 22, 26, 0.72);
@@ -2027,6 +2028,79 @@ button:disabled { cursor: not-allowed; }
   border-radius: 50%; background: rgba(22,22,26,.72); color: #fff; font-size: 24px; line-height: 1;
 }
 .viewer-privacy-note { color: var(--glass-muted); font-size: 12px; padding: 11px 4px; }
+/* The refusal line in the snap viewer. It sits where the Save pill would have
+   been, at the same height, so the row does not jump between a snap you may
+   keep and one you may not. The lock is a line icon: this is chrome. */
+.viewer-consent-note {
+  display: inline-flex; align-items: center; gap: 7px;
+  text-align: center; max-width: 82vw; line-height: 1.35;
+}
+.viewer-consent-note svg { flex: 0 0 auto; opacity: 0.85; }
+
+/* Sender's per-snap save permission, on the camera preview. Same glass idiom as
+   .cam-filter — it lives only on the fullscreen black capture surface. */
+.cam-consent {
+  position: absolute; left: 0; right: 0;
+  bottom: calc(var(--safe-bottom) + 196px); z-index: 3;
+  display: flex; justify-content: center; padding: 0 14px;
+}
+.cam-consent-btn {
+  display: flex; align-items: center; gap: var(--sp-3);
+  width: 100%; max-width: 392px; min-height: 44px;
+  padding: 9px 10px 9px 14px; border-radius: var(--r-row);
+  background: var(--glass); color: var(--on-fill); text-align: left;
+  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+}
+.cam-consent-btn svg { flex: 0 0 auto; }
+.cam-consent-text { flex: 1 1 auto; min-width: 0; }
+.cam-consent-title { font-size: var(--fs-sm); font-weight: 500; }
+.cam-consent-sub {
+  display: block; margin-top: 1px;
+  font-size: var(--fs-eyebrow); color: var(--glass-muted); line-height: 1.35;
+}
+.cam-consent-state {
+  flex: 0 0 auto; padding: 6px 12px; border-radius: var(--r-pill);
+  background: rgba(255, 255, 255, 0.18); color: #fff;
+  font-size: 12px; font-weight: 600; letter-spacing: -0.01em;
+}
+.cam-consent-btn.on .cam-consent-state { background: var(--lime); color: #16161a; }
+.cam-consent-btn:disabled { opacity: 0.5; }
+
+/* The picked file, before it is sent. Drawn from a local object URL, so it
+   costs nothing to show — capped in height so a portrait photo does not push
+   the consent card and the Send button off the sheet. */
+.attach-preview {
+  display: block; width: 100%; max-height: 38vh; object-fit: cover;
+  border-radius: var(--r-card); margin-bottom: var(--sp-3); background: var(--card);
+}
+
+/* Per-contact default, in the friend sheet and the attach sheet. A vibrant
+   lavender card, per the ABC language — one colour per card, ink on the fill. */
+.consent-card {
+  background: var(--lavender); color: var(--ink);
+  border-radius: var(--r-card); padding: var(--sp-4);
+  display: flex; flex-direction: column; gap: var(--sp-3);
+}
+.consent-card-head { display: flex; align-items: center; gap: var(--sp-3); }
+.consent-card-head svg { flex: 0 0 auto; }
+.consent-card-title { font-size: var(--fs-body); font-weight: 500; flex: 1 1 auto; }
+.consent-card-body { font-size: var(--fs-sm); line-height: 1.45; margin: 0; }
+.consent-card-note {
+  font-size: var(--fs-meta); line-height: 1.45; margin: 0; color: var(--muted);
+}
+/* The switch. Not an emoji, not a checkbox glyph — a real pressed state. */
+.consent-switch {
+  flex: 0 0 auto; width: 52px; height: 31px; border-radius: var(--r-pill);
+  background: rgba(22, 22, 26, 0.22); position: relative; transition: background 0.16s ease;
+}
+.consent-switch::after {
+  content: ''; position: absolute; top: 3px; left: 3px;
+  width: 25px; height: 25px; border-radius: 50%; background: #fff;
+  transition: transform 0.16s ease;
+}
+.consent-switch[aria-checked='true'] { background: #16161a; }
+.consent-switch[aria-checked='true']::after { transform: translateX(21px); }
+.consent-switch:disabled { opacity: 0.5; }
 
 /* Friend profile — opened by tapping the chat header. Line icons instead of
    emoji chrome, one vibrant colour per stat card, list rows for actions. */
