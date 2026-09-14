@@ -80,6 +80,16 @@ Status as of **9 Sep 2026**. `CLAUDE.md` says how things work; this says what is
 **Together layer**
 - [ ] Timeline, milestones, scrapbook, pinned voice notes, anniversary cards,
       "On this day", a consistent "Private to you both" badge.
+- [ ] **`202609140034_timeline_events` — written, NOT applied.** Typed milestone
+      events (first snap/call/voice, mutually saved media, streak marks) recorded
+      by trigger, per-type filters, and a purge on opt-out that deletes what the
+      system observed and never what a person wrote. Two of the triggers sit on
+      `messages`, the hottest write path, and it starts collecting a durable
+      record of a pair — both want a human read first. Apply it, then
+      `operations/schedule_together_purge.sql` standalone, then remove it from
+      `.unapplied`. It also closes a live hole: a **blocked** pair currently keeps
+      a working shared timeline, because `together_active()` counts opt-in rows
+      and the block only deletes the friendship.
 - [ ] Scheduled messages — **needs a decision**; plaintext for days in an app that
       clears chats after three visits.
 

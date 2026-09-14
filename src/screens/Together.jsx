@@ -5,8 +5,8 @@ import Portal from '../components/Portal'
 import PrivateBadge from '../components/PrivateBadge'
 import VoicePlayer from '../components/VoicePlayer'
 import {
-  ArrowIcon, BackIcon, CalendarIcon, FlameIcon, HeartIcon,
-  ImageIcon, MicIcon, NoteIcon, TrashIcon, UsersIcon,
+  ArrowIcon, BackIcon, CalendarIcon, CameraIcon, FlameIcon, HeartIcon,
+  ImageIcon, MicIcon, NoteIcon, PhoneIcon, SaveIcon, TrashIcon, UsersIcon,
 } from '../components/Icons'
 import { useAudioRecorder } from '../hooks/useAudioRecorder'
 import { useBackLayer } from '../hooks/useBackLayer'
@@ -14,23 +14,35 @@ import { useToast } from '../hooks/useToast'
 import { istToday, listFriendsWithProfiles, signedUrl } from '../lib/db'
 import {
   addNote, addPhoto, addVoice, getTogetherStatus, listOnThisDay,
-  listScrapbook, listTimeline, removeScrapbookItem, setTogetherOptIn,
+  listScrapbook, listTimeline, purgeMyScrapbook, removeScrapbookItem,
+  setTogetherOptIn,
 } from '../lib/together'
 import {
-  NOTE_MAX, canDelete, fullPath, gridPath, groupTimelineByYear, isFutureDate,
-  optInCopy, optInState, scrapbookCounts, scrapbookDateLabel, yearsAgoLabel,
+  NOTE_MAX, canDelete, filterTimeline, fullPath, gridPath, groupTimelineByYear,
+  isFutureDate, optInCopy, optInState, optOutCopy, scrapbookCounts,
+  scrapbookDateLabel, scrapbookPurgeCopy, timelineFilters, yearsAgoLabel,
 } from '../lib/togetherState'
 import '../styles/together.css'
 
 const nameOf = (p) => p?.display_name || p?.username || 'them'
 
+// Line icons, never emoji — these are chrome. The recorded kinds
+// (202609140034) sit alongside the derived ones because a reader does not care
+// which half of the timeline a card came from; an unknown kind still falls
+// through to NoteIcon rather than rendering a hole, because a phone one deploy
+// behind the database is the normal state for a few minutes.
 const TIMELINE_ICON = {
   friends: <UsersIcon width={17} height={17} />,
   anniversary: <HeartIcon width={17} height={17} />,
   anniversary_start: <HeartIcon width={17} height={17} />,
   streak: <FlameIcon width={17} height={17} />,
+  streak_milestone: <FlameIcon width={17} height={17} />,
   first_kept: <ImageIcon width={17} height={17} />,
   kept: <ImageIcon width={17} height={17} />,
+  mutual_save: <SaveIcon width={17} height={17} />,
+  first_snap: <CameraIcon width={17} height={17} />,
+  first_call: <PhoneIcon width={17} height={17} />,
+  first_voice: <MicIcon width={17} height={17} />,
   scrapbook_photo: <ImageIcon width={17} height={17} />,
   scrapbook_voice: <MicIcon width={17} height={17} />,
   scrapbook_note: <NoteIcon width={17} height={17} />,
@@ -63,6 +75,29 @@ function Thumb({ item, onOpen, label }) {
   )
 }
 
+// A destructive confirmation is two lists, never a paragraph: what goes, and
+// what does not. The Privacy Centre's account deletion reads the same way
+// (DELETION_LOSES in lib/privacy.js), and for the same reason — somebody must
+// be able to decide from this sheet alone, without remembering what the button
+// they tapped was called. The "stays" half matters more here than it does
+// there: the scrapbook is a shared artifact, and the fear that turning a switch
+// off will take the other person's photos with it is exactly what would stop
+// someone from using a control they are entitled to.
+function LossList({ loses, keeps }) {
+  return (
+    <>
+      <ul className="tg-loses">
+        {loses.map((line) => <li key={line}>{line}</li>)}
+      </ul>
+      {keeps?.length ? (
+        <ul className="tg-keeps">
+          {keeps.map((line) => <li key={line}>{line}</li>)}
+        </ul>
+      ) : null}
+    </>
+  )
+}
+
 function PhotoViewer({ item, onClose }) {
   const [url, setUrl] = useState(null)
   const path = fullPath(item)
@@ -89,18 +124,51 @@ function PhotoViewer({ item, onClose }) {
 // ---------------------------------------------------------------------------
 // Panes
 // ---------------------------------------------------------------------------
-function TimelinePane({ rows, loading }) {
-  const groups = useMemo(() => groupTimelineByYear(rows), [rows])
+// A failed read and an empty history are the same shape — `[]` — unless the
+// caller keeps them apart, and this project has found that bug seven times.
+// `undefined` is "not asked yet", `null` is "the fetch failed", and only a real
+// array is allowed to produce the words "nothing yet".
+function TimelinePane({ rows, loading, filter, onFilter, onRetry }) {
+  const filters = useMemo(() => timelineFilters(rows), [rows])
+  const shown = useMemo(() => filterTimeline(rows, filter), [rows, filter])
+  const groups = useMemo(() => groupTimelineByYear(shown), [shown])
   return (
     <section className="tg-pane" aria-label="Timeline">
       <PrivateBadge />
-      {loading && !rows.length ? <p className="field-hint">Reading your history…</p> : null}
-      {!loading && !groups.length ? (
+      {rows === null ? (
+        <div className="error" role="alert">
+          <span>The timeline didn’t load. This is not “nothing happened” — we could not read it.</span>
+          <button onClick={onRetry}>Retry</button>
+        </div>
+      ) : null}
+      {loading && rows == null ? <p className="field-hint">Reading your history…</p> : null}
+      {filters?.length ? (
+        <div className="tg-filters" role="group" aria-label="Filter the timeline">
+          {filters.map((group) => (
+            <button
+              key={group.id}
+              type="button"
+              className={`pill-btn pill-inline ${filter === group.id ? 'on' : ''}`}
+              aria-pressed={filter === group.id}
+              onClick={() => onFilter(group.id)}
+            >
+              {group.label} <em>{group.count}</em>
+            </button>
+          ))}
+        </div>
+      ) : null}
+      {!loading && Array.isArray(rows) && !rows.length ? (
         <div className="empty">
           <div className="empty-symbol" aria-hidden="true"><CalendarIcon /></div>
           <h2>Nothing on the timeline yet.</h2>
           <p>Set a “together since” date in the chat, keep a snap, or add something to the scrapbook.</p>
         </div>
+      ) : null}
+      {Array.isArray(rows) && rows.length && !groups.length ? (
+        // A filter that hides everything must say it was the filter. Otherwise
+        // it reads exactly like the empty state above, and the way out of it is
+        // invisible.
+        <p className="field-hint tg-locked">Nothing of that sort yet. Tap <strong>All</strong> to see the rest.</p>
       ) : null}
       {groups.map((group) => (
         <div key={group.year} className="tg-year">
@@ -122,19 +190,26 @@ function TimelinePane({ rows, loading }) {
   )
 }
 
-function OnThisDayPane({ capsules, loading, resolve, onOpen }) {
+function OnThisDayPane({ capsules, loading, resolve, onOpen, onRetry }) {
+  const rows = Array.isArray(capsules) ? capsules : []
   return (
     <section className="tg-pane" aria-label="On this day">
       <PrivateBadge note="turns over at your midnight" />
-      {loading && !capsules.length ? <p className="field-hint">Looking back…</p> : null}
-      {!loading && !capsules.length ? (
+      {capsules === null ? (
+        <div className="error" role="alert">
+          <span>Couldn’t look back just now. That isn’t the same as there being nothing.</span>
+          <button onClick={onRetry}>Retry</button>
+        </div>
+      ) : null}
+      {loading && capsules == null ? <p className="field-hint">Looking back…</p> : null}
+      {!loading && Array.isArray(capsules) && !capsules.length ? (
         <div className="empty">
           <div className="empty-symbol" aria-hidden="true"><CalendarIcon /></div>
           <h2>Nothing from this day yet.</h2>
           <p>Add a scrapbook entry with the date it actually happened and it will come back on this day next year.</p>
         </div>
       ) : null}
-      {capsules.map((capsule) => {
+      {rows.map((capsule) => {
         // together_on_this_day() returns thumbnails and never a media_path — a
         // dozen capsules naming a dozen originals is the screen that spends the
         // month. So a capsule opens only when its full-size row is already in
@@ -277,15 +352,26 @@ function Composer({ friendName, busy, onNote, onPhoto, onVoice }) {
   )
 }
 
-function ScrapbookPane({ items, loading, me, friendName, busy, canAdd, onOpen, onDelete, onNote, onPhoto, onVoice }) {
-  const counts = scrapbookCounts(items)
-  const photos = items.filter((i) => i.kind === 'photo')
-  const rest = items.filter((i) => i.kind !== 'photo')
+function ScrapbookPane({
+  items, loading, me, friendName, busy, canAdd, onOpen, onDelete, onNote,
+  onPhoto, onVoice, onPurgeMine, onRetry,
+}) {
+  const rows = Array.isArray(items) ? items : []
+  const counts = scrapbookCounts(rows)
+  const photos = rows.filter((i) => i.kind === 'photo')
+  const rest = rows.filter((i) => i.kind !== 'photo')
+  const mine = rows.filter((i) => canDelete(i, me)).length
   return (
     <section className="tg-pane" aria-label="Scrapbook">
       <PrivateBadge note={counts.total ? `${counts.total} kept` : null} />
-      {loading && !items.length ? <p className="field-hint">Opening the scrapbook…</p> : null}
-      {!loading && !items.length ? (
+      {items === null ? (
+        <div className="error" role="alert">
+          <span>The scrapbook didn’t open. It is not empty — we could not read it.</span>
+          <button onClick={onRetry}>Retry</button>
+        </div>
+      ) : null}
+      {loading && items == null ? <p className="field-hint">Opening the scrapbook…</p> : null}
+      {!loading && Array.isArray(items) && !items.length ? (
         <div className="empty">
           <div className="empty-symbol" aria-hidden="true"><ImageIcon /></div>
           <h2>The scrapbook is empty.</h2>
@@ -325,6 +411,17 @@ function ScrapbookPane({ items, loading, me, friendName, busy, canAdd, onOpen, o
           Adding needs both of you to have Together on. What is already here stays readable.
         </p>
       )}
+
+      {/* Turning Together off deletes the milestones the app recorded and
+          deliberately leaves the scrapbook alone — half of it is the other
+          person's. This is the separate act for somebody who wants their own
+          contributions gone too, and it is scoped to exactly those. */}
+      {mine ? (
+        <button type="button" className="tg-purge" onClick={onPurgeMine} disabled={busy}>
+          <TrashIcon width={16} height={16} aria-hidden="true" />
+          Remove the {mine} {mine === 1 ? 'entry' : 'entries'} you added
+        </button>
+      ) : null}
     </section>
   )
 }
@@ -338,13 +435,20 @@ export default function Together({ me, onBack }) {
   const [friend, setFriend] = useState(null)
   const [status, setStatus] = useState(null)
   const [tab, setTab] = useState('timeline')
-  const [timeline, setTimeline] = useState([])
-  const [capsules, setCapsules] = useState([])
-  const [items, setItems] = useState([])
+  // undefined = not asked yet, null = the read failed, an array = an answer.
+  // `[]` is an answer and is reserved for one, which is the whole rule the
+  // seven "failures rendering as answers" bugs broke.
+  const [timeline, setTimeline] = useState(undefined)
+  const [capsules, setCapsules] = useState(undefined)
+  const [items, setItems] = useState(undefined)
+  const [filter, setFilter] = useState('all')
   const [loading, setLoading] = useState(false)
   const [busy, setBusy] = useState(false)
   const [viewing, setViewing] = useState(null)
   const [removing, setRemoving] = useState(null)
+  // 'optout' | 'purge-mine' — the two destructive steps that state what they
+  // will do before they do it.
+  const [confirming, setConfirming] = useState(null)
   const [error, setError] = useState(null)
   const actionRef = useRef(false)
 
@@ -374,16 +478,23 @@ export default function Together({ me, onBack }) {
       // The scrapbook is readable to the pair whatever the opt-in says, so it
       // loads either way; the timeline and the capsules are opt-in gated
       // server-side and would come back empty, so they are not even asked for.
-      const [book, line, caps] = await Promise.all([
+      //
+      // Each read settles on its own. One RPC failing must not turn the other
+      // two into "nothing here" — allSettled rather than all, and a rejection
+      // becomes null, which every pane renders as "we could not read this".
+      const [book, line, caps] = await Promise.allSettled([
         listScrapbook(me, otherId),
         next.active ? listTimeline(otherId) : Promise.resolve([]),
         next.active ? listOnThisDay(otherId) : Promise.resolve([]),
       ])
-      setItems(book)
-      setTimeline(line)
-      setCapsules(caps)
+      setItems(book.status === 'fulfilled' ? book.value : null)
+      setTimeline(line.status === 'fulfilled' ? line.value : null)
+      setCapsules(caps.status === 'fulfilled' ? caps.value : null)
     } catch (err) {
+      // The status itself failed, so nothing below it was asked. Saying so
+      // beats three panes each claiming to be empty.
       setError(err.message)
+      setItems(null); setTimeline(null); setCapsules(null)
     } finally {
       setLoading(false)
     }
@@ -391,7 +502,8 @@ export default function Together({ me, onBack }) {
 
   useEffect(() => {
     if (!friend) return
-    setTimeline([]); setCapsules([]); setItems([]); setStatus(null)
+    setTimeline(undefined); setCapsules(undefined); setItems(undefined)
+    setStatus(null); setFilter('all')
     load(friend.id)
   }, [friend, load])
 
@@ -399,11 +511,11 @@ export default function Together({ me, onBack }) {
   const friendName = nameOf(friend)
   const copy = optInCopy(state, friendName)
 
-  const toggleOptIn = async () => {
+  const applyOptIn = async (joined) => {
     if (actionRef.current || !friend) return
     actionRef.current = true; setBusy(true)
     try {
-      const next = await setTogetherOptIn(friend.id, !status?.mine)
+      const next = await setTogetherOptIn(friend.id, joined)
       setStatus(next)
       await load(friend.id)
     } catch (err) {
@@ -411,6 +523,15 @@ export default function Together({ me, onBack }) {
     } finally {
       actionRef.current = false; setBusy(false)
     }
+  }
+
+  // Turning it ON adds a row. Turning it OFF deletes the pair's recorded
+  // milestones, so it goes through a sheet that says which rows go and which
+  // do not — the house rule for anything destructive is that it states the
+  // loss first, not after.
+  const onToggleOptIn = () => {
+    if (status?.mine) setConfirming('optout')
+    else applyOptIn(true)
   }
 
   const guardedAdd = async (fn, done) => {
@@ -446,6 +567,26 @@ export default function Together({ me, onBack }) {
     setRemoving(null)
     await guardedAdd(() => removeScrapbookItem(item), 'Removed')
   }
+
+  const confirmOptOut = async () => {
+    setConfirming(null)
+    await applyOptIn(false)
+  }
+
+  const confirmPurgeMine = async () => {
+    setConfirming(null)
+    const mine = (Array.isArray(items) ? items : []).filter((i) => canDelete(i, me))
+    await guardedAdd(
+      () => purgeMyScrapbook(friend.id, mine),
+      mine.length === 1 ? 'Your entry is gone' : 'Your entries are gone',
+    )
+  }
+
+  const purgeCopy = confirming === 'optout'
+    ? optOutCopy(status, friendName)
+    : confirming === 'purge-mine'
+      ? scrapbookPurgeCopy(status, friendName)
+      : null
 
   if (!friend) {
     return (
@@ -498,7 +639,7 @@ export default function Together({ me, onBack }) {
             <span className="tg-chip">Together since {scrapbookDateLabel(status.started_on)}</span>
           ) : null}
           {copy.action ? (
-            <button type="button" className="btn-dark" onClick={toggleOptIn} disabled={busy}>
+            <button type="button" className="btn-dark" onClick={onToggleOptIn} disabled={busy}>
               {busy ? 'Saving…' : copy.action}
             </button>
           ) : null}
@@ -521,9 +662,19 @@ export default function Together({ me, onBack }) {
           ))}
         </div>
 
-        {state === 'on' && tab === 'timeline' ? <TimelinePane rows={timeline} loading={loading} /> : null}
+        {state === 'on' && tab === 'timeline' ? (
+          <TimelinePane
+            rows={timeline} loading={loading} filter={filter} onFilter={setFilter}
+            onRetry={() => load(friend.id)}
+          />
+        ) : null}
         {state === 'on' && tab === 'onthisday'
-          ? <OnThisDayPane capsules={capsules} loading={loading} resolve={resolveCapsule} onOpen={setViewing} />
+          ? (
+            <OnThisDayPane
+              capsules={capsules} loading={loading} resolve={resolveCapsule}
+              onOpen={setViewing} onRetry={() => load(friend.id)}
+            />
+          )
           : null}
         {/* Reading the scrapbook stays open whatever the toggle says: if
             opting out hid the rows, either person could hold the other's
@@ -535,6 +686,8 @@ export default function Together({ me, onBack }) {
             canAdd={state === 'on'}
             onOpen={setViewing} onDelete={setRemoving}
             onNote={onNote} onPhoto={onPhoto} onVoice={onVoice}
+            onPurgeMine={() => setConfirming('purge-mine')}
+            onRetry={() => load(friend.id)}
           />
         ) : null}
         {state !== 'on' && tab !== 'scrapbook' ? (
@@ -548,6 +701,15 @@ export default function Together({ me, onBack }) {
       </div>
 
       {viewing ? <PhotoViewer item={viewing} onClose={() => setViewing(null)} /> : null}
+      {purgeCopy ? (
+        <Confirm
+          title={purgeCopy.title}
+          body={<LossList loses={purgeCopy.loses} keeps={purgeCopy.keeps} />}
+          confirmLabel={purgeCopy.confirmLabel}
+          onCancel={() => setConfirming(null)}
+          onConfirm={confirming === 'optout' ? confirmOptOut : confirmPurgeMine}
+        />
+      ) : null}
       {removing ? (
         <Confirm
           title="Remove this from the scrapbook?"
