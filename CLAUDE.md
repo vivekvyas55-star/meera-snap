@@ -1731,6 +1731,103 @@ the login screen runs username → question → answer + new password → auto l
 skipped: AR lenses, native Bitmoji, reliable screenshot detection, My AI (the
 user explicitly does NOT want an in-app AI assistant).
 
+## Just us — the intimate games (`202609090026_intimate_games.sql`)
+
+Five turn-based games for two partners: `truth_or_dare`, `would_you_rather`,
+`true_or_made_up`, `guess_what`, `fantasy_builder`. One pair of tables, because
+every one of them is "somebody poses, the other responds, then it swaps" and
+modelling them separately would be five copies of the same turn bug.
+
+**The migration stays in `.unapplied`.** The client degrades on `PGRST202`: the
+"Just us" row and the chip are hidden, and no further polling happens for the
+life of the page. `available` is `false` ONLY once PostgREST has actually said
+the function is absent — a dropped connection leaves the entry point where it
+is, because hiding a feature because a request timed out is a failure rendered
+as an answer.
+
+- `src/lib/relationshipGames.js` — pure: catalogue, the turn rule, the consent
+  state machine, the pose/respond validation mirrors, and every sentence the
+  surface says about the photo. No supabase import.
+- `src/lib/intimate.js` — the calls. `src/hooks/useIntimateSession.js` — poll +
+  nudge. `src/components/IntimateSession.jsx` + `IntimateChip.jsx` +
+  `src/styles/intimate.css`.
+
+**Entry point: the FriendSheet in `Chat.jsx`**, next to Kept Together. It is
+reachable only from inside a conversation that already exists, so it cannot
+appear for anyone who is not an accepted friend — the RPCs re-check that, but
+the entry point should not depend on them. **Profile → Play is the wrong home:**
+it is a friend picker, and a list of people next to five games called things
+like Truth or Dare is the one place this must never be.
+The only thing on the conversation itself is `IntimateChip` in the relationship
+strip, and it appears only when a turn or an invitation is waiting. It says
+`Just us · Your turn` and **never** a game name, a prompt or a person — the
+conversation screen is the one surface here that is not behind a second tap.
+
+**The partner is ALWAYS the rotating alias, never `display_name`.** This is the
+surface where a glance at the screen costs the most. `partnerLabel(profile,
+alias)` is the only name renderer; it falls back to `@username` and then to
+"them", never to the real name — a fallback that reveals the thing the feature
+hides is the failure mode. `tests/intimate.test.jsx` asserts structurally that
+the string never reaches `document.body`, in markup or text.
+
+**The turn rule is ONE expression**, mirrored by `turnHolder()` exactly as
+`pieceToMove()` mirrors `game_turn()`:
+
+> turn = the person who did NOT pose the most recent round
+
+Correct in both phases with no special case: while a round is open "not the
+poser" is the responder; once closed it is whoever goes next. A pass closes a
+round the same way an answer does, so passing can never strand a turn.
+`tests/intimate-db.mjs` checks the two agree at six points of a real game,
+including both kinds of pass — a differential check, not inspection.
+
+**Passing costs NOTHING.** `pass_intimate_turn()` takes no reason and writes no
+counter, and there is nothing in the schema or the client that accumulates when
+someone passes. **Do not add a streak, a score, a tally, or copy implying a
+pass is the lesser outcome.** A dare game whose "no" costs something is a dare
+game that coerces. Both test files assert this structurally.
+
+**Camera-off is a MODE, not a refusal.** `guess_what` takes a written clue in
+place of a photo and the database accepts either; the two are equal-weight
+chips in one row with "Neither is the fallback" under them. Every shipped
+starter that implies a camera carries a `camera_free` equivalent, and
+`tests/intimate.test.js` parses the migration's insert block and fails if one
+does not.
+
+**`ended_reason` is three different things** — `declined` / `left` / `expired` —
+and only one of them is about how the evening went. `intimate_session_with()`
+drops an ended session, so the screen reads the ROW (`getSessionRow`) to learn
+which; a row that is no longer readable falls back to "This session is no
+longer open", never to a guess.
+
+**The photo is the honest half of the feature.** `intimate_rounds_of()` never
+returns `media_path`; `open_intimate_photo()` is the only route, and it stamps
+the round and pulls the object's `media_cleanup` entry to two minutes out.
+
+- The database stops **minting** URLs at two minutes — it cannot expire one
+  already minted. So the client mints for **exactly the remainder of the
+  window** (`photoUrlTtl`) through `ephemeralSignedUrl()` in db.js, which
+  **never reads or writes `urlCache`**. The app's one-hour per-path signed-URL
+  cache is the right trade for a snap and actively wrong here.
+- The url lives in one piece of component state and is dropped when the viewer
+  closes. Never cache it, never re-request it, never persist it.
+- **Residual gap, stated in the copy rather than glossed:** the object itself
+  survives until the cleanup worker's next run — up to ~15 minutes after the
+  two-minute mark — and a client that mints its own URL inside the window can
+  give it a longer life. So the copy says the LINK stops working in two minutes
+  and the FILE is deleted within about fifteen. It must never say "this photo
+  is gone in two minutes", which is not what the system does.
+
+`202609090031_intimate_cleanup.sql` (applied) is what makes any of the cleanup
+work: it adds `intimate` to `queue_media_cleanup`'s prefix allowlist and
+teaches `claim_media_cleanup` about live rounds. **Uploading under `snaps/`
+instead — the obvious workaround if that prefix were missing — gets the photo
+deleted out from under a live session.** Use `uploadIntimatePhoto()`.
+
+The nudge rides `signal:<recipient>:<sender>` with event `intimate_changed`,
+carrying only `{ room }`. There is no `game:` branch in `realtime_allowed` and
+inventing a topic would make the channel silently unreachable.
+
 ## Play Together — the board is in the database
 
 `screens/PlayTogether.jsx`, reached from Profile. Two things: a solo dino runner

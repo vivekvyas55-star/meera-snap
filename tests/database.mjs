@@ -3,6 +3,7 @@ import { citext } from '@electric-sql/pglite/contrib/citext'
 import { pgcrypto } from '@electric-sql/pglite/contrib/pgcrypto'
 import fs from 'node:fs'
 import assert from 'node:assert/strict'
+import { checkIntimateGames } from './intimate-db.mjs'
 const db = new PGlite({ extensions: { citext, pgcrypto } })
 await db.exec(`
  create role anon; create role authenticated; create role service_role bypassrls;
@@ -725,6 +726,10 @@ assert.equal(Number(wider.projected_daily_egress)-Number(wider.snap_bytes),10000
 assert.equal((await query('select count(*)::int n from ops_metrics'))[0].n,1)
 await asUser(B,()=>assert.rejects(query('select * from ops_metrics'),/permission denied/))
 console.log('PASS egress projection counts a story once per friend, and is idempotent per day')
+// The intimate games (202609090026). Long enough to live in its own file; it
+// runs here, in this database, as these same three users.
+await checkIntimateGames({ db, query, asUser, A, B, C })
+
 // The drift check is only worth having if the version it reports is the real
 // newest one and a client can actually ask for it.
 const newest=fs.readdirSync('supabase/migrations').filter((f)=>f.endsWith('.sql')).sort().at(-1).replace(/\.sql$/,'')
