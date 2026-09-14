@@ -501,7 +501,11 @@ does not end that session. The only real action is
 `signOut({ scope: 'global' })`, and the copy says it includes this phone.
 `trackDeviceSessions()` is installed at module scope in `App.jsx` — Profile is
 lazy-imported, so recording from the screen that lists devices would only ever
-notice one after somebody opened Settings.
+notice one after somebody opened Settings. It records on `SIGNED_IN` /
+`TOKEN_REFRESHED`, so the list is **every browser that has signed in**, not
+every browser that has opened Settings; the copy said the latter long after it
+stopped being true, which on a security screen makes an unrecognised row look
+like an artefact of visiting a settings page rather than a real sign-in.
 
 **The data export excludes messages other people sent you.** They are the
 sender's, and ephemerality is a promise made on their behalf; turning them into
@@ -512,6 +516,96 @@ other person too — messages are pair-keyed with ON DELETE CASCADE on both halv
 `export_my_data()` / `delete_my_account()` use `to_regclass` guards and dynamic
 SQL deliberately, so they can be CREATED on a database that is behind on later
 migrations.
+
+**The export names its exclusions on screen, not only inside the file.**
+`EXPORT_INCLUDES` / `EXPORT_EXCLUDES` in `lib/privacy.js` are the same claim the
+SQL makes, kept beside the RPC wrapper so the screen and the function cannot
+drift. `202609140037` added `scrapbook_items` (`author = me`) and
+`together_optin` — rows that are unambiguously the caller's own writing and were
+simply missing — and deliberately did **not** add `pair_questions`: one row
+holds your question and their answer together, and splitting that is a decision
+about somebody else's words. It is named in the file's own `notes` so the
+omission is stated rather than silent.
+
+## Account deletion has a grace period (`202609140037_deletion_grace.sql`)
+
+**SHELVED** — the id is in `supabase/migrations/.unapplied`, and the client works
+either way (see the fallback below). Apply it by hand, then schedule
+`supabase/operations/schedule_account_purge.sql` **separately**, then remove the
+`.unapplied` line.
+
+`deletion_requests` is one row per account and only while a deletion is
+scheduled: the row existing *is* the pending state, and cancelling deletes it
+rather than flipping a flag, like Go Ghost. It has a select-own policy and
+**no write policy and no write grant at all** — `request_account_deletion()` /
+`cancel_account_deletion()` are the only way in, because a client that could
+pick its own `purge_after` could write a timestamp in the past (an instant
+delete with no confirmation) or one a century out (a row that never fires).
+
+**What a pending deletion means, decided rather than left to the UI:**
+
+- **The account keeps working for the whole grace period.** Locking it makes the
+  cancel harder to reach at the moment it matters, and going silent for a week
+  is itself a disclosure to the other person by another route.
+- **The other person is not told.** A scheduled deletion can be withdrawn, so
+  announcing it is a false alarm about somebody else's conversation and a leak
+  of a private decision that may never happen. They find out when it happens,
+  exactly as before.
+- Because of those two, anything sent during the grace period goes with the
+  rest. The pending banner says so.
+- **The clock never moves on a repeat.** `request_account_deletion()` is
+  `on conflict do nothing` and returns the row untouched — a `do update` would
+  let a second tap silently extend a deadline somebody is relying on, or shorten
+  one they think they have.
+
+`purge_account(uuid)` is the old `delete_my_account()` body lifted out so the
+cron job can run it for somebody who is not the caller; it is **operator-only**,
+because a signed-in caller reaching it with another uuid is a deletion oracle
+for the whole project. `delete_my_account()` still exists, still immediate, and
+is deliberately still reachable: it is the fallback where this migration is not
+applied, and the "Delete now instead" beside a pending banner.
+
+**A stalled cron is the failure that matters here.** Without
+`schedule_account_purge.sql` the row sits there forever while the screen shows a
+date in the past and the account is still live. Two things keep that from being
+silent: the banner reads the real `purge_after` off the server rather than
+counting down locally, and `describeDeletion()` renders a past date as
+**overdue** — never as a future date and never as "it's gone" — with the
+immediate delete still beside it.
+
+`describeDeletion()` counts **calendar days, not elapsed milliseconds.** Flooring
+the elapsed time turns a grace period just described as seven days into "in 6
+days" one millisecond after it starts; rounding it says "tomorrow" beside a date
+that reads as today. Whole days between the two dates is the only version where
+the words and the date printed next to them always agree.
+
+**`AccountData` has three states plus a failure, and the failure is the point.**
+`pending` / `supported but idle` / `not supported` (PGRST202 — the migration is
+shelved, so fall back to the immediate delete rather than drawing a button that
+would 404). A **failed** read is none of them and renders as the error it is,
+with **no delete control at all**: "we could not ask" drawn as "nothing is
+scheduled" would invite a second deletion request from someone who already made
+one. That is the eighth instance of the bug class in the table above, caught
+before it shipped.
+
+## What Meera says about screenshots
+
+The app **shows** a screenshot mark (`lib/status.js`, and the 📸 in `Chat.jsx`
+and `Stories.jsx`), which is a claim — and for a long time nothing anywhere said
+how weak a claim it is. The copy lives in Profile section 5 and its job is
+calibration, not alarm:
+
+- A mark means one **probably** happened. **No mark does not mean nobody did** —
+  that inverse is the half people act on when deciding what to send, and it has
+  to be said in as many words, visibly, not folded inside the disclosure.
+- The mechanics go in the `<details>`: the web gives a page no capture signal,
+  so `useScreenshotHeuristic` is reading hints (a screenshot key, the app being
+  hidden the instant a snap opens), and a second phone pointed at this one
+  leaves no trace at all.
+- Never phrase it as a guarantee. Ephemerality is a promise about how Meera
+  behaves, not about what someone else's device does with what you sent.
+  `tests/privacy.test.jsx` asserts both the presence of the honest half and the
+  absence of "screenshots are blocked".
 
 ## The Together layer (`202609090025_together.sql`)
 

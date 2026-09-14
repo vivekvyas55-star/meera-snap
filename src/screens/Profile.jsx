@@ -665,6 +665,40 @@ export default function Profile({ onBack, openPlay = false, onPlayOpened }) {
             savedLabel="Passcode changed on this device"
           />
 
+          {/* The web has no screenshot API. Meera nonetheless SHOWS a screenshot
+              mark on snaps and stories (lib/status.js, and the 📸 in Chat and
+              Stories), which is a claim — and until now nothing anywhere said
+              how weak a claim it is. The dangerous half is the inverse: an
+              absent mark reads as "nobody took one", and that is a thing people
+              act on when they decide what to send.
+
+              See hooks/useScreenshotHeuristic.js for what it actually watches.
+              The wording here is calibration, not a warning: the honest
+              position is that ephemerality is how Meera behaves, not something
+              it can enforce on somebody else's phone. */}
+          <div className="pc-label">Screenshots</div>
+          <p className="field-hint">
+            A snap or a story shows a screenshot mark when Meera can tell one was taken — but it
+            often can't tell. A mark means it probably happened. No mark does not mean nobody
+            did.
+          </p>
+          <details className="pc-more">
+            <summary>What can Meera actually see?</summary>
+            <div className="pc-more-body">
+              <p>
+                Nothing directly. A web page gets no signal from the phone when the screen is
+                captured, so Meera is reading hints — a screenshot key on a computer, or the app
+                being hidden the instant a snap opens. Hints are easy to miss and easy to avoid,
+                and a second phone pointed at this one leaves no trace at all.
+              </p>
+              <p>
+                Snaps and chats disappearing is something Meera does inside the app. It's a
+                promise about how Meera behaves, not a guarantee about what someone else's
+                device does with what you sent them.
+              </p>
+            </div>
+          </details>
+
           <BlockedContacts me={me} />
 
           <LocationSharing />

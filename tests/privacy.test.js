@@ -16,6 +16,9 @@ import {
   LOCATION_DURATIONS,
   activeChoice,
   describeExpiry,
+  describeDeletion,
+  EXPORT_INCLUDES,
+  EXPORT_EXCLUDES,
   formatBytes,
 } from '../src/lib/privacy'
 import { deviceLabel } from '../src/lib/devices'
@@ -379,4 +382,43 @@ test('deleting an account takes the rows with it', async () => {
   expect(
     (await query(`select count(*)::int n from public.media_cleanup where path like $1`, [`${A}/%`]))[0].n
   ).toBe(2)
+})
+
+test('a scheduled deletion is described by its date, and an overdue one says so', () => {
+  const now = Date.parse('2026-09-14T12:00:00Z')
+  expect(describeDeletion(null, now)).toBe(null)
+  expect(describeDeletion('not a date', now)).toBe(null)
+
+  // The date is what a person can act on. It is read off the server rather
+  // than counted down locally, so a phone with a wrong clock cannot invent a
+  // deadline of its own.
+  expect(describeDeletion('2026-09-21T12:00:00Z', now)).toMatch(/^Your account is deleted in 7 days, on /)
+  expect(describeDeletion('2026-09-15T12:00:00Z', now)).toMatch(/^Your account is deleted tomorrow, on /)
+  expect(describeDeletion('2026-09-14T18:00:00Z', now)).toMatch(/^Your account is deleted today, on /)
+
+  // Calendar days, not elapsed milliseconds: a seven-day grace period must not
+  // read as "in 6 days" one millisecond after it starts, and "tomorrow" must
+  // never sit next to a date that says today.
+  expect(describeDeletion(now + 7 * 86400000 - 1, now)).toMatch(/in 7 days/)
+  const soon = describeDeletion(now + 13 * 3600000, now)
+  expect(soon).toMatch(/tomorrow/)
+  expect(soon).toMatch(/15 September 2026|September 15, 2026/)
+
+  // A purge date in the past means the scheduled job has not run — see
+  // operations/schedule_account_purge.sql. It must not render as a date in the
+  // future and it must not claim the account is gone, because it is not.
+  expect(describeDeletion('2026-09-13T12:00:00Z', now)).toMatch(/overdue/i)
+})
+
+test('the export names its exclusions, and they are the ones the SQL actually makes', () => {
+  // These lists are a claim about other people's privacy as much as the
+  // user's own. Keeping them beside the RPC wrapper is what stops the screen
+  // and the SQL drifting apart.
+  expect(EXPORT_EXCLUDES.join(' ')).toMatch(/Messages anyone sent you/i)
+  expect(EXPORT_EXCLUDES.join(' ')).toMatch(/photos, videos and voice recordings themselves/i)
+  expect(EXPORT_EXCLUDES.join(' ')).toMatch(/Questions of the day/i)
+  expect(EXPORT_INCLUDES.join(' ')).toMatch(/Every message you sent/i)
+  // Nothing may appear in both halves; an item that does is a contradiction
+  // the reader has to resolve on a privacy screen.
+  for (const line of EXPORT_INCLUDES) expect(EXPORT_EXCLUDES).not.toContain(line)
 })

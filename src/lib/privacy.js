@@ -126,6 +126,122 @@ export async function exportMyData() {
   return data
 }
 
+// What is in the file and what is not, in the words the screen uses. Kept
+// beside DELETION_LOSES and for the same reason: the export's scope is a claim
+// about other people's privacy as well as the user's own, and a claim that
+// lives only in JSX drifts from the SQL the first time either is edited.
+//
+// The exclusions are NOT an oversight to be tidied up later. Messages and media
+// other people sent are deliberately absent — they are the sender's, and
+// ephemerality is a promise Meera makes on their behalf. Turning them into a
+// permanent file would quietly undo it for the person who trusted it.
+export const EXPORT_INCLUDES = [
+  'Your account and profile, and your friendships, streaks and days-together dates.',
+  'Every message you sent, with its text.',
+  'The record of your snaps, stories, voice notes and saved Memories.',
+  'Your scrapbook entries, your answers to the daily question, your status notes and your Snap Map row.',
+  'Your devices, your block list, your notification subscriptions and your credit history.',
+]
+
+export const EXPORT_EXCLUDES = [
+  'Messages anyone sent you. Those are theirs, and they are meant to disappear.',
+  'The photos, videos and voice recordings themselves — the file is the record of them, not the media.',
+  'Questions of the day. One row holds your question and their answer together, and their answer is not yours to export.',
+  'Your password and your security answer. Both are stored as one-way hashes and cannot be read back by anyone.',
+]
+
+// --------------------------------------------------------------------------
+// scheduled deletion
+// --------------------------------------------------------------------------
+// The grace period lives in 202609140037_deletion_grace.sql, which is on the
+// shelf (supabase/migrations/.unapplied). So this layer has to answer a third
+// question besides pending / not pending: whether the database it is talking to
+// knows what a deletion request is at all. A missing RPC must NOT read as "no
+// deletion scheduled" — on this control that is the difference between falling
+// back to the delete that does exist and telling someone their account is safe.
+//
+// PostgREST answers PGRST202 for a function it cannot find. CLAUDE.md notes it
+// also fires on a mismatched argument signature; these take no arguments, so
+// either way the answer is the same: this database has no usable grace period.
+function missingRpc(error) {
+  if (!error) return false
+  return (
+    error.code === 'PGRST202' ||
+    /could not find the function|does not exist/i.test(error.message || '')
+  )
+}
+
+const UNSUPPORTED = { supported: false, pending: false }
+
+function deletionState(data) {
+  const row = Array.isArray(data) ? data[0] : data
+  return {
+    supported: true,
+    pending: !!row?.pending,
+    requestedAt: row?.requested_at ?? null,
+    purgeAfter: row?.purge_after ?? null,
+    graceDays: row?.grace_days ?? null,
+  }
+}
+
+// Throws on a real failure — a network error is "we could not ask", and the
+// screen has to say that rather than draw either flow.
+export async function getDeletionState() {
+  const { data, error } = await supabase.rpc('account_deletion_state')
+  if (missingRpc(error)) return UNSUPPORTED
+  if (error) throw error
+  return deletionState(data)
+}
+
+export async function requestAccountDeletion() {
+  const { data, error } = await supabase.rpc('request_account_deletion')
+  if (error) throw error
+  return deletionState(data)
+}
+
+export async function cancelAccountDeletion() {
+  const { data, error } = await supabase.rpc('cancel_account_deletion')
+  if (error) throw error
+  return deletionState(data)
+}
+
+// "Your account goes on 21 September" beats a countdown: the date is what a
+// person can act on, and it is read off the server rather than counted down
+// locally, so a phone with a wrong clock cannot invent a deadline.
+//
+// A purge date that has already passed is its own case and must not render as
+// a date in the future or as "any moment now". It means the scheduled job has
+// not run — see operations/schedule_account_purge.sql — and the honest thing
+// is to say it is overdue and leave "Delete now" beside it.
+function startOfDay(t) {
+  const d = new Date(t)
+  d.setHours(0, 0, 0, 0)
+  return d.getTime()
+}
+
+export function describeDeletion(purgeAfter, now = Date.now()) {
+  if (!purgeAfter) return null
+  const when = new Date(purgeAfter).getTime()
+  if (!Number.isFinite(when)) return null
+  if (when <= now) return 'Deletion is overdue — it runs on the next sweep, or you can delete now.'
+  const date = new Date(when).toLocaleDateString(undefined, {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  })
+  // Counted in CALENDAR days, not in elapsed milliseconds, because the two
+  // halves of this sentence have to agree. Flooring the elapsed time turns a
+  // grace period that was just described as seven days into "in 6 days" one
+  // millisecond after it starts; rounding it says "tomorrow" next to a date
+  // that reads as today. Whole days between the two dates says "tomorrow"
+  // exactly when the date printed beside it IS tomorrow's. Rounding the
+  // division absorbs the 23- and 25-hour days at a clock change.
+  const days = Math.round((startOfDay(when) - startOfDay(now)) / 86400000)
+  if (days <= 0) return `Your account is deleted today, on ${date}.`
+  if (days === 1) return `Your account is deleted tomorrow, on ${date}.`
+  return `Your account is deleted in ${days} days, on ${date}.`
+}
+
 // Everything a person can lose in one tap, in the words the confirm step uses.
 // Kept here so the UI and this list cannot drift apart, and so it can be
 // asserted on in a test.

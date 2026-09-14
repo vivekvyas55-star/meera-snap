@@ -40,7 +40,10 @@ vi.mock('../src/lib/billing', () => ({
   runwayLabel: () => null,
 }))
 
-const { listBlocks, getLocationSharing, getStorageUsage, exportMyData, deleteMyAccount } = vi.hoisted(() => ({
+const {
+  listBlocks, getLocationSharing, getStorageUsage, exportMyData, deleteMyAccount,
+  getDeletionState, requestAccountDeletion, cancelAccountDeletion,
+} = vi.hoisted(() => ({
   listBlocks: vi.fn(async () => []),
   getLocationSharing: vi.fn(async () => null),
   getStorageUsage: vi.fn(async () => ({
@@ -48,6 +51,20 @@ const { listBlocks, getLocationSharing, getStorageUsage, exportMyData, deleteMyA
   })),
   exportMyData: vi.fn(async () => ({ account: { username: 'anna' } })),
   deleteMyAccount: vi.fn(async () => {}),
+  // The database has the grace period unless a test says otherwise.
+  getDeletionState: vi.fn(async () => ({
+    supported: true, pending: false, requestedAt: null, purgeAfter: null, graceDays: 7,
+  })),
+  requestAccountDeletion: vi.fn(async () => ({
+    supported: true,
+    pending: true,
+    requestedAt: '2026-09-14T00:00:00Z',
+    purgeAfter: '2026-09-21T00:00:00Z',
+    graceDays: 7,
+  })),
+  cancelAccountDeletion: vi.fn(async () => ({
+    supported: true, pending: false, requestedAt: null, purgeAfter: null, graceDays: 7,
+  })),
 }))
 
 vi.mock('../src/lib/privacy', async (importOriginal) => ({
@@ -60,6 +77,9 @@ vi.mock('../src/lib/privacy', async (importOriginal) => ({
   getStorageUsage,
   exportMyData,
   deleteMyAccount,
+  getDeletionState,
+  requestAccountDeletion,
+  cancelAccountDeletion,
   downloadJson: vi.fn(),
 }))
 
@@ -183,22 +203,106 @@ test('sessions admit what a browser client cannot do, and offer what it can', as
   expect(screen.getByText('This device')).toBeTruthy()
 })
 
-test('deleting an account needs the username typed, and names what goes', async () => {
+test('deleting an account is scheduled, needs the username typed, and names what goes', async () => {
   render(<AccountData username="anna" />)
-  fireEvent.click(screen.getByText('Delete my account'))
-  const confirm = await screen.findByText('Delete forever')
+  fireEvent.click(await screen.findByText('Delete my account'))
+  const confirm = await screen.findByText('Schedule deletion')
   expect(confirm.disabled).toBe(true)
 
-  // The line people do not expect: messages are stored once per pair, so the
+  // The line people do not expect, and it has to come BEFORE the confirmation
+  // rather than after it: messages are stored once per pair, so the
   // conversation goes for the other person too.
   expect(document.body.textContent).toMatch(/for the other person/i)
 
   fireEvent.change(screen.getByLabelText('Type your username to confirm deletion'), {
     target: { value: 'anna' },
   })
+  await waitFor(() => expect(screen.getByText('Schedule deletion').disabled).toBe(false))
+  fireEvent.click(screen.getByText('Schedule deletion'))
+  await waitFor(() => expect(requestAccountDeletion).toHaveBeenCalled())
+  // Nothing is destroyed on the spot any more.
+  expect(deleteMyAccount).not.toHaveBeenCalled()
+})
+
+test('a scheduled deletion shows the date, says the app keeps working, and can be called off', async () => {
+  getDeletionState.mockResolvedValueOnce({
+    supported: true,
+    pending: true,
+    requestedAt: '2026-09-14T00:00:00Z',
+    purgeAfter: new Date(Date.now() + 3 * 86400000).toISOString(),
+    graceDays: 7,
+  })
+  render(<AccountData username="anna" />)
+  await screen.findByText('Deletion is scheduled.')
+  const copy = document.body.textContent
+  // A date, not a countdown the phone invents for itself.
+  expect(copy).toMatch(/deleted in 3 days, on /i)
+  // The two things a pending account has to be unambiguous about: it still
+  // works, and the other person has not been told.
+  expect(copy).toMatch(/your account works normally/i)
+  expect(copy).toMatch(/friends aren't told/i)
+
+  fireEvent.click(screen.getByText('Keep my account'))
+  await waitFor(() => expect(cancelAccountDeletion).toHaveBeenCalled())
+  await screen.findByText('Delete my account')
+})
+
+test('a stalled purge job reads as overdue, with the immediate delete still beside it', async () => {
+  // Without the cron job in operations/schedule_account_purge.sql the row sits
+  // there forever. The worst available outcome on this control is a screen
+  // that quietly shows a date in the past while the account is still live.
+  getDeletionState.mockResolvedValueOnce({
+    supported: true,
+    pending: true,
+    requestedAt: '2026-09-01T00:00:00Z',
+    purgeAfter: new Date(Date.now() - 86400000).toISOString(),
+    graceDays: 7,
+  })
+  render(<AccountData username="anna" />)
+  await screen.findByText(/Deletion is overdue/i)
+  expect(screen.getByText('Delete now instead')).toBeTruthy()
+})
+
+test('a database without the grace period offers the delete it actually has', async () => {
+  // 202609140037 is shelved, so production answers PGRST202 for
+  // account_deletion_state(). The screen must fall back to the immediate
+  // delete rather than drawing a Schedule button that would 404.
+  getDeletionState.mockResolvedValueOnce({ supported: false, pending: false })
+  render(<AccountData username="anna" />)
+  expect(await screen.findByText(/there is no grace period/i)).toBeTruthy()
+  fireEvent.click(screen.getByText('Delete my account'))
+  fireEvent.change(await screen.findByLabelText('Type your username to confirm deletion'), {
+    target: { value: 'anna' },
+  })
   await waitFor(() => expect(screen.getByText('Delete forever').disabled).toBe(false))
   fireEvent.click(screen.getByText('Delete forever'))
   await waitFor(() => expect(deleteMyAccount).toHaveBeenCalled())
+  expect(requestAccountDeletion).not.toHaveBeenCalled()
+})
+
+test('a failed check is not drawn as "nothing is scheduled"', async () => {
+  // The seventh instance of this bug class would have been the worst one: a
+  // user who has already asked to be deleted, shown a screen offering to
+  // delete them, because the read failed. No delete control at all until we
+  // know which state we are in.
+  getDeletionState.mockRejectedValueOnce(new Error('Network unreachable'))
+  render(<AccountData username="anna" />)
+  await screen.findByText("Couldn't check your account")
+  expect(screen.getByText('Network unreachable')).toBeTruthy()
+  expect(screen.queryByText('Delete my account')).toBeNull()
+  expect(screen.queryByText('Keep my account')).toBeNull()
+  expect(screen.getByText('Try again')).toBeTruthy()
+})
+
+test('the export says what is NOT in the file, not only what is', async () => {
+  // The exclusions are a deliberate decision about other people's privacy, so
+  // they are stated on the screen rather than discovered by opening the file.
+  render(<AccountData username="anna" />)
+  await screen.findByText("What's in the file, and what isn't")
+  const copy = document.body.textContent
+  expect(copy).toMatch(/Messages anyone sent you\. Those are theirs/i)
+  expect(copy).toMatch(/photos, videos and voice recordings themselves/i)
+  expect(copy).toMatch(/one-way hashes/i)
 })
 
 test('storage usage is shown, and a missing RPC shows nothing rather than zero', async () => {
@@ -212,4 +316,36 @@ test('storage usage is shown, and a missing RPC shows nothing rather than zero',
   getStorageUsage.mockRejectedValueOnce(new Error('function does not exist'))
   render(<StorageUsage />)
   await waitFor(() => expect(screen.queryByText('Storage')).toBeNull())
+})
+
+test('the screen says what Meera can and cannot tell about screenshots', async () => {
+  // The app SHOWS a screenshot mark (lib/status.js, and the 📸 in Chat and
+  // Stories) and nothing anywhere said how weak that signal is. The inverse is
+  // what people act on, so the absence of a mark has to be addressed in as many
+  // words — and it has to be visible, not folded inside the disclosure.
+  render(<Profile onBack={() => {}} />)
+  const heading = await screen.findByText('Screenshots')
+  const visible = heading.parentElement.textContent
+  expect(visible).toMatch(/no mark does not mean nobody did/i)
+  expect(visible).toMatch(/often can't tell/i)
+  // And it must never be sold as a guarantee — ephemerality here is a UI
+  // contract, not a security property.
+  const all = document.body.textContent
+  expect(all).toMatch(/promise about how Meera behaves/i)
+  expect(all).not.toMatch(/screenshots are blocked|cannot be screenshotted/i)
+})
+
+test('a failed friends read does not tell you there is nobody to block', async () => {
+  // The eighth instance of the bug class, found in the component the seventh
+  // was found in: `friends` started as [] and the catch left it as [], so a
+  // request that never came back rendered as "No friends left to block" — an
+  // answer about who you are able to protect yourself from.
+  const { default: BlockedContacts } = await import('../src/components/BlockedContacts')
+  const { listFriendsWithProfiles } = await import('../src/lib/db')
+  listFriendsWithProfiles.mockRejectedValueOnce(new Error('Network unreachable'))
+  render(<BlockedContacts me="u-anna" />)
+  fireEvent.click(await screen.findByText('Block someone'))
+  await screen.findByText("Couldn't load your friends")
+  expect(screen.queryByText('No friends left to block.')).toBeNull()
+  expect(screen.getByText('Try again')).toBeTruthy()
 })

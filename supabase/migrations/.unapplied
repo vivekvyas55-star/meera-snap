@@ -10,3 +10,10 @@
 #
 # Remove the line in the same change that applies the migration.
 202609090026_intimate_games
+# 202609140037 adds the deletion grace period and two tables to the export.
+# Shelved because it has not been applied by hand yet and must not be counted
+# against production until it is: AccountData falls back to the immediate
+# delete when account_deletion_state() answers PGRST202, so the screen is
+# correct either way. Apply it, schedule operations/schedule_account_purge.sql
+# separately, then remove this line.
+202609140037_deletion_grace

@@ -619,6 +619,80 @@ assert.equal(Number(wider.projected_daily_egress)-Number(wider.snap_bytes),10000
 assert.equal((await query('select count(*)::int n from ops_metrics'))[0].n,1)
 await asUser(B,()=>assert.rejects(query('select * from ops_metrics'),/permission denied/))
 console.log('PASS egress projection counts a story once per friend, and is idempotent per day')
+// --- Scheduled deletion (202609140037) -----------------------------------
+// A grace period is only a grace period if the client cannot choose its own
+// purge_after: a timestamp in the past is an instant delete with no
+// confirmation step, and one a century out is a row that never fires. So the
+// table takes no writes at all and the RPCs are the only way in.
+await asUser(A,async()=>{
+ const idle=(await query('select * from account_deletion_state()'))[0]
+ assert.equal(idle.pending,false)
+ assert.equal(idle.purge_after,null)
+ assert.equal(idle.grace_days,7)
+ await assert.rejects(query('insert into deletion_requests(user_id,purge_after) values($1,now())',[A]),/permission denied/)
+ await assert.rejects(query('update deletion_requests set purge_after=now()'),/permission denied/)
+ await assert.rejects(query('delete from deletion_requests'),/permission denied/)
+ // And neither half of the purge is reachable from a signed-in caller —
+ // purge_account(uuid) with somebody else's id would be a deletion oracle for
+ // the whole project.
+ assert.equal((await query("select has_function_privilege('authenticated','public.purge_account(uuid)','execute') ok"))[0].ok,false)
+ assert.equal((await query("select has_function_privilege('authenticated','public.purge_due_accounts()','execute') ok"))[0].ok,false)
+})
+await db.exec('begin')
+await asUser(A,async()=>{
+ const asked=(await query('select * from request_account_deletion()'))[0]
+ assert.equal(asked.pending,true)
+ assert.ok(new Date(asked.purge_after)-new Date(asked.requested_at)>=6.9*86400000)
+ // A second tap must return the clock that is already running. Extending it
+ // silently would move a deadline somebody is relying on, and a do-update
+ // would let a repeat SHORTEN one.
+ const again=(await query('select * from request_account_deletion()'))[0]
+ assert.equal(new Date(again.purge_after).getTime(),new Date(asked.purge_after).getTime())
+ assert.equal((await query('select count(*)::int n from deletion_requests'))[0].n,1)
+})
+// Own row only. A pending deletion is nobody else's business — least of all
+// the friend whose conversation it would take with it.
+await asUser(B,async()=>{
+ assert.equal((await query('select count(*)::int n from deletion_requests'))[0].n,0)
+ assert.equal((await query('select pending from account_deletion_state()'))[0].pending,false)
+})
+await asUser(A,async()=>{
+ assert.equal((await query('select pending from cancel_account_deletion()'))[0].pending,false)
+})
+assert.equal((await query('select count(*)::int n from deletion_requests'))[0].n,0)
+await db.exec('rollback')
+// The job half. Without it the row sits there forever while the screen shows a
+// date in the past, so it is worth proving it actually takes the account.
+await db.exec('begin')
+await db.query("insert into public.deletion_requests(user_id,requested_at,purge_after) values($1,now()-interval '2 days',now()-interval '1 day')",[C])
+await db.query("insert into public.deletion_requests(user_id,requested_at,purge_after) values($1,now(),now()+interval '7 days')",[B])
+assert.equal((await query('select purge_due_accounts() n'))[0].n,1)
+assert.equal((await query('select count(*)::int n from auth.users where id=$1',[C]))[0].n,0)
+assert.equal((await query('select count(*)::int n from public.profiles where id=$1',[C]))[0].n,0)
+// The one that is not due yet is untouched, and a purged account leaves no
+// request behind for the next pass to trip over.
+assert.equal((await query('select count(*)::int n from public.deletion_requests'))[0].n,1)
+assert.equal((await query('select count(*)::int n from auth.users where id=$1',[B]))[0].n,1)
+await db.exec('rollback')
+console.log('PASS a deletion is scheduled, cannot be hand-dated, and the due sweep takes exactly the due account')
+// The export's scope is a claim about other people's privacy, so the two rows
+// that are unambiguously the caller's own writing had to stop being missing —
+// without any of the other person's half arriving with them.
+await db.query("insert into public.scrapbook_items(user_a,user_b,author,kind,body,on_date) values($1,$2,$1,'note','mine',current_date),($1,$2,$2,'note','theirs',current_date)",[A,B])
+await asUser(A,async()=>{
+ const dump=(await query('select export_my_data() d'))[0].d
+ assert.ok(dump.scrapbook_items.length>0)
+ assert.ok(dump.scrapbook_items.every((x)=>x.author===A))
+ assert.ok(dump.scrapbook_items.some((x)=>x.body==='mine'))
+ assert.ok(!dump.scrapbook_items.some((x)=>x.body==='theirs'))
+ assert.ok(Array.isArray(dump.together_optin))
+ // The deliberate exclusions, still excluded, and still stated in the file.
+ assert.equal(dump.pair_questions,undefined)
+ assert.ok(dump.messages_sent.every((m)=>m.sender_id===A))
+ assert.ok(dump.notes.some((n)=>/Questions of the day are not included/.test(n)))
+ assert.ok(dump.notes.some((n)=>/Messages other people sent you are not included/.test(n)))
+})
+console.log('PASS the export gains your own scrapbook entries and still holds nobody elses words')
 // The drift check is only worth having if the version it reports is the real
 // newest one and a client can actually ask for it.
 const newest=fs.readdirSync('supabase/migrations').filter((f)=>f.endsWith('.sql')).sort().at(-1).replace(/\.sql$/,'')
