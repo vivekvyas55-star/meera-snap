@@ -43,6 +43,13 @@ import HeartBurst from '../components/HeartBurst'
 import Confirm from '../components/Confirm'
 import { ArrowIcon, BackIcon, CalendarIcon, ChatIcon, CheckIcon, ChevronIcon, CloseIcon, FlameIcon, ForwardIcon, GridIcon, HeartIcon, ImageIcon, LockIcon, MicIcon, GameIcon, PhoneIcon, PlayIcon, PlusIcon, ReplyIcon, SaveIcon, SmileyIcon, VideoIcon } from '../components/Icons'
 import { useAudioRecorder } from '../hooks/useAudioRecorder'
+import {
+  ScheduleButton,
+  ScheduleComposeSheet,
+  ScheduledBar,
+  ScheduledListSheet,
+} from '../components/ScheduledMessages'
+import { cancelScheduled, loadScheduled, scheduleMessage } from '../lib/scheduled'
 import { useCall } from '../hooks/useCall'
 import QuestionCards from '../components/QuestionCards'
 
@@ -152,6 +159,12 @@ export default function Chat({ friend, onBack, onOpenPlay }) {
   const loadingOlderRef = useRef(false)
   const [loadingOlder, setLoadingOlder] = useState(false)
   const [pending, setPending] = useState(() => { try { return outboxFor(me, friend.id) } catch { return [] } }) // offline outbox
+  // Scheduled messages. `undefined` until the first load has answered, then the
+  // discriminated result loadScheduled() returns — never a bare array, because
+  // "you have nothing scheduled" is a claim someone reschedules on.
+  const [sched, setSched] = useState(undefined)
+  const [schedList, setSchedList] = useState(false)   // the "waiting to send" sheet
+  const [schedCompose, setSchedCompose] = useState(null) // the text being scheduled
   const recTimer = useRef(null)
   const { recording, start: startRec, stop: stopRec } = useAudioRecorder()
 
@@ -295,6 +308,31 @@ export default function Chat({ friend, onBack, onOpenPlay }) {
   useEffect(() => {
     getAnniversary(me, friend.id).then(setAnniv).catch(() => {})
   }, [me, friend.id])
+
+  // loadScheduled never rejects — it answers with its own state — so there is
+  // no .catch here to accidentally turn a failure into an empty list. The
+  // counter is the same guard load() uses: a poll, a cancel and a conversation
+  // switch can all be in flight at once, and the slowest must not win.
+  const schedReq = useRef(0)
+  const refreshSched = useCallback(() => {
+    const req = ++schedReq.current
+    loadScheduled(me, friend.id).then((r) => { if (req === schedReq.current) setSched(r) })
+  }, [me, friend.id])
+  useEffect(() => { refreshSched() }, [refreshSched])
+
+  // Poll ONLY while something is actually pending, so a conversation with
+  // nothing scheduled costs exactly one query per open. A row disappears the
+  // minute the cron delivers it and the bar has to stop claiming otherwise.
+  const pendingCount = sched?.state === 'ok' ? sched.rows.length : 0
+  useEffect(() => {
+    if (pendingCount === 0) return undefined
+    const iv = setInterval(refreshSched, 30000)
+    return () => clearInterval(iv)
+  }, [pendingCount, refreshSched])
+
+  // Cancelling the last one, or the cron delivering it, leaves the sheet with
+  // nothing in it. Close it rather than showing an empty dialog.
+  useEffect(() => { if (pendingCount === 0) setSchedList(false) }, [pendingCount])
 
   useEffect(() => {
     const iv = setInterval(() => tick((n) => n + 1), 30000)
@@ -626,6 +664,12 @@ export default function Chat({ friend, onBack, onOpenPlay }) {
         </button>
       )}
 
+      <ScheduledBar
+        result={sched}
+        onOpen={() => setSchedList(true)}
+        onRetry={refreshSched}
+      />
+
       {replyingTo && (
         <div className="reply-bar">
           <div className="reply-bar-text">
@@ -690,9 +734,15 @@ export default function Chat({ friend, onBack, onOpenPlay }) {
           />
           {/* Sticker picker + voice note when the field is empty; send arrow when typing. */}
           {draft.trim() ? (
-            <button className="circle dark" type="submit" aria-label="Send">
-              <ArrowIcon />
-            </button>
+            <>
+              <ScheduleButton
+                result={sched}
+                onClick={() => setSchedCompose(draft.trim())}
+              />
+              <button className="circle dark" type="submit" aria-label="Send">
+                <ArrowIcon />
+              </button>
+            </>
           ) : (
             <>
               <button type="button" className="circle filled" onClick={() => setStickers(true)} aria-label="Stickers">
@@ -808,6 +858,46 @@ export default function Chat({ friend, onBack, onOpenPlay }) {
 
       {forwardMsg && (
         <ForwardSheet me={me} message={forwardMsg} onClose={() => setForwardMsg(null)} />
+      )}
+
+      {schedCompose !== null && (
+        <ScheduleComposeSheet
+          friendName={friendName}
+          body={schedCompose}
+          pendingCount={pendingCount}
+          onClose={() => setSchedCompose(null)}
+          onSchedule={async (date, time) => {
+            await scheduleMessage(friend.id, schedCompose, date, time)
+            setSchedCompose(null)
+            setDraft('')
+            setTyping(false)
+            toast('Scheduled')
+            refreshSched()
+          }}
+        />
+      )}
+
+      {schedList && sched?.state === 'ok' && sched.rows.length > 0 && (
+        <ScheduledListSheet
+          rows={sched.rows}
+          friendName={friendName}
+          onClose={() => setSchedList(false)}
+          onCancel={async (id) => {
+            try {
+              await cancelScheduled(id)
+              // Drop it locally as well as refetching: the sheet closes itself
+              // when the last row goes, and waiting a round trip to do that
+              // leaves a row on screen that has already been deleted.
+              setSched((cur) => (cur?.state === 'ok'
+                ? { ...cur, rows: cur.rows.filter((r) => r.id !== id) }
+                : cur))
+              toast('Cancelled')
+            } catch (err) {
+              toast(err.message)
+            }
+            refreshSched()
+          }}
+        />
       )}
     </div>
   )

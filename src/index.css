@@ -312,7 +312,9 @@
 .pc-hero,
 .pc-card.lavender,
 .pc-card.lime,
-.pc-card.coral {
+.pc-card.coral,
+.sched-bar,
+.sched-disclose {
   --ink: #16161a;
   /* 0.62 left the sub-line on a lavender card at 3.7:1. */
   --muted: rgba(22, 22, 26, 0.72);
@@ -2506,4 +2508,105 @@ button:disabled { cursor: not-allowed; }
   background: var(--bg);
   overflow-y: auto;
   overscroll-behavior: contain;
+}
+
+/* ==========================================================================
+   Scheduled messages (components/ScheduledMessages.jsx)
+
+   The strip sits in .composer-wrap above the reply bar, so it stacks with the
+   "N new messages" pill rather than picking its own offset — the lesson from
+   NotificationStack, applied one layer down.
+   ========================================================================== */
+.sched-bar {
+  display: flex; align-items: center; gap: var(--sp-2);
+  width: calc(100% - 20px); margin: 0 10px var(--sp-1);
+  padding: var(--sp-2) 14px;
+  background: var(--lavender); border-radius: var(--r-row);
+  font-size: var(--fs-meta); text-align: left;
+}
+/* The "we couldn't check" row is a SEPARATE class, not a .sched-bar modifier.
+   It sits on the themed --card rather than lavender, so it must not be in the
+   fixed-light list — a modifier would have inherited the pinned ink, muted and
+   accent from its base class and rendered near-black on near-black at night,
+   which is exactly the .fp-stat bug one selector further down the page. */
+.sched-unknown {
+  display: flex; align-items: center; gap: var(--sp-2);
+  width: calc(100% - 20px); margin: 0 10px var(--sp-1);
+  padding: var(--sp-2) 14px;
+  background: var(--card); border-radius: var(--r-row);
+  font-size: var(--fs-meta); text-align: left; color: var(--ink);
+}
+.sched-unknown .sched-bar-text { flex: 1; min-width: 0; }
+.sched-bar-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sched-bar-more { font-weight: 600; flex: 0 0 auto; }
+
+.sched-title {
+  margin: var(--sp-3) 0 var(--sp-1) var(--sp-1);
+  font-size: var(--fs-h1); font-weight: 300; letter-spacing: -0.03em;
+}
+.sched-sub {
+  margin: 0 0 var(--sp-4) var(--sp-1);
+  font-size: var(--fs-sm); color: var(--muted);
+}
+.sched-preview {
+  padding: var(--sp-3) var(--sp-4); margin-bottom: var(--sp-4);
+  background: var(--card); border-radius: var(--r-row);
+  font-size: var(--fs-body); line-height: 1.45;
+  max-height: 96px; overflow-y: auto; overflow-wrap: anywhere;
+}
+.sched-label {
+  display: block; margin: 0 0 var(--sp-2) var(--sp-1);
+  font-size: var(--fs-eyebrow); letter-spacing: 0.09em; text-transform: uppercase;
+  color: var(--muted);
+}
+.sched-days {
+  display: flex; gap: var(--sp-2); margin-bottom: var(--sp-4);
+  overflow-x: auto; padding-bottom: var(--sp-1);
+  scrollbar-width: none;
+}
+.sched-days::-webkit-scrollbar { display: none; }
+.sched-day {
+  flex: 0 0 auto; padding: var(--sp-2) 14px;
+  background: var(--card); border-radius: var(--r-pill);
+  font-size: var(--fs-meta); color: var(--ink); white-space: nowrap;
+}
+.sched-day.on { background: var(--action); color: var(--action-ink); }
+.sched-time {
+  width: 100%; border: none; border-radius: var(--r-row);
+  /* 16px minimum, or iOS zooms the whole sheet on focus. */
+  padding: var(--sp-3) var(--sp-4); font-size: 16px;
+  background: var(--card); color: var(--ink); outline: none;
+  font-family: var(--font);
+}
+.sched-when {
+  margin: var(--sp-2) 0 var(--sp-4) var(--sp-1);
+  font-size: var(--fs-meta); color: var(--muted);
+}
+
+/* THE DISCLOSURE. A full lime card, not a footnote: this is the one message in
+   Meera that does not behave like the rest and the person choosing it has to be
+   able to read that without opening anything. */
+.sched-disclose {
+  margin: 0 0 var(--sp-4);
+  padding: var(--sp-4);
+  background: var(--lime); border-radius: var(--r-card);
+  font-size: var(--fs-sm); line-height: 1.5; color: var(--ink);
+}
+.sched-error {
+  margin: 0 0 var(--sp-3) var(--sp-1);
+  font-size: var(--fs-meta); color: var(--coral); font-weight: 500;
+}
+.sched-row {
+  display: flex; align-items: center; gap: var(--sp-3);
+  padding: var(--sp-3) 0; border-bottom: 1px solid var(--hairline);
+}
+.sched-row:last-of-type { border-bottom: none; }
+.sched-row-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.sched-row-when {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: var(--fs-meta); color: var(--accent); font-weight: 600;
+}
+.sched-row-body {
+  font-size: var(--fs-sm); color: var(--muted);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }

@@ -76,8 +76,15 @@ Status as of **9 Sep 2026**. `CLAUDE.md` says how things work; this says what is
 **Together layer**
 - [ ] Timeline, milestones, scrapbook, pinned voice notes, anniversary cards,
       "On this day", a consistent "Private to you both" badge.
-- [ ] Scheduled messages — **needs a decision**; plaintext for days in an app that
-      clears chats after three visits.
+- [x] Scheduled messages — **decided 15 Sep 2026** and built. Server-side
+      plaintext, 7-day horizon in a CHECK, sender-only RLS, no media, exempt
+      from the 3-day backup, cancelled on unfriend and on block, capped at 20
+      per sender, disclosed in plain words in the compose sheet. Device-local
+      was rejected (it fails silently, and localStorage behind a public default
+      passcode is not more private); encryption was rejected (no key
+      infrastructure — claiming it would be a claim the code does not back).
+      **Migration `202609150040` is shelved**; applying it is a retention
+      decision and the cron in `operations/` has to go with it. See CLAUDE.md.
 
 **Play**
 - [ ] Connect Four (first — proves the pattern generalises), Checkers, Word Duel,
@@ -183,8 +190,11 @@ the ones marked fixed were removed rather than left ticked.
 | — | `stories.thumb_path` drafted, unapplied; without it an unseen story can never have a real preview. | — |
 
 ## Needing a decision from the owner, not a fix
-- **Scheduled surprise messages** — plaintext for days, in an app that clears
-  chats after three visits. Raised three times.
+- **Scheduled surprise messages** — *decided and built, 15 Sep 2026.* What is
+  left is one deliberate act: apply `202609150040_scheduled_messages.sql`, then
+  `operations/schedule_scheduled_messages.sql` standalone, and take the id out
+  of `.unapplied` in the same change. Until then the client hides the feature
+  rather than failing at it.
 - **Push-delivery logs** — exactly the metadata the push function keeps none of.
 - **End-to-end encryption** — the real gap behind "super safe". Message bodies
   are plaintext in Postgres today.

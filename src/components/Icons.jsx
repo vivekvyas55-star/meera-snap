@@ -355,3 +355,10 @@ export const GamepadIcon = (p) => (
     <path d="M15.4 11.4h.01M17.6 13.4h.01" />
   </svg>
 )
+
+export const ClockIcon = (p) => (
+  <svg {...base} {...p}>
+    <circle cx="12" cy="12" r="8.5" />
+    <path d="M12 7.2V12l3.2 2" />
+  </svg>
+)
