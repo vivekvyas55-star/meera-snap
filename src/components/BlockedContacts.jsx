@@ -26,7 +26,12 @@ export default function BlockedContacts({ me }) {
   // — a claim about your safety that the app had no basis for.
   const [blocked, setBlocked] = useState(null)
   const [loadError, setLoadError] = useState(null)
-  const [friends, setFriends] = useState([])
+  // Same three states again, for the same reason. This one was still wrong:
+  // friends started as [] and a failed fetch left it as [], so the picker told
+  // you "No friends left to block" — an answer about who you can protect
+  // yourself from, produced by a request that never came back.
+  const [friends, setFriends] = useState(null)
+  const [friendsError, setFriendsError] = useState(null)
   const [picking, setPicking] = useState(false)
   const [confirmTarget, setConfirmTarget] = useState(null)
   const save = useSaveState()
@@ -41,12 +46,21 @@ export default function BlockedContacts({ me }) {
 
   const retry = useCallback(() => { setLoadError(null); setBlocked(null); load() }, [load])
 
+  const loadFriends = useCallback(() => {
+    setFriendsError(null)
+    setFriends(null)
+    return listFriendsWithProfiles(me)
+      .then((rows) => setFriends(rows.filter((r) => r.status === 'accepted')))
+      .catch((err) => {
+        setFriends(null)
+        setFriendsError(err?.message || 'Could not reach the server')
+      })
+  }, [me])
+
   useEffect(() => {
     load()
-    listFriendsWithProfiles(me)
-      .then((rows) => setFriends(rows.filter((r) => r.status === 'accepted')))
-      .catch(() => {})
-  }, [me, load])
+    loadFriends()
+  }, [load, loadFriends])
 
   const doBlock = async (profile) => {
     setConfirmTarget(null)
@@ -54,7 +68,7 @@ export default function BlockedContacts({ me }) {
     await save.run(async () => {
       await blockUser(profile.id)
       await load()
-      setFriends((rows) => rows.filter((r) => r.profile.id !== profile.id))
+      setFriends((rows) => (rows ?? []).filter((r) => r.profile.id !== profile.id))
     })
   }
 
@@ -67,7 +81,7 @@ export default function BlockedContacts({ me }) {
 
   const rows = blocked ?? []
   const blockedIds = new Set(rows.map((b) => b.user_id))
-  const candidates = friends.filter((f) => !blockedIds.has(f.profile.id))
+  const candidates = (friends ?? []).filter((f) => !blockedIds.has(f.profile.id))
 
   return (
     <>
@@ -130,7 +144,19 @@ export default function BlockedContacts({ me }) {
               Only people you're friends with are listed — a stranger already can't reach you.
             </div>
             <div className="pc-picker">
-              {candidates.length === 0 && (
+              {friends === null && !friendsError && (
+                <div className="pc-empty pc-loading">Loading your friends…</div>
+              )}
+              {friendsError && (
+                <div className="pc-fail" role="alert">
+                  <div className="pc-fail-text">
+                    <strong>Couldn't load your friends</strong>
+                    <span>{friendsError}</span>
+                  </div>
+                  <button className="pc-retry" onClick={loadFriends}>Try again</button>
+                </div>
+              )}
+              {friends !== null && candidates.length === 0 && (
                 <div className="pc-empty">No friends left to block.</div>
               )}
               {candidates.map(({ profile }) => (

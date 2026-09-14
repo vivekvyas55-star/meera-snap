@@ -661,3 +661,29 @@
 .pc-drawer > label.pc-label { padding: 0 var(--sp-4); }
 .pc-drawer > input[type="range"] { width: calc(100% - var(--sp-5)) !important; margin: 0 var(--sp-4) var(--sp-4); }
 @media (prefers-reduced-motion: reduce) { .pc-drawer-chev { transition: none; } }
+
+/* --------------------------------------------------------------------------
+   The pending-deletion banner. Coral, like the default-passcode warning and
+   like every other danger on this screen — but it is a STATUS, not a control,
+   so it carries no button of its own and the two real choices sit under it
+   with their normal weights: an ink outline to keep the account, a coral
+   outline to go now.
+
+   Its selector is in the fixed-light context list in index.css. A vibrant fill
+   that contains words has to be, or in dark mode the ink under it stays near
+   white and the whole banner reads as a smear — which is exactly how .fp-stat
+   ended up unreadable at night.
+   -------------------------------------------------------------------------- */
+.pc-pending {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: var(--sp-3);
+  background: var(--coral);
+  color: var(--ink);
+  border-radius: var(--r-card);
+  padding: var(--sp-4);
+  font-size: var(--fs-meta);
+  line-height: 1.45;
+}
+.pc-pending strong { font-weight: 650; }

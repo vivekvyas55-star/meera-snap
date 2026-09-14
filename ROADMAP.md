@@ -45,6 +45,11 @@ Status as of **9 Sep 2026**. `CLAUDE.md` says how things work; this says what is
 - [x] Chat rows carry one signal, not nine.
 - [x] Stories / Camera / Map polish.
 - [x] Privacy Centre — Profile grouped into six sections.
+- [x] Screenshot limits said plainly — the app shows a screenshot mark and never
+      said how weak the signal is. "No mark does not mean nobody did."
+- [x] The export names what it leaves out, on screen, and stopped omitting your
+      own scrapbook entries.
+- [x] A failed deletion check no longer reads as "nothing is scheduled".
 
 ---
 
@@ -58,6 +63,11 @@ Status as of **9 Sep 2026**. `CLAUDE.md` says how things work; this says what is
       Just us, plus a neutral chip in the conversation). `202609090026` is still
       in `.unapplied`, so the feature hides itself in production until it is
       applied. Applying it means removing that line in the same change.
+- [ ] **Account deletion grace period** — `202609140037_deletion_grace.sql` is
+      written, tested against PGlite and **shelved** (`migrations/.unapplied`).
+      Apply it by hand, then schedule `operations/schedule_account_purge.sql`
+      separately, then remove the `.unapplied` line. Until then the screen falls
+      back to the immediate delete, which is correct, not broken.
 - [ ] Profile UI/UX design pass — structure is right, visual pass is not done.
 - [ ] Market decoy depth — India/US, Watchlist/Orders/Funds/Research, market-hours clock.
 
@@ -105,6 +115,20 @@ Status as of **9 Sep 2026**. `CLAUDE.md` says how things work; this says what is
       infrastructure — claiming it would be a claim the code does not back).
       **Migration `202609150040` is shelved**; applying it is a retention
       decision and the cron in `operations/` has to go with it. See CLAUDE.md.
+- [ ] Media in the export — **needs a decision, and it is the owner's.** An
+      outside plan asked for "metadata by default, explicit opt-in for media".
+      The opt-in half would reverse a deliberate call: messages and media other
+      people sent are excluded because they are the sender's and ephemerality is
+      a promise made on their behalf. Your OWN media is a narrower question (it
+      is yours, but it is also the egress bill and a permanent copy of things
+      the app tells people will disappear) and is not built either way.
+- [ ] `pair_questions` in the export — one row holds your question and their
+      answer, so exporting it exports their words. Stated in the file's notes
+      rather than silently dropped; splitting the row needs a decision.
+- [ ] Per-device session revocation — **no underlying capability.** Supabase
+      gives a browser client no session list and no per-session revoke. The
+      device list plus `signOut({ scope: 'global' })` is the honest maximum and
+      is already built; do not add a revoke button.
 
 **Play**
 - [ ] Connect Four (first — proves the pattern generalises), Checkers, Word Duel,

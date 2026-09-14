@@ -41,9 +41,10 @@ export default function ActiveSessions() {
   const load = useCallback(() => {
     setLoadError(null)
     setDevices(null)
-    // Record before listing, so this device is in the list it is looking at
-    // rather than appearing only on the second visit. See the note in
-    // lib/devices.js about why this cannot happen at sign-in yet.
+    // trackDeviceSessions() already records on SIGNED_IN / TOKEN_REFRESHED
+    // from App.jsx's module scope, so a browser is in this list from the moment
+    // it signs in. Recording again here is belt and braces for the one case
+    // that misses: a session restored before the listener was installed.
     trackDeviceSessions()
     return recordThisDevice()
       .catch(() => {})
@@ -69,7 +70,7 @@ export default function ActiveSessions() {
   return (
     <>
       <div className="pc-label-row">
-        <div className="pc-label">Where you're signed in</div>
+        <div className="pc-label">Browsers that have signed in</div>
         {devices ? (
           <span className="pc-chip">
             {rows.length} device{rows.length === 1 ? '' : 's'}
@@ -88,8 +89,9 @@ export default function ActiveSessions() {
             pretended otherwise would be worse than not having one.
           </p>
           <p>
-            What you see below is every browser that has opened this screen while signed in — not
-            a list of live sessions, because a browser client cannot be shown one.
+            What you see below is every browser that has signed into this account — not a list
+            of live sessions, because a browser client cannot be shown one. A row does not mean
+            that browser is signed in right now, and removing one does not sign it out.
           </p>
         </div>
       </details>
@@ -110,8 +112,8 @@ export default function ActiveSessions() {
 
       {devices?.length === 0 && (
         <div className="pc-empty">
-          Only this device so far. A browser appears here the first time it opens this screen
-          while signed in.
+          Only this device so far. A browser is added the first time it signs into this
+          account.
         </div>
       )}
 

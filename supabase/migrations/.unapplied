@@ -42,3 +42,10 @@
 # missing RPC apart from a failed one, so on a database without this migration
 # the clock button and the strip simply do not render.
 202609150040_scheduled_messages
+# 202609140037 adds the deletion grace period and two tables to the export.
+# Shelved because it has not been applied by hand yet and must not be counted
+# against production until it is: AccountData falls back to the immediate
+# delete when account_deletion_state() answers PGRST202, so the screen is
+# correct either way. Apply it, schedule operations/schedule_account_purge.sql
+# separately, then remove this line.
+202609140037_deletion_grace
