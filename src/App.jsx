@@ -36,6 +36,7 @@ import { clearHidden, hiddenTooLong, isUnlocked, markHidden, wasHiddenPastGrace 
 import { isCallActive } from './lib/callState'
 import { trackDeviceSessions } from './lib/devices'
 import { installScreenTime, setScreenTimeLocked } from './lib/screenTimeTracker'
+import { installTelemetryFlush } from './lib/telemetry'
 import { useBackLayer } from './hooks/useBackLayer'
 import { signalReceiver } from './lib/privateRealtime'
 
@@ -392,6 +393,11 @@ trackDeviceSessions()
 // number would only ever measure people who opened Settings. It counts nothing
 // until the passcode is lifted — see setScreenTimeLocked below.
 installScreenTime()
+// Module scope for the same reason: the buffer has to be drained when the phone
+// is backgrounded, and a component that mounts late would miss everything
+// recorded before it. PinLock already fires on `hidden` — that is the last
+// moment a mobile page reliably gets.
+installTelemetryFlush()
 
 export default function App() {
   // Keep the focused composer above the on-screen keyboard. Rather than resize

@@ -1,5 +1,11 @@
 import { supabase } from './supabase'
 import { listFriendsWithProfiles } from './db'
+import { recordChannelStatus as trackChannel } from './telemetry'
+
+// Only the topic KIND is ever reported, never the topic. The grammar is
+// `signal:<recipient>:<sender>`, so a topic name is an edge of the social
+// graph — topicKind() in lib/telemetry.js is where that is enforced rather
+// than merely remembered.
 
 // Every topic has one authenticated writer. Never trust a payload's claimed sender.
 export function watchFriends(me, onFriends) {
@@ -13,8 +19,10 @@ export function watchFriends(me, onFriends) {
   }
   refresh()
   const interval = setInterval(refresh, 30000)
-  const ch = supabase.channel(`updates:${me}:${crypto.randomUUID()}`, { config: { private: true } })
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'friendships' }, refresh).subscribe()
+  const topic = `updates:${me}:${crypto.randomUUID()}`
+  const ch = supabase.channel(topic, { config: { private: true } })
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'friendships' }, refresh)
+    .subscribe(status => trackChannel(topic, status))
   return () => { alive = false; clearInterval(interval); supabase.removeChannel(ch) }
 }
 
@@ -28,6 +36,7 @@ export async function sendSignal(from, to, event, payload) {
     const ready = new Promise((resolve, reject) => {
       const timeout = setTimeout(() => reject(new Error('Signaling connection timed out')), 8000)
       ch.subscribe(status => {
+        trackChannel(topic, status)
         if (status === 'SUBSCRIBED') { clearTimeout(timeout); resolve() }
         if (['CHANNEL_ERROR', 'TIMED_OUT', 'CLOSED'].includes(status)) { clearTimeout(timeout); reject(new Error('Signaling unavailable')) }
       })
@@ -93,7 +102,7 @@ export function signalReceiver(me) {
               }
             }
           })
-          ch.subscribe()
+          ch.subscribe(status => trackChannel(`signal:${me}:${friend.id}`, status))
           channels.set(friend.id, ch)
         }
       })

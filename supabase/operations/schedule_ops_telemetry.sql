@@ -1,0 +1,199 @@
+-- Meera production only. Apply AFTER 202609140035_ops_telemetry.sql.
+--
+-- Run standalone in the SQL editor, not batched with a migration: pg_cron
+-- statements have aborted batched transactions on some projects, which is why
+-- every other schedule in this directory is its own file too.
+--
+-- Two jobs. Retention runs nightly; the alert sweep runs every six hours,
+-- because a regression that is only noticed the next morning has already had a
+-- night to happen twice.
+select cron.schedule('meera-ops-telemetry-purge', '20 20 * * *', $job$
+  select public.purge_ops_events();
+$job$);
+
+select cron.schedule('meera-ops-telemetry-alerts', '5 */6 * * *', $job$
+  select * from public.ops_event_alerts();
+$job$);
+
+-- To stop them:
+--   select cron.unschedule('meera-ops-telemetry-purge');
+--   select cron.unschedule('meera-ops-telemetry-alerts');
+--
+-- ===========================================================================
+-- THE DASHBOARD
+-- ===========================================================================
+-- It is these queries, run in the SQL editor. There is no hosted dashboard and
+-- this file does not pretend there is one: the table is readable by nothing
+-- except an operator with SQL access, which is the entire security model, and a
+-- dashboard product would mean shipping this data to a third party — which is
+-- exactly what the design refuses.
+--
+-- READ THIS FIRST, OR EVERY NUMBER BELOW IS WRONG BY A FACTOR OF TWENTY.
+-- `observed` is how many events were reported. `estimated` is those events
+-- scaled back up by their sampling denominator. Realtime JOINS are sampled
+-- 1-in-20 on the client; failures are never sampled. So a rate built from
+-- observed joins and observed drops overstates the drop rate twentyfold. Every
+-- query here uses `estimated`, and so must anything added to it. `observed` is
+-- kept beside it only to show how much evidence a number rests on: an estimate
+-- of 400 from one observation is a single phone, not a trend.
+--
+-- ---------------------------------------------------------------------------
+-- 1. The last two days, everything, most active first. The orientation query.
+-- ---------------------------------------------------------------------------
+--   select source, kind, code, device,
+--          sum(observed)  as observed,
+--          sum(estimated) as estimated
+--     from public.ops_events
+--    where on_hour >= now() - interval '48 hours'
+--    group by 1,2,3,4
+--    order by estimated desc;
+--
+-- ---------------------------------------------------------------------------
+-- 2. Upload failures by surface and device class — the shape of the problem.
+--    A failure concentrated on one device class is a browser bug; one spread
+--    evenly across all of them is ours.
+-- ---------------------------------------------------------------------------
+--   select code, device, sum(estimated) as failures
+--     from public.ops_events
+--    where kind = 'upload_fail' and on_hour >= now() - interval '7 days'
+--    group by 1,2
+--    order by failures desc;
+--
+--    The denominator is deliberately NOT collected from clients — logging every
+--    successful upload would mean recording a beat of each user's activity all
+--    day for a ratio. Use ops_metrics instead, which counts objects that
+--    actually landed, server-side, and was already being collected:
+--
+--   select m.on_date,
+--          m.object_count,
+--          (select sum(e.estimated) from public.ops_events e
+--            where e.kind = 'upload_fail'
+--              and e.on_hour >= m.on_date::timestamptz
+--              and e.on_hour <  m.on_date::timestamptz + interval '1 day') as failures
+--     from public.ops_metrics m
+--    order by m.on_date desc
+--    limit 14;
+--
+--    Approximate, and knowingly so: object_count is a running total of objects
+--    stored rather than a count of attempts, and a retried upload is one object
+--    and two failures. It is a trend line, not a percentage. Treat a doubling
+--    as a signal and a 10% move as noise.
+--
+-- ---------------------------------------------------------------------------
+-- 3. Realtime health, by topic kind. `signal` dying means calls and game moves
+--    stop arriving; `updates` dying means the friend list goes stale. Neither
+--    produces a visible error anywhere in the app.
+-- ---------------------------------------------------------------------------
+--   select date_trunc('day', on_hour) as day,
+--          sum(estimated) filter (where kind = 'realtime_join') as joins,
+--          sum(estimated) filter (where kind = 'realtime_drop') as drops,
+--          round(100.0 * sum(estimated) filter (where kind = 'realtime_drop')
+--                / nullif(sum(estimated), 0), 1) as drop_pct
+--     from public.ops_events
+--    where kind in ('realtime_join','realtime_drop')
+--      and on_hour >= now() - interval '14 days'
+--    group by 1 order by 1 desc;
+--
+--    Split by which topic:
+--
+--   select code, sum(estimated) as n
+--     from public.ops_events
+--    where kind = 'realtime_drop' and on_hour >= now() - interval '7 days'
+--    group by 1 order by n desc;
+--
+-- ---------------------------------------------------------------------------
+-- 4. Push delivery. The one number nobody could see before: how many
+--    notifications the push services actually accepted.
+-- ---------------------------------------------------------------------------
+--   select date_trunc('day', on_hour) as day,
+--          sum(estimated) filter (where kind = 'push_attempt' and code = 'attempted')      as attempted,
+--          sum(estimated) filter (where kind = 'push_outcome' and code = 'delivered')      as delivered,
+--          sum(estimated) filter (where kind = 'push_outcome' and code = 'endpoint_gone')  as pruned,
+--          sum(estimated) filter (where kind = 'push_outcome' and code = 'no_subscription') as no_device,
+--          sum(estimated) filter (where kind = 'push_outcome' and code like 'rejected%')   as rejected
+--     from public.ops_events
+--    where source = 'push' and on_hour >= now() - interval '14 days'
+--    group by 1 order by 1 desc;
+--
+--    `rejected_auth` climbing from zero to everything is the VAPID signature
+--    failing — the classic silent push break, where every send 401s and no
+--    phone ever rings. `invoke_*` codes come from the CLIENT and mean the
+--    function never ran at all, which is a different problem (cold start,
+--    offline, a 500) and must not be read as a delivery failure.
+--
+--   select code, sum(estimated) as n
+--     from public.ops_events
+--    where source = 'client' and kind = 'push_attempt'
+--      and on_hour >= now() - interval '7 days'
+--    group by 1 order by n desc;
+--
+-- ---------------------------------------------------------------------------
+-- 5. Cleanup. ~96 passes a day at every 15 minutes. `ok` should be nearly all
+--    of them, and `objects_removed` should be non-zero on most days — a run of
+--    clean passes that collect nothing means the claim check is refusing
+--    everything, which fills storage just as thoroughly as the job being down.
+-- ---------------------------------------------------------------------------
+--   select date_trunc('day', on_hour) as day,
+--          sum(estimated) filter (where code = 'ok')              as ok,
+--          sum(estimated) filter (where code = 'partial')         as partial,
+--          sum(estimated) filter (where code = 'failed')          as failed,
+--          sum(estimated) filter (where code = 'purge_failed')    as purge_failed,
+--          sum(estimated) filter (where code = 'objects_removed') as objects_removed
+--     from public.ops_events
+--    where source = 'cleanup' and on_hour >= now() - interval '14 days'
+--    group by 1 order by 1 desc;
+--
+-- ===========================================================================
+-- ALERT THRESHOLDS
+-- ===========================================================================
+-- Encoded in public.ops_event_alerts(), which the cron above runs every six
+-- hours. Each one raises a WARNING into the Postgres log — the only channel
+-- this database has that reaches a human without the app being open — and
+-- returns a row, so it can also be run by hand:
+--
+--   select * from public.ops_event_alerts();
+--
+--   realtime_drops_exceed_joins  drops > joins over 24h, min 50 events.
+--                                Channels are dying faster than they are being
+--                                made. A missing `private: true` looks exactly
+--                                like this.
+--   push_delivery_collapsed      fewer than half of 24h attempts delivered,
+--                                min 20 attempts. A broken VAPID signature, an
+--                                expired key, a push service rejecting the lot.
+--   cleanup_failing              24+ failed passes in 24h, of ~96. Storage is
+--                                filling with objects nothing will collect.
+--   upload_failures_regressed    24h failures above 3x the previous week's
+--                                daily mean, floor of 10. A regression against
+--                                the app's own recent history, because there is
+--                                no honest absolute number for this one.
+--
+-- The floors are there so a quiet day cannot page anybody: three failures
+-- against a previous zero is an infinite multiple and means nothing at this
+-- user count. Raise the floors, never lower them, if it turns out to be noisy.
+--
+-- ===========================================================================
+-- RETENTION, AND WHAT IS KEPT
+-- ===========================================================================
+-- purge_ops_events() drops ops_events rows older than 30 days and
+-- ops_event_budget rows older than 2 days. Run it by hand the same way:
+--
+--   select public.purge_ops_events();
+--
+-- To see how much is in there:
+--
+--   select count(*) as rows,
+--          min(on_hour) as oldest,
+--          pg_size_pretty(pg_total_relation_size('public.ops_events')) as size
+--     from public.ops_events;
+--
+-- If you ever need to empty it entirely — a privacy request, a decision to stop
+-- collecting, a bad deploy that poisoned the vocabulary:
+--
+--   truncate public.ops_events, public.ops_event_budget;
+--
+-- Read the anonymisation note at the top of the migration before quoting any of
+-- this to anybody. Short version: there are no identifiers ON these rows, hour
+-- buckets are the finest resolution stored, and with three real users that
+-- still is not anonymity. ops_event_budget is keyed by user and is the one
+-- deliberately identifying artifact; it holds counts only and is purged in two
+-- days.

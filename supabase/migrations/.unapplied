@@ -49,3 +49,12 @@
 # correct either way. Apply it, schedule operations/schedule_account_purge.sql
 # separately, then remove this line.
 202609140037_deletion_grace
+# Operational telemetry. Shelved deliberately, not forgotten: it stands up a NEW
+# metadata store on a production database with three real users, where the
+# honest answer is that hour buckets and missing identifier columns reduce
+# linkage but cannot deliver anonymity at that population. That is the owner's
+# call to make with the schema in front of them, not a side effect of a deploy.
+# Nothing in the app depends on it — lib/telemetry.js disables itself for the
+# session the first time the RPC answers PGRST202 — so the frontend ships safely
+# ahead of it either way.
+202609140035_ops_telemetry

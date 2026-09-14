@@ -83,7 +83,11 @@ Status as of **9 Sep 2026**. `CLAUDE.md` says how things work; this says what is
 - [ ] Game chat unread badge counts only realtime inserts.
 - [ ] Game resume from sessionStorage is not validated.
 - [ ] Push that deep-links into the pending game.
-- [ ] Push-delivery logs — **needs a decision**; it is exactly the metadata push keeps none of.
+- [x] Push-delivery logs — **decided 14 Sep 2026** and built as anonymous
+      operational telemetry (`202609140035_ops_telemetry`, on the shelf until the
+      owner reads the schema). Counts only, hour buckets, no identifier columns,
+      no endpoints. See the CLAUDE.md section for where that anonymisation is
+      real and where it is only a convention.
 
 **Privacy**
 - [ ] Mute and report (blocking is done).
@@ -240,6 +244,14 @@ the ones marked fixed were removed rather than left ticked.
   of `.unapplied` in the same change. Until then the client hides the feature
   rather than failing at it.
 - **Push-delivery logs** — exactly the metadata the push function keeps none of.
+- **Scheduled surprise messages** — plaintext for days, in an app that clears
+  chats after three visits. Raised three times.
+- **Push-delivery logs** — decided. Built as counter-only telemetry with no
+  identifier columns and hour-truncated timestamps; the migration is shelved in
+  `supabase/migrations/.unapplied` so applying it stays a deliberate act. What
+  remains a judgement call is that with three real users, aggregation reduces
+  linkage but cannot deliver anonymity, and `ops_event_budget` is identifying by
+  design so the write path can be rate-limited at all.
 - **End-to-end encryption** — the real gap behind "super safe". Message bodies
   are plaintext in Postgres today.
 - **Razorpay**, and **moving off Vercel Hobby** (its terms forbid commercial use).

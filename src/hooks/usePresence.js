@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { recordChannelStatus } from '../lib/telemetry'
 export function useConversationPresence(me, otherId) {
   const [theirTyping, setTheirTyping] = useState(false)
   const [theyArePresent, setTheyArePresent] = useState(false)
@@ -13,8 +14,12 @@ export function useConversationPresence(me, otherId) {
       setTheirTyping(payload.typing === true)
       clearTimeout(timer.current)
       timer.current = setTimeout(() => setTheirTyping(false), 6000)
-    }).on('presence', { event: 'sync' }, () => setTheyArePresent(Object.keys(peer.presenceState()).length > 0)).subscribe()
-    own.subscribe(status => { if (status === 'SUBSCRIBED') own.track({ at: Date.now() }) })
+    }).on('presence', { event: 'sync' }, () => setTheyArePresent(Object.keys(peer.presenceState()).length > 0))
+      .subscribe(status => recordChannelStatus(`typing:${me}:${otherId}`, status))
+    own.subscribe(status => {
+      recordChannelStatus(`typing:${otherId}:${me}`, status)
+      if (status === 'SUBSCRIBED') own.track({ at: Date.now() })
+    })
     return () => {
       clearTimeout(timer.current); supabase.removeChannel(own); supabase.removeChannel(peer)
       channelRef.current = null; setTheirTyping(false); setTheyArePresent(false)
