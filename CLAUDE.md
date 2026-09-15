@@ -2274,8 +2274,47 @@ does not.
 **`ended_reason` is three different things** — `declined` / `left` / `expired` —
 and only one of them is about how the evening went. `intimate_session_with()`
 drops an ended session, so the screen reads the ROW (`getSessionRow`) to learn
-which; a row that is no longer readable falls back to "This session is no
-longer open", never to a guess.
+which.
+
+**The ending has to survive the sheet closing** (`lib/intimateRecall.js`). It
+did not: the id of the session in play lived in a React ref, which dies with
+`IntimateSession`, so the other person ending it while the sheet was shut left
+no trace at all — reopening showed the pick-a-game screen, reported as "getting
+started again". The row and its reason were in the database the whole time; the
+client had stopped looking. The id is now mirrored into `sessionStorage` as
+`meera:just-us-last:<me>`, the pattern App.jsx uses for `meera:pending-game:<me>`,
+one slot per user carrying the friend id so a remembered ending can never
+surface in somebody else's conversation. Every access is wrapped (pinStore /
+storyThumbs idiom); a private-mode throw degrades to "nothing remembered".
+
+- **Only the SHEET remembers and recalls** (`recall: true`). The chip's instance
+  of the hook renders nothing for an ended session, so letting it read the slot
+  would consume the acknowledgement without ever showing it — and it is mounted
+  for the whole life of the conversation, so it would get there first.
+- **Shown once, then cleared** — cleared *before* the lookup, so a lookup that
+  fails cannot haunt every future open either. "Start another" is one tap back
+  to the five games: the acknowledgement is a line plus a way forward.
+- **FOUR outcomes, not three** (`describeEnded` in the hook + `endedLine`): the
+  row's reason; or `expired` when we watched the stored `expires_at` pass
+  ourselves; or "This session is no longer open." for a readable row with no
+  reason; or, when the row is **not readable or the fetch threw**, "That session
+  is over. We could not check how it ended." Those last two are deliberately
+  different sentences — one is something the row told us, the other is something
+  we could not find out. An expired session is hidden by `intimate_sessions_read`
+  (`expires_at > now()`), so the unreadable case is real and routine.
+
+**`CHIP_POLL_MS` is 10s and the timer STOPS while the tab is hidden.** It was
+25s with the tick merely skipped when hidden — so a turn could sit most of half
+a minute with the app open (the `intimate_changed` nudge reaches only the open
+session screen, never the chip), while a backgrounded phone still woke for a
+timer that did nothing. Returning to the front syncs immediately rather than
+waiting out a tick. Same reasoning as `useLiveLocation` dropping its watch on
+`visibilitychange`.
+
+**There is deliberately no push for a turn.** "Your turn in Just us" on a lock
+screen is exactly what this feature exists to keep off one, the `KINDS`
+vocabulary is fixed server-side, and the in-conversation chip is the right
+surface.
 
 **The photo is the honest half of the feature.** `intimate_rounds_of()` never
 returns `media_path`; `open_intimate_photo()` is the only route, and it stamps

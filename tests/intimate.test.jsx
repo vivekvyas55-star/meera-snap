@@ -51,7 +51,11 @@ const session = (over = {}) => ({
   expires_at: soon(), turn: null, ...over,
 })
 
-beforeEach(() => { m.session = null; m.rounds = [] })
+// The sheet remembers the last session it saw in sessionStorage so an ending
+// survives a remount (see tests/intimate-recall.test.jsx). jsdom keeps one
+// store for the whole file, so a session left behind by the test above would
+// reach the next one as "that one ended" — clear it, the way a fresh tab would.
+beforeEach(() => { m.session = null; m.rounds = []; sessionStorage.clear() })
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
 // IntimateSession portals itself out of the render container (every overlay
