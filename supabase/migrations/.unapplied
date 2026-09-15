@@ -57,3 +57,8 @@
 # session the first time the RPC answers PGRST202 — so the frontend ships safely
 # ahead of it either way.
 202609140035_ops_telemetry
+
+# 202609150041 makes the database emit a kind the live bundle renders as a
+# bogus "Photo" tile. It goes live only AFTER the frontend carrying the thread
+# event ships and is verified on the served bundle.
+202609150041_game_invite_events

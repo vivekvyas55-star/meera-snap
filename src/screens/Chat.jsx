@@ -23,6 +23,7 @@ import {
   unsend,
 } from '../lib/db'
 import { barColorFor, statusFor } from '../lib/status'
+import { gameEventLabel, isThreadEvent } from '../lib/threadEvent'
 import { enqueue, outboxFor, retryQueued, removeQueued, OUTBOX_EVENT } from '../lib/outbox'
 import { mergeMessages } from '../lib/messageState'
 import { useAuth } from '../hooks/useAuth'
@@ -405,8 +406,11 @@ export default function Chat({ friend, onBack, onOpenPlay }) {
       seenAtBottom.current = new Set(messages.map((m) => m.id))
       setBehind(0)
     } else {
+      // Thread events are not messages and must never be counted as one. A
+      // call log or a play invitation arriving while you are scrolled up is
+      // not "1 new message" waiting to be read.
       const unseenIncoming = messages.filter(
-        (m) => m.sender_id !== me && !seenAtBottom.current.has(m.id)
+        (m) => m.sender_id !== me && !isThreadEvent(m) && !seenAtBottom.current.has(m.id)
       ).length
       setBehind(unseenIncoming)
     }
@@ -625,6 +629,9 @@ export default function Chat({ friend, onBack, onOpenPlay }) {
             {(i === 0 || dayKey(visible[i - 1].created_at) !== dayKey(m.created_at)) && (
               <div className="day-sep"><span>{dayLabel(m.created_at)}</span></div>
             )}
+          {m.kind === 'game' ? (
+            <GameEvent message={m} me={me} peerName={friendName} fresh={knownRef.current !== null && !knownRef.current.has(m.id)} />
+          ) : (
           <MessageRow
             key={m.id}
             message={m}
@@ -652,6 +659,7 @@ export default function Chat({ friend, onBack, onOpenPlay }) {
               load()
             }}
           />
+          )}
           </Fragment>
         ))}
 
@@ -1202,7 +1210,36 @@ function replyPreview(m) {
   if (m.kind === 'voice') return '🎤 Voice note'
   if (m.kind === 'sticker') return m.body || '💟 Sticker'
   if (m.kind === 'call') return '📞 Call'
+  // Nothing can quote a thread event — no reply gesture reaches one — but the
+  // fallback has to mean something if a row ever arrives with reply_to set.
+  if (m.kind === 'game') return 'Play invitation'
   return (m.body || '').slice(0, 60)
+}
+
+// A play invitation, as a line in the conversation.
+//
+// This is deliberately NOT a MessageRow. GameChat inside the room writes
+// ordinary chat bubbles for the same pair into this same thread, so an
+// invitation has to be unmistakably a different sort of thing — and the safest
+// way to make it not replyable, not forwardable, not reactable and not
+// savable is to give it none of the gestures at all, rather than nine guards
+// that each have to remember. There is no onClick, no long-press timer, no
+// swipe handler and no role="button" here; the action is in Play, not here.
+//
+// The name is the rotating ALIAS (Chat's `friendName`), never display_name.
+// The timestamp is always shown, whether or not the row ends a run: "she asked
+// me to play at 9:40" is the entire reason this row exists.
+function GameEvent({ message, me, peerName, fresh = false }) {
+  return (
+    <div
+      data-message-id={message.id}
+      className={`msg-system${fresh ? ' msg-in' : ''}`}
+    >
+      <GameIcon width={15} height={15} aria-hidden="true" />
+      <span className="msg-system-text">{gameEventLabel(message, me, peerName)}</span>
+      <span className="msg-system-time">{messageTime(message.created_at)}</span>
+    </div>
+  )
 }
 
 function MessageRow({

@@ -3,6 +3,7 @@ import { downscaleImage, makeThumbnail } from './image'
 import { notify } from './push'
 import { istDay } from './questionDay'
 import { record, failureCode } from './telemetry'
+import { isThreadEvent } from './threadEvent'
 
 // Storage objects are immutable once written (every upload gets a fresh uuid
 // path), so they can be cached hard. supabase-js defaults this to 3600.
@@ -474,9 +475,12 @@ export const SNAP_MAX_OPENS = 6
 // than a per-user flag.
 export function isVisibleTo(message, me) {
   if (message.unsent_at) return false
-  // Call logs always persist in the thread — checked BEFORE cleared_by so the
-  // 3-visit clear rule can never make a call log vanish for either party.
-  if (message.kind === 'call') return true
+  // Thread events — a call log, a play invitation — always persist, checked
+  // BEFORE cleared_by so the 3-visit clear rule can never make one vanish for
+  // either party. An invitation whose whole purpose is to answer "when did she
+  // ask?" has to still be there next week. public.message_visible is the server
+  // half of this rule and says the same thing.
+  if (isThreadEvent(message)) return true
   // Saving is mutual: if either party saved it, it persists for both.
   if ((message.saved_by ?? []).length > 0) return true
   // Snapchat's default: once you've viewed a chat and left, it's gone for you.

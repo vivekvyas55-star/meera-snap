@@ -603,6 +603,91 @@ await db.exec('select purge_expired()')
 assert.equal((await query('select * from game_invites where id=$1',[game.id])).length,0)
 console.log('PASS game authorization, acceptance retries, legal turns, stale moves, saved board, win, end and expiry cleanup')
 
+// ---------------------------------------------------------------------------
+// A play invitation leaves a timestamped record in the conversation
+// (202609150041). Six things have to be true at once, and the 'call' rollout
+// got three of them wrong the first time.
+// ---------------------------------------------------------------------------
+const streakBefore=(await query('select * from streaks where user_a=$1 and user_b=$2',[A,B]))[0]
+let ev
+await asUser(A, async () => {
+  ev=(await query("select * from create_game_invite($1,'checkers','event-room')",[B]))[0]
+})
+const eventRows=await query("select * from messages where kind='game' and client_id=$1",[ev.id])
+// ONE row, written in the same transaction as the invitation, carrying the
+// game in body the way a call log carries "video|missed".
+assert.equal(eventRows.length,1)
+assert.equal(eventRows[0].body,'checkers|invited')
+assert.equal(eventRows[0].sender_id,A)
+assert.deepEqual([eventRows[0].user_a,eventRows[0].user_b],[A,B].sort())
+assert.equal(eventRows[0].view_seconds,null)
+
+// EXACTLY one, and not by convention: client_id is the invitation's own id and
+// messages_sender_client_unique(sender_id, client_id) refuses a second row for
+// it however it is attempted. A repeat broadcast and the six-second poll never
+// reach create_game_invite at all, so this is the only path that could.
+await assert.rejects(
+  db.query(`insert into public.messages(user_a,user_b,sender_id,kind,body,client_id) values($1,$2,$1,'game','checkers|invited',$3)`,[A,B,ev.id]),
+  /unique|duplicate/i)
+
+// A rematch is the next ROUND in the same room, not a new invitation, so it
+// adds no second line.
+await asUser(B,()=>query("select resolve_game_invite($1,'accepted')",[ev.id]))
+await db.query("update game_invites set result='draw' where id=$1",[ev.id])
+const eventsBeforeRematch=(await query("select count(*)::int n from messages where kind='game'"))[0].n
+await asUser(A,()=>query('select rematch_game($1)',[ev.id]))
+assert.equal((await query("select count(*)::int n from messages where kind='game'"))[0].n,eventsBeforeRematch)
+
+// A shared streak must not be advanceable by one person tapping Invite. The
+// same exclusion call logs have.
+const streakAfter=(await query('select * from streaks where user_a=$1 and user_b=$2',[A,B]))[0]
+assert.deepEqual(
+  {c:streakAfter?.count,a:streakAfter?.last_snap_a,b:streakAfter?.last_snap_b,i:streakAfter?.last_increment},
+  {c:streakBefore?.count,a:streakBefore?.last_snap_a,b:streakBefore?.last_snap_b,i:streakBefore?.last_increment})
+
+// The 3-visit clear cannot touch it. mark_messages_seen / leave_seen_messages
+// are allow-lists, so a 'game' id handed to either is simply ignored — no
+// opened_at (which is what the unread badge keys off), no view_leaves, and it
+// can never reach cleared_by. This is the bug core_fixes.sql had to fix for a
+// caller's own call log.
+const eventId=eventRows[0].id
+await asUser(B, async () => {
+  const visit='10000000-0000-4000-8000-000000000041'
+  await query('select mark_messages_seen($1,$2,$3)',[A,[eventId],visit])
+  for (let i=0;i<4;i++) await query('select leave_seen_messages($1,$2,$3)',[A,[eventId],visit])
+})
+const afterVisits=(await query('select opened_at,view_leaves,cleared_by from messages where id=$1',[eventId]))[0]
+assert.equal(afterVisits.opened_at,null)
+assert.deepEqual(afterVisits.view_leaves,{})
+assert.deepEqual(afterVisits.cleared_by,[])
+
+// It persists. "She asked me to play at 9:40" has to still be answerable next
+// week, so message_visible ignores cleared_by for it and purge_expired exempts
+// it — the two must agree, or a row stays visible right up to the moment it is
+// deleted out from under the thread.
+await db.query("update messages set cleared_by=array[$2::uuid], created_at=now()-interval '90 days' where id=$1",[eventId,B])
+assert.equal((await query('select public.message_visible(m,$2) v from messages m where m.id=$1',[eventId,B]))[0].v,true)
+await db.exec('select public.purge_expired()')
+assert.equal((await query("select count(*)::int n from messages where id=$1",[eventId]))[0].n,1)
+
+// A game event has no duration and must never be handed one — the constraint
+// says so rather than leaving 'game' riding call's blanket exemption.
+await assert.rejects(
+  db.query(`insert into public.messages(user_a,user_b,sender_id,kind,body,view_seconds) values($1,$2,$1,'game','ttt|invited',30)`,[A,B]),
+  /view_seconds_sane/)
+
+// THE GRANT. `kind` is in the column INSERT grant, so widening the CHECK would
+// otherwise have let any signed-in user PATCH a convincing "invited you to
+// play" line into a friend's thread with no game behind it. The RPC is a door;
+// the grant is the wall. RLS refuses the client; the definer function does not
+// go through RLS, which is why the one legitimate writer still works.
+await asUser(A, async () => {
+  await assert.rejects(
+    query(`insert into messages(user_a,user_b,sender_id,kind,body) values($1,$2,$1,'game','ttt|invited')`,[A,B]),
+    /row-level security/)
+})
+console.log('PASS one invitation is one thread event: no streak, no clear, no unread stamp, no forgery')
+
 // --------------------------------------------------------------------------
 // Every write the client actually performs, executed as a real authenticated
 // user and rolled back.
@@ -652,6 +737,22 @@ await clientWrite('sendChat and logCall',[{as:A},
 // raw column writes this used to exercise are asserted REFUSED below.
 await clientWrite('markScreenshot via mark_screenshot()',[{as:B},
  {sql:`select public.mark_screenshot(id) from messages where user_a=$1 and user_b=$2 and sender_id=$1 limit 1`,args:[A,B]}])
+// createInvite (games.js / db.js) reaches the database through an RPC, but the
+// event it writes is a real INSERT into a column-granted table — executed here
+// rather than reasoned about, because reading a policy cannot catch a missing
+// grant.
+await clientWrite('createGameInvite writes its thread event',[{as:A},
+ {sql:`select create_game_invite($1,'ttt','client-write-room')`,args:[B]},
+ // The RPC is SECURITY DEFINER, so its insert does not go through the
+ // messages_insert policy that now refuses kind='game' from a client. If it
+ // ever stopped being definer, invitations would still be created and the
+ // record would silently stop being written — which is the whole failure mode
+ // this feature exists to end. Raise rather than pass quietly.
+ {sql:`do $$ begin if not exists (select 1 from public.messages where kind='game' and body='ttt|invited') then raise exception 'invitation wrote no thread event'; end if; end $$;`}])
+await clientWrite('markOpened / markReplayed / markScreenshot',[{as:B},
+ {sql:`update messages set opened_at=now() where user_a=$1 and user_b=$2 and sender_id=$1 and opened_at is null`,args:[A,B]},
+ {sql:`update messages set replayed_at=now() where user_a=$1 and user_b=$2 and sender_id=$1`,args:[A,B]},
+ {sql:`update messages set screenshot_at=now() where user_a=$1 and user_b=$2 and sender_id=$1`,args:[A,B]}])
 await clientWrite('unsend',[{as:A},
  {sql:`update messages set unsent_at=now() where sender_id=$1 and kind='chat'`,args:[A]}])
 await clientWrite('setMyLocation / stopSharingLocation',[{as:A},

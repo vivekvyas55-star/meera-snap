@@ -845,6 +845,27 @@ input, textarea { font: inherit; }
   font-size: 14px; font-weight: 500; color: var(--ink);
 }
 .msg-call svg { color: var(--accent); flex: 0 0 auto; }
+
+/* A thread EVENT that is not attributed to one side of the conversation: a
+   play invitation. Centred and full-width rather than a left/right bubble,
+   because the sentence already names both people, and because the game room's
+   own chat writes ordinary bubbles into this same thread — the two must not
+   be able to be mistaken for each other at a glance.
+
+   Colours come from tokens only, so dark mode is the token swap and no rule
+   here is duplicated. */
+.msg-system {
+  display: flex; align-items: center; justify-content: center;
+  gap: var(--sp-2); flex-wrap: wrap;
+  align-self: center; max-width: 92%;
+  margin: var(--sp-2) auto;
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--card); border-radius: var(--r-pill);
+  font-size: var(--fs-meta); color: var(--muted); text-align: center;
+}
+.msg-system svg { color: var(--accent); flex: 0 0 auto; }
+.msg-system-text { color: var(--ink); }
+.msg-system-time { color: var(--muted); }
 .msg-meta { font-size: 11px; color: var(--muted); margin: 3px 0 0 4px; }
 .msg.mine .msg-meta { text-align: right; margin: 3px 4px 0 0; }
 

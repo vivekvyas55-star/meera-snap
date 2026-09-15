@@ -110,7 +110,8 @@ therefore keeps pulling pages until something is visible, bounded by
 **Streaks are computed in the database**, by the `bump_streak` trigger — not in
 JS. The rule is intentionally friendlier than Snapchat's snaps-only version:
 both sides must send **any real message** (chat / snap / voice / sticker — not
-call logs) within each **~36h window**, and a one-sided burst does not advance
+thread events: not a call log, not a play invitation) within each
+**~36h window**, and a one-sided burst does not advance
 the count. It advances at most once per ~20h (once a day). Real usage showed the
 snaps-only 24h rule left pairs stuck at 1 (one person snaps, the other texts);
 `streak_fix.sql` broadened it to any two-way daily messaging with a forgiving
@@ -1895,8 +1896,11 @@ stickers** — is viewable across **3 visits**, then clears for that viewer only
 `clear_viewed_chats` covers `kind in ('chat','voice','sticker')` plus your own
 sent **snaps** (scoped in `core_fixes.sql` — it must NOT catch `kind='call'`, or
 a caller's call log vanishes after 3 visits); `mark_chats_opened` covers those
-plus `'call'`. Call logs always persist — `isVisibleTo` short-circuits
-`kind==='call'` before the `cleared_by` check.
+plus `'call'`. **Thread events always persist** — `isVisibleTo` short-circuits
+`isThreadEvent(message)` (`'call'` and `'game'`) before the `cleared_by` check,
+and `message_visible` / `purge_expired` exempt both server-side. Those two have
+to agree, or a row stays visible right up to the moment the purge deletes it out
+from under the thread.
 `clear_viewed_chats` increments a per-user `view_leaves` counter and adds the
 viewer to `cleared_by[]` once it hits 3, so it never vanishes for the other
 party. The RPC must fire **exactly once per visit** — from Chat's unmount
@@ -2333,6 +2337,44 @@ entry point, and its fallback chain deliberately stops SHORT of `display_name`
   header, the turn and result lines, the scoreboard, the picker and GameChat,
   and checks the alias IS shown so deleting the name cannot pass. Verified by
   mutation: making `peerAlias` return `display_name` fails five of its six.
+**An invitation leaves a timestamped record in the conversation**
+(`202609150041_game_invite_events.sql`, **shelved** in `.unapplied`). Play used
+to be entirely transient — a broadcast, a six-second poll, a sessionStorage
+mirror — so "she asked me to play at 9:40" had no answer once the card was gone.
+A sixth `messages.kind`, `'game'`, is now written by `create_game_invite` in the
+SAME transaction as the `game_invites` row.
+
+- **It is a THREAD EVENT, not a message** — the second one, after `'call'`.
+  `lib/threadEvent.js` is the single definition (`isThreadEvent`), and
+  `isVisibleTo`, `statusFor`, ChatList's unread rule and Chat's "N new
+  messages" pill all go through it. A thread event never advances a streak, is
+  never counted as unread or as new mail, never clears after three visits, and
+  is never purged. Add a third kind there, not by grepping for `=== 'call'`.
+- **One invitation is exactly one row, structurally.** `client_id` is set to the
+  invitation's own id and `messages_sender_client_unique(sender_id, client_id)`
+  refuses a second. The 3s re-broadcast and the 6s `active_game_rooms()` poll
+  only read, and `rematch_game` never calls `create_game_invite`, so a rematch
+  adds no line. Tapping Invite twice is two invitations and honestly reads as
+  two lines.
+- **A client cannot write one.** `kind` is in the column INSERT grant, so
+  widening the CHECK alone would have let any signed-in user PATCH a convincing
+  "invited you to play" into a friend's thread with no game behind it.
+  `messages_insert` now carries `kind <> 'game'`; the definer RPC bypasses RLS,
+  which is the only reason the legitimate writer still works. The RPC is a door;
+  the grant is the wall.
+- **`GameEvent` in `Chat.jsx` is not a `MessageRow`** and deliberately has no
+  handlers at all — no long-press, no swipe-to-reply, no double-tap tapback, no
+  `role="button"`. `GameChat` inside the room writes ordinary `kind='chat'`
+  rows for the same pair into the same thread, so the two must not be
+  mistakable, and nine guards that each have to remember is how that goes
+  wrong. It renders centred (`.msg-system`), names the friend by **alias**, and
+  always stamps the time — the time is the entire point of the row.
+- The insert is wrapped in `begin…exception when others then null`, like
+  `chat_backup.sql`'s: failing to record an invitation must never stop one.
+- **It is shelved on purpose.** The live bundle renders an unknown kind through
+  `MessageRow`'s final `else` — a bogus "Photo" tile. Apply it only after the
+  frontend carrying the `'game'` branch is live and verified on the served
+  bundle, removing the `.unapplied` line in that same change.
 
 **Signaling rides `signal:<recipient>:<sender>`, not a topic of its own.**
 There is no `game:` branch in `realtime_allowed`, which is why Ludo is not built:
