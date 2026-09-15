@@ -32,7 +32,7 @@ const Snapcode = lazy(() => import('../components/Snapcode'))
 import { CheckIcon, MapIcon, PlusIcon, CloseIcon } from '../components/Icons'
 import '../styles/chatlist.css'
 
-export default function ChatList({ active = true, onOpenChat, onOpenProfile, onOpenMap }) {
+export default function ChatList({ active = true, onOpenChat, onOpenProfile, onOpenMap, onSignals }) {
   const { profile } = useAuth()
   const me = profile.id
   const toast = useToast()
@@ -168,6 +168,41 @@ export default function ChatList({ active = true, onOpenChat, onOpenProfile, onO
     [accepted, streakFor]
   )
 
+  // Which conversations are unread. Lifted out of the row render so the tab
+  // bar's badge and the row's own marker are the SAME derivation rather than
+  // two that have to be kept in step.
+  //
+  // Thread events never carry an "unread" state. A call log gets no opened_at
+  // from the receipt path (mark_messages_seen dropped 'call' when it superseded
+  // mark_chats_opened) and a play invitation has no opened state at all —
+  // nobody opens an invitation, they answer it — so either as the last message
+  // would leave a permanent New badge. This is the layer that answers it; see
+  // 202609150041 for why the SQL deliberately stays an allow-list instead.
+  const unreadIds = useMemo(() => {
+    const ids = new Set()
+    for (const f of accepted) {
+      const last = lastByFriend[f.profile.id]
+      if (last && last.sender_id !== me && !isThreadEvent(last) && !last.opened_at) ids.add(f.profile.id)
+    }
+    return ids
+  }, [accepted, lastByFriend, me])
+
+  // What the tab bar may badge. `null` is "we could not find out" and draws
+  // nothing; a number is a claim that somebody is waiting on you, so it is
+  // reported only from a load that actually succeeded. See lib/navBadges.js.
+  const questionCount = useMemo(
+    () => (prompts === undefined ? null : accepted.reduce((n, f) => n + pendingForDay(prompts, f.profile.id), 0)),
+    [prompts, accepted]
+  )
+  useEffect(() => {
+    const known = !loading && !error
+    onSignals?.({
+      unreadChats: known ? unreadIds.size : null,
+      friendRequests: known ? requests.length : null,
+      openQuestions: known ? questionCount : null,
+    })
+  }, [onSignals, loading, error, unreadIds, requests.length, questionCount])
+
   // Searching matches the handle and display name too, not just the alias
   // showing right now — see matchesSearch.
   const matching = useMemo(
@@ -273,14 +308,7 @@ export default function ChatList({ active = true, onOpenChat, onOpenProfile, onO
           const last = lastByFriend[f.profile.id]
           const st = last ? statusFor(last, me) : null
           const streak = streakFor(f.profile.id)
-          // Thread events never carry an "unread" state. A call log gets no
-          // opened_at from the receipt path (mark_messages_seen dropped 'call'
-          // when it superseded mark_chats_opened) and a play invitation has no
-          // opened state at all — nobody opens an invitation, they answer it —
-          // so either as the last message would leave a permanent New badge.
-          // This is the layer that answers it; see 202609150041 for why the
-          // SQL deliberately stays an allow-list instead.
-          const unread = last && last.sender_id !== me && !isThreadEvent(last) && !last.opened_at
+          const unread = unreadIds.has(f.profile.id)
           // Nine competing markers used to share this row. Exactly one wins
           // now — see lib/rowSignal.js for the order and why — and the rest
           // live in the friend sheet (Chat.jsx FriendSheet → FriendSignals).

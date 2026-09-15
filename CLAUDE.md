@@ -64,7 +64,9 @@ instead of trusting a fetch.
 
 Three swipeable panes — Chat / Camera / Stories — paged by a CSS transform in
 `App.jsx`, camera in the middle. `Chat.jsx` replaces the whole shell when a
-conversation is open rather than rendering as a fourth pane.
+conversation is open rather than rendering as a fourth pane. The tab bar has
+**five slots over those three panes** — the last two open overlays (Us,
+Profile); see "The tab bar" below.
 
 - `src/lib/db.js` — all queries, pair ordering, ephemerality rules
 - `src/lib/status.js` — status icon semantics, friend emojis
@@ -1798,11 +1800,86 @@ Add a notifier by wrapping it in `<StackSlot priority={PRIORITY.x}>` and giving
 it **no positioning of its own**. The offline bar moved off the top of the
 screen into the strip in the same change.
 
+## The tab bar: FIVE slots, THREE panes
+
+`lib/nav.js` (order + pane mapping), `lib/navBadges.js` (what may be badged),
+`components/TabBar.jsx`, `styles/nav.css`, `screens/Us.jsx`.
+
+Meera reached thirteen screens behind three tabs, and everything built after the
+pager — Together, Play, the solo games, Memories, Snap Map, Billing — hung off
+Profile until Profile was a six-group catch-all. The bar is five slots now:
+**Chats · Camera · Stories │ Us · Profile.**
+
+**The PAGER is still three panes, and the camera is still in the middle.** That
+is Snapchat's grammar and the capture flow is built on it — a sent snap returns
+you left to Chat, the Stories pane's + sends you right to Camera. The first
+three slots select a pane exactly as before; the last two open a full-screen
+overlay over the shell, the way Chat, Profile and Snap Map already do. The bar
+order mirrors the swipe order so tapping and swiping agree, and
+`tests/nav.test.jsx` pins both.
+
+**"Us" is the pair layer**, and "Shared moments" and "Play" moved there from
+Profile **whole, not copied** — one door each, the rule `PlayTogether` already
+states about the solo games. Profile is four groups again (Identity,
+Notifications, Privacy and lock, Account and data) and is a settings screen.
+"Just us" is per-conversation by design, so Us **links** to it through a friend
+picker rather than rebuilding it; the solo games get no second door, because
+they live on "Your little break" inside Play. The name is defended in a comment
+in `lib/nav.js` and can be changed in that one place.
+
+**A badge means A PERSON IS WAITING ON YOU — never that you have been away.**
+This is the screen-time rule again ("the exact Snapchat mechanic this app copies
+for messages and must not copy for attention") and the solo games' copy
+blocklist again. There is no badge for a streak at risk, for not having played
+today, for anything counting your own absence. It is enforced twice, and
+asserted by mutation: every entry in `BADGE_SOURCES` declares `WAITING.PERSON`
+or `WAITING.DEVICE` (there is no third value and none meaning "you"), and
+`navBadges()` reads **only** the declared keys, so an inactivity-shaped signal
+handed in from `App.jsx` produces nothing at all.
+
+Sources, each already computed by the screen that owns it and reported up:
+
+| Slot | Badge | Where the number comes from |
+|---|---|---|
+| Chats | unread conversations + friend requests | `ChatList` (`unreadIds`, `requests`) |
+| Stories | friends with an unwatched story | `Stories` (`groups`, `unseen`) |
+| Us | game invitations, your turn, unanswered questions today | `active_game_rooms()` on a 20s visible-only poll in App + `pending_questions_all()` via ChatList |
+| Profile | the shipped default passcode is still in force | `usingDefaultPin()` — a dot, not a count, and the one non-person badge |
+
+- **Friend requests are badged on Chats, not Profile**, because the Requests
+  section is at the top of the chat list and Profile has no request list to land
+  on. A badge points at the screen that answers it.
+- **Three states.** `null` (the read failed) and `0` (nobody is waiting) both
+  draw nothing, and that is acceptable *here* precisely because an absent badge
+  claims nothing while a number claims somebody is waiting. Same reasoning as
+  `pendingForDay` in `lib/questionDay.js`.
+- **`Stories` now loads once on mount as well as on becoming active** — a badge
+  that only appears after you have visited the pane it is about is not a badge.
+  It is metadata, not media, so it costs no egress.
+- **`Just us · Your turn` is deliberately NOT a badge source.** There is no
+  global RPC for it — `intimate_session_with(other)` is per pair — and polling
+  once per friend per tick to light one dot is the wrong trade. An absent badge
+  claims nothing, which is the correct failure mode; adding it means adding an
+  RPC, in the same change.
+- Both overlays register with `useBackLayer`, and their sub-screens push their
+  own layers, so Back closes Memories before Us and Us before the pager.
+- The active slot is a filled pill at `--r-pill`. `styles/nav.css` is a separate
+  file that never touches `index.css`, and every selector in it is one step more
+  specific than its counterpart there so the result cannot depend on emit order.
+  Nothing is painted from JS: an inline vibrant fill never enters the
+  fixed-light/fixed-dark context list, and that list lives in `index.css`.
+- **320px, measured in Chrome with all five labels and three badges**: 51.6 x
+  52px per slot, widest label ("Camera") 42px, nothing ellipsised, every slot
+  over the 44px touch minimum. Below 361px the bar buys back its own gutters and
+  gap and drops one type step, to 54.4px slots. **The labels stay** — five bare
+  icons is a guessing game, and two of these glyphs do not name themselves.
+
 ## Play is reachable from the conversation it is about
 
 `components/PlayChip.jsx` + `lib/gameState.js`. Play used to exist only at
 Profile → Play — three taps from the conversation, with nothing anywhere saying
-a game was waiting. The chip sits in the relationship strip under the chat
+a game was waiting. (Play now lives under the Us tab; the chip is still the
+route from the conversation it is about.) The chip sits in the relationship strip under the chat
 header, **not in the header**, which at 320px has no width to give.
 
 `playState(room, me, now)` is pure and tested because the states combine three
@@ -2090,7 +2167,7 @@ countdown. Messages show timestamps.
   filter row where the bake is a no-op**, so an old browser can never ship an
   unfiltered photo that looked filtered.
 - **Memories** (`screens/Memories.jsx`, `memories` table): a private, owner-only
-  gallery of your saved snaps. 💾 Save in the camera; open from Profile to
+  gallery of your saved snaps. 💾 Save in the camera; open from Us to
   re-share to Story, save to device, or delete.
 - **Voice / video calls** (`hooks/CallProvider.jsx` + `useCall.js`,
   `components/CallOverlay.jsx`, `lib/rtc.js`): 1:1 WebRTC. Signaling rides
@@ -2232,9 +2309,10 @@ as an answer.
 **Entry point: the FriendSheet in `Chat.jsx`**, next to Kept Together. It is
 reachable only from inside a conversation that already exists, so it cannot
 appear for anyone who is not an accepted friend — the RPCs re-check that, but
-the entry point should not depend on them. **Profile → Play is the wrong home:**
-it is a friend picker, and a list of people next to five games called things
-like Truth or Dare is the one place this must never be.
+the entry point should not depend on them. **Play is the wrong home:** it is a
+friend picker, and a list of people next to five games called things like Truth
+or Dare is the one place this must never be. The Us tab links to it by opening
+the conversation, which keeps that property.
 The only thing on the conversation itself is `IntimateChip` in the relationship
 strip, and it appears only when a turn or an invitation is waiting. It says
 `Just us · Your turn` and **never** a game name, a prompt or a person — the
@@ -2307,7 +2385,8 @@ inventing a topic would make the channel silently unreachable.
 
 ## Play Together — the board is in the database
 
-`screens/PlayTogether.jsx`, reached from Profile. Two things: a solo dino runner
+`screens/PlayTogether.jsx`, reached from the Us tab (it was Profile until the
+tab bar grew a fourth slot). Two things: a solo dino runner
 and a real-time 1:1 Tic-Tac-Toe. Migrations `202609070013_game_invites.sql`,
 `202609080014_game_invite_responses.sql`, `202609080015_game_rooms.sql`.
 

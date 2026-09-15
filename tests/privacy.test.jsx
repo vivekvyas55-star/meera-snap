@@ -126,18 +126,32 @@ const { default: AccountData } = await import('../src/components/AccountData')
 beforeEach(() => { localStorage.clear(); vi.clearAllMocks() })
 afterEach(cleanup)
 
-test('the screen is six named groups, in the order the questions get asked', async () => {
+// Four, not six. "Shared moments" and "Play" moved WHOLE to screens/Us.jsx
+// when the tab bar grew a fourth slot — Profile had drifted back into the
+// catch-all menu this grouping was meant to end. The moved halves are asserted
+// in tests/nav.test.jsx, on the screen that now owns them.
+test('the screen is four named groups, in the order the questions get asked', async () => {
   render(<Profile onBack={() => {}} />)
-  await waitFor(() => expect(document.querySelectorAll('.pc-group-eyebrow').length).toBe(6))
+  await waitFor(() => expect(document.querySelectorAll('.pc-group-eyebrow').length).toBe(4))
   const groups = [...document.querySelectorAll('.pc-group-eyebrow')].map((n) => n.textContent)
   expect(groups).toEqual([
     'Identity',
-    'Shared moments',
-    'Play',
     'Notifications',
     'Privacy and lock',
     'Account and data',
   ])
+})
+
+// The settings screen must not keep a second copy of what moved. A feature
+// reachable from two places is one whose state is kept in two places soon
+// afterwards — PlayTogether says so about the solo games in as many words.
+test('what moved to Us is GONE from Profile, not duplicated', async () => {
+  render(<Profile onBack={() => {}} />)
+  await screen.findByLabelText('Display name')
+  expect(screen.queryByLabelText('Status note')).toBe(null)
+  expect(screen.queryByText('Open Memories')).toBe(null)
+  expect(screen.queryByText('Open Together')).toBe(null)
+  expect(screen.queryByRole('button', { name: 'Play' })).toBe(null)
 })
 
 test('nothing that already existed was lost in the restructure', async () => {
@@ -145,12 +159,9 @@ test('nothing that already existed was lost in the restructure', async () => {
   // Every control the flat screen had, by the thing a user would look for.
   await screen.findByLabelText('Display name')
   await screen.findByLabelText('Birthday')
-  await screen.findByLabelText('Status note')
   await screen.findByLabelText('Security question')
   await screen.findByLabelText('Avatar colour')
   expect(screen.getByText('Save profile')).toBeTruthy()
-  expect(screen.getByText('Open Memories')).toBeTruthy()
-  expect(screen.getByRole('button', { name: 'Play' })).toBeTruthy()
   expect(screen.getByText('Turn on notifications')).toBeTruthy()
   expect(screen.getByText('Change passcode')).toBeTruthy()
   expect(screen.getByText('Save security question')).toBeTruthy()
