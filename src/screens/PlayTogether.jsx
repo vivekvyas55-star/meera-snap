@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import Confirm from '../components/Confirm'
 import DinoRun from '../components/DinoRun'
-import { BackIcon, CheckIcon, CloseIcon } from '../components/Icons'
+import EmojiDetective from '../components/EmojiDetective'
+import MemoryFlip from '../components/MemoryFlip'
+import { BackIcon, CheckIcon, CloseIcon, GridIcon, SmileyIcon } from '../components/Icons'
 import { useAuth } from '../hooks/useAuth'
 import { rematchGame, listFriendsWithProfiles, resolveGameInvite, syncGameRoom, endGameRoom, listActiveGameRooms, isVisibleTo, clearViewedChats, listMessages, sendChat, pairKey, markChatsOpened } from '../lib/db'
 import { useToast } from '../hooks/useToast'
@@ -412,6 +414,18 @@ export default function PlayTogether({ onBack }) {
           <button type="button" className="pill-btn" onClick={() => setOpen(null)}>All games</button>
           <div style={{ marginTop: 12 }}><DinoRun best={best} onScore={record} /></div>
         </>
+      ) : open === 'detective' ? (
+        <>
+          <p className="play-intro">A new case every day, at midnight IST. Nothing is sent anywhere.</p>
+          <button type="button" className="pill-btn" onClick={() => setOpen(null)}>All games</button>
+          <div style={{ marginTop: 12 }}><EmojiDetective playerId={me} /></div>
+        </>
+      ) : open === 'flip' ? (
+        <>
+          <p className="play-intro">Turn two, keep the pairs. Today&apos;s set changes at midnight IST.</p>
+          <button type="button" className="pill-btn" onClick={() => setOpen(null)}>All games</button>
+          <div style={{ marginTop: 12 }}><MemoryFlip playerId={me} /></div>
+        </>
       ) : (
         <div className="play-grid">
           {rooms.length > 0 && (
@@ -465,9 +479,20 @@ export default function PlayTogether({ onBack }) {
                   <button type="button" className="btn-dark" disabled={!chosen || actionLoading} onClick={inviteGame}>{actionLoading ? 'Sending…' : 'Invite'}</button>
                 </div>}
           </div>
+          {/* On your own. Three cards, no invitation, no friend needed — and
+              nothing on this side of the screen touches the network. */}
+          <span className="eyebrow pg-solo-head">On your own</span>
           <button type="button" className="play-card" style={{ background: 'var(--card)' }} onClick={() => setOpen('run')}>
             <span className="fp-row-icon">🦕</span>
             <span className="fp-row-text"><span className="play-title">Runner</span><span className="play-sub">Beat your own best. {best > 0 ? `Your best is ${best}.` : ''}</span></span>
+          </button>
+          <button type="button" className="play-card" style={{ background: 'var(--card)' }} onClick={() => setOpen('detective')}>
+            <span className="fp-row-icon"><SmileyIcon width={20} height={20} /></span>
+            <span className="fp-row-text"><span className="play-title">Emoji Detective</span><span className="play-sub">Decode a film, song, feeling or phrase. One case a day.</span></span>
+          </button>
+          <button type="button" className="play-card" style={{ background: 'var(--card)' }} onClick={() => setOpen('flip')}>
+            <span className="fp-row-icon"><GridIcon width={20} height={20} /></span>
+            <span className="fp-row-text"><span className="play-title">Memory Flip</span><span className="play-sub">Faces, places, little things and colours. Match the pairs.</span></span>
           </button>
         </div>
       )}

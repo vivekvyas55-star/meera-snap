@@ -1,0 +1,205 @@
+/* ==========================================================================
+   The two solo games — Emoji Detective and Memory Flip.
+
+   ABC language throughout: one vibrant full-card fill per surface, an
+   oversized light-weight (300) display line, pill chips for the metadata, and
+   a dark near-black circular button for the primary action. Every colour,
+   radius, space and size names a token from index.css — a literal hex here is
+   a rule dark mode cannot follow, and the only literal colours in this feature
+   are the Memory Flip colour TILES, which are the game's content rather than
+   its theme and are therefore set from JS.
+
+   The vibrant-filled elements (.ed-card, .mf-done) are listed in index.css's
+   fixed-light context, which is where that list lives by contract. They are
+   painted from CSS here rather than from an inline style so the fill and the
+   pinned ink can never come apart.
+
+   320px is the floor. Both games were checked there: the board is four columns
+   whatever the pair count, the chip rows wrap, and nothing sets a min-width
+   wider than the column.
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   Emoji Detective
+   -------------------------------------------------------------------------- */
+.ed-wrap { padding: 0 var(--sp-4) var(--sp-4); }
+
+.ed-card {
+  background: var(--lavender);
+  border-radius: var(--r-card);
+  padding: var(--sp-5) var(--sp-4) var(--sp-5);
+  text-align: center;
+}
+
+.ed-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: var(--sp-2); text-align: left;
+}
+.ed-head .eyebrow { margin-bottom: 0; }
+.ed-chip { background: var(--card); flex: 0 0 auto; }
+
+/* The clue is the hero. It is emoji, and emoji are CONTENT here — the thing
+   being decoded — not chrome standing in for an icon. `line-height: 1.25` and
+   the wrap keep a five-emoji clue on one or two honest lines at 320px rather
+   than letting it push the card sideways. */
+.ed-clue {
+  margin: var(--sp-5) 0 var(--sp-3);
+  font-size: clamp(38px, 13vw, 54px);
+  line-height: 1.25;
+  letter-spacing: 0.06em;
+  overflow-wrap: anywhere;
+}
+
+.ed-prompt {
+  margin: 0;
+  font-size: var(--fs-h2); font-weight: 300; letter-spacing: -0.02em;
+  color: var(--muted);
+}
+
+.ed-answer {
+  margin: 0;
+  font-size: var(--fs-h1); font-weight: 300; letter-spacing: -0.03em;
+  overflow-wrap: anywhere;
+}
+
+.ed-form { display: flex; gap: var(--sp-2); align-items: center; margin-top: var(--sp-4); }
+.ed-field { flex: 1 1 auto; min-width: 0; }
+.ed-go { flex: 0 0 auto; width: 48px; height: 48px; }
+.ed-go:disabled { opacity: 0.4; }
+
+/* Always rendered, never conditionally mounted: an aria-live region that comes
+   and goes is announced inconsistently, and a line that appears from nowhere
+   shifts the button under the thumb that just pressed it. */
+.ed-feedback {
+  margin: var(--sp-2) 0 0;
+  min-height: 20px;
+  font-size: var(--fs-sm); color: var(--coral);
+}
+
+.ed-hints { margin-top: var(--sp-2); }
+.ed-hint {
+  margin: 0 0 var(--sp-3);
+  background: var(--card);
+  border-radius: var(--r-row);
+  padding: var(--sp-3) var(--sp-4);
+}
+.ed-hint .eyebrow { display: block; margin-bottom: var(--sp-1); }
+.ed-hint-body {
+  font-size: var(--fs-lead); letter-spacing: 0.12em; font-weight: 300;
+  overflow-wrap: anywhere;
+}
+
+.ed-actions { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+.ed-actions .pill-btn { margin-top: var(--sp-2); }
+
+.ed-done { margin-top: var(--sp-4); }
+.ed-verdict {
+  display: flex; align-items: center; justify-content: center; gap: var(--sp-2);
+  margin: 0; font-size: var(--fs-body); color: var(--muted);
+}
+.ed-verdict.is-solved { color: var(--lime-ink); font-weight: 500; }
+
+.ed-tally {
+  margin: var(--sp-4) 0 0;
+  min-height: 18px;
+  font-size: var(--fs-meta); color: var(--muted); text-align: center;
+}
+
+/* --------------------------------------------------------------------------
+   Memory Flip
+   -------------------------------------------------------------------------- */
+.mf-wrap { padding: 0 var(--sp-4) var(--sp-4); }
+
+.mf-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: var(--sp-2); margin-bottom: var(--sp-3);
+}
+.mf-head .eyebrow { margin-bottom: 0; }
+
+/* Four columns at every size. A grid that changes column count with the pair
+   count is the thing that breaks at 320px: eight columns there would be 31px
+   cells, under the 44px touch minimum, which is the same mistake the emoji
+   picker had to undo. Six pairs is 4x3, eight pairs is 4x4. */
+.mf-board {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--sp-2);
+}
+
+.mf-card {
+  aspect-ratio: 1;
+  min-width: 0;
+  padding: 0;
+  background: none;
+  perspective: 600px;
+}
+.mf-card:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; border-radius: var(--r-tile); }
+/* A face-up or matched tile is disabled, so the usual 0.4 dim would grey out
+   the board the moment it started going right. */
+.mf-card:disabled { cursor: default; opacity: 1; }
+
+/* The flip is a TRANSITION between two end states, not a keyframe sequence.
+   That is what makes the global prefers-reduced-motion rule safe here: it
+   collapses the duration to 0.01ms and the tile lands instantly face-up or
+   face-down. A keyframed rotation would have had to be written to end where it
+   starts, and the classic failure — a card frozen at 90 degrees, showing
+   nothing at all — is exactly what this avoids. */
+.mf-inner {
+  position: relative;
+  display: block;
+  width: 100%; height: 100%;
+  transform-style: preserve-3d;
+  transition: transform 260ms cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+.mf-card.is-up .mf-inner { transform: rotateY(180deg); }
+
+.mf-face {
+  position: absolute;
+  inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: var(--r-tile);
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  font-size: clamp(22px, 7vw, 30px);
+  line-height: 1;
+}
+
+/* The back is drawn, not iconographic. A glyph here would be chrome, and a
+   pattern says "face down" without pretending to be information. */
+.mf-back {
+  background: var(--tint);
+  background-image: repeating-linear-gradient(
+    135deg,
+    var(--tint-line) 0 2px,
+    transparent 2px 9px
+  );
+}
+
+.mf-front {
+  background: var(--card);
+  transform: rotateY(180deg);
+}
+
+.mf-card.is-matched .mf-front { box-shadow: inset 0 0 0 2px var(--lime-ink); }
+
+.mf-done {
+  margin-top: var(--sp-4);
+  background: var(--lime);
+  border-radius: var(--r-card);
+  padding: var(--sp-4);
+  text-align: center;
+}
+.mf-done-line { margin: 0; font-size: var(--fs-h2); font-weight: 300; letter-spacing: -0.02em; }
+.mf-done-sub { margin: var(--sp-1) 0 0; min-height: 18px; font-size: var(--fs-meta); color: var(--muted); }
+
+.mf-sets, .mf-sizes { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-top: var(--sp-4); }
+.mf-sizes { margin-top: var(--sp-2); }
+.mf-set { border: none; }
+.mf-set.is-picked { background: var(--tint-press); font-weight: 500; }
+.mf-set:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+.mf-tally {
+  margin: var(--sp-3) 0 0;
+  min-height: 18px;
+  font-size: var(--fs-meta); color: var(--muted); text-align: center;
+}
