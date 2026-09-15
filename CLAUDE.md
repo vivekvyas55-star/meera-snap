@@ -1640,6 +1640,50 @@ Both are re-narrowed in `202609090032`, with negative assertions in
 `tests/database.mjs`. **When you harden an RPC, check whether the grant it was
 protecting is still open.** The RPC is a door; the grant is the wall.
 
+**And the third case is the one that proves the rule** — `202609150050`.
+`202609090032` looked at that six-column grant and revoked exactly one of them.
+`opened_at` was still writable, and three innocuous pieces composed into a way
+for **either party to destroy a whole conversation for both people with one
+request**:
+
+1. `messages_update` is `using (auth.uid() in (user_a, user_b))` — either party.
+2. `guard_message_update` only blocks *changing a non-null* value, so
+   `null -> any timestamp` was permitted, **including one in the past**, and no
+   CHECK constrained the column anywhere.
+3. `message_visible` hides a row once `opened_at + 24h < now()`, and
+   `purge_expired` **hard deletes** it on the same condition.
+
+```
+PATCH /rest/v1/messages?user_a=eq.X&user_b=eq.Y&opened_at=is.null
+{"opened_at": "2020-01-01T00:00:00Z"}
+```
+
+The thread vanished from both phones immediately and was deleted with its media
+by the next cleanup pass, within fifteen minutes. Unread messages the recipient
+had never seen went too, read receipts were forged as a side effect, and unlike
+`unsent_at` — sender-only, and rendered as "unsent" — it left no trace.
+
+**The fix is a revoke, not another guard, because the client never used these
+columns.** `markOpened` and `markReplayed` in `db.js` had **zero callers**
+outside the test harness, and `cleared_at` is referenced by nothing in the
+schema. Every real writer is SECURITY DEFINER and therefore indifferent to a
+grant: `mark_messages_seen`, `record_snap_open`, `leave_seen_messages`. So the
+dangerous door existed solely to serve dead code — which is the shape this class
+of bug keeps taking, and the reason to check the wall every time you fix a door.
+
+- `screenshot_at` keeps a door because `SnapViewer` needs one, but as
+  `mark_screenshot(msg)` — recipient-only and **set once**, neither of which a
+  column grant can express, and the second matters because `status.js` renders
+  it to the *other* person as a claim.
+- `guard_message_open_at` refuses a backdated open independently, so a future
+  migration silently re-widening the grant (now twice in this repo) does not
+  reopen it. Mutation-checked: removing the revoke fails the assertion, and the
+  trigger still refuses the write.
+- Same migration closes **M1**: `202609090022`'s own comment named
+  `react_to_message` as a hole beside `toggle_saved`, then hardened only
+  `toggle_saved`. `block_user()` deletes the friendship; that RPC never looked
+  at one, so a blocked person could keep dropping emoji into the thread.
+
 **Watch for paste truncation.** Large migrations pasted into the Monaco SQL
 editor have been silently truncated mid-statement, leaving columns/functions/
 grants missing — the root cause behind several "bug" reports (including the
