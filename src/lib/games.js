@@ -15,11 +15,15 @@ import { supabase } from './supabase'
 import { createGameInvite as createTicTacToeInvite, playGameMove } from './db'
 import { emptyBoard as emptyC4 } from './connectFour'
 import { initialBoard as initialCheckers } from './checkers'
+// One source for the titles. lib/threadEvent.js needs them too (the invitation
+// line in a conversation names the game) and must stay free of the rule
+// engines, so the names live there and this file reads them.
+import { GAME_TITLES } from './threadEvent'
 
 export const GAMES = {
   ttt: {
     id: 'ttt',
-    title: 'Tic-Tac-Toe',
+    title: GAME_TITLES.ttt,
     glyph: '✕◯',
     blurb: 'Take turns, chat, and pick up where you left off. Rooms expire after 24 hours.',
     tint: 'var(--lavender)',
@@ -29,7 +33,7 @@ export const GAMES = {
   },
   c4: {
     id: 'c4',
-    title: 'Connect Four',
+    title: GAME_TITLES.c4,
     glyph: '●●●●',
     blurb: 'Drop a disc, four in a row wins. Gravity does half the work.',
     tint: 'var(--lime)',
@@ -40,7 +44,7 @@ export const GAMES = {
   },
   checkers: {
     id: 'checkers',
-    title: 'Checkers',
+    title: GAME_TITLES.checkers,
     glyph: '⛃⛀',
     blurb: 'Captures are forced, jumps chain, and a man that reaches the far row is crowned.',
     tint: 'var(--coral)',

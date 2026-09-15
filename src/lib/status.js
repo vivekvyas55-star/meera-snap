@@ -1,3 +1,5 @@
+import { gameTitleOfEvent, isThreadEvent } from './threadEvent'
+
 // Snapchat's status vocabulary, reproduced.
 //
 // Shape encodes direction: arrows are things you SENT, squares are things you
@@ -17,7 +19,7 @@ export const COLORS = {
 
 export function colorFor(message) {
   if (message.kind === 'chat') return COLORS.chat
-  if (message.kind === 'call') return COLORS.pending
+  if (isThreadEvent(message)) return COLORS.pending
   return message.has_audio ? COLORS.snapAudio : COLORS.snap
 }
 
@@ -52,6 +54,20 @@ export function statusFor(message, me) {
           ? `${noun} · no answer`
           : `Missed ${type === 'video' ? 'video' : 'voice'} call`
         : noun,
+    }
+  }
+
+  // A play invitation. The chat-list row is the only place this label is read
+  // — in the thread the event renders its own sentence, with the friend's
+  // alias in it — so it names the game and nothing else. Both people see it;
+  // neither has an "opened" state to report, so the icon is hollow either way.
+  if (message.kind === 'game') {
+    const title = gameTitleOfEvent(message)
+    return {
+      shape: outgoing ? 'arrow' : 'square',
+      filled: false,
+      color: COLORS.pending,
+      label: outgoing ? `Invitation to play ${title}` : `Invited you to play ${title}`,
     }
   }
 

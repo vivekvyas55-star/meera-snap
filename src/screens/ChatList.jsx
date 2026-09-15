@@ -15,6 +15,7 @@ import {
   streakState,
 } from '../lib/db'
 import { matchesSearch } from '../lib/alias'
+import { isThreadEvent } from '../lib/threadEvent'
 import { bestFriendFrom, rowSignal } from '../lib/rowSignal'
 import { statusFor } from '../lib/status'
 import { useAuth } from '../hooks/useAuth'
@@ -232,9 +233,14 @@ export default function ChatList({ active = true, onOpenChat, onOpenProfile, onO
           const last = lastByFriend[f.profile.id]
           const st = last ? statusFor(last, me) : null
           const streak = streakFor(f.profile.id)
-          // Call logs never carry an "unread" state — exclude them so a call as
-          // the last message doesn't leave a permanent New badge.
-          const unread = last && last.sender_id !== me && last.kind !== 'call' && !last.opened_at
+          // Thread events never carry an "unread" state. A call log gets no
+          // opened_at from the receipt path (mark_messages_seen dropped 'call'
+          // when it superseded mark_chats_opened) and a play invitation has no
+          // opened state at all — nobody opens an invitation, they answer it —
+          // so either as the last message would leave a permanent New badge.
+          // This is the layer that answers it; see 202609150041 for why the
+          // SQL deliberately stays an allow-list instead.
+          const unread = last && last.sender_id !== me && !isThreadEvent(last) && !last.opened_at
           // Nine competing markers used to share this row. Exactly one wins
           // now — see lib/rowSignal.js for the order and why — and the rest
           // live in the friend sheet (Chat.jsx FriendSheet → FriendSignals).

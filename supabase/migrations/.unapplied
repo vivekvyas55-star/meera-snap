@@ -10,3 +10,8 @@
 #
 # Remove the line in the same change that applies the migration.
 202609090026_intimate_games
+
+# 202609150041 makes the database emit a kind the live bundle renders as a
+# bogus "Photo" tile. It goes live only AFTER the frontend carrying the thread
+# event ships and is verified on the served bundle.
+202609150041_game_invite_events
