@@ -307,7 +307,11 @@
 .game-invite,
 .game-banner-open,
 .game-status.your-turn,
-.play-card,
+/* NOT .play-card. This list forces light ink for a subtree sitting on a VIBRANT
+   fill. Both .play-card usages are neutral — SoloPlay's `.solo-door` has no fill
+   at all and PlayTogether's entry card paints `var(--card)` — so forcing light
+   ink there rendered dark text on a dark card at night. A neutral surface must
+   follow the theme, not be pinned against it. */
 .play-chip.play-your-turn,
 .play-chip.play-invited,
 .ttt-cell.mark-x,
