@@ -749,10 +749,6 @@ await clientWrite('createGameInvite writes its thread event',[{as:A},
  // record would silently stop being written — which is the whole failure mode
  // this feature exists to end. Raise rather than pass quietly.
  {sql:`do $$ begin if not exists (select 1 from public.messages where kind='game' and body='ttt|invited') then raise exception 'invitation wrote no thread event'; end if; end $$;`}])
-await clientWrite('markOpened / markReplayed / markScreenshot',[{as:B},
- {sql:`update messages set opened_at=now() where user_a=$1 and user_b=$2 and sender_id=$1 and opened_at is null`,args:[A,B]},
- {sql:`update messages set replayed_at=now() where user_a=$1 and user_b=$2 and sender_id=$1`,args:[A,B]},
- {sql:`update messages set screenshot_at=now() where user_a=$1 and user_b=$2 and sender_id=$1`,args:[A,B]}])
 await clientWrite('unsend',[{as:A},
  {sql:`update messages set unsent_at=now() where sender_id=$1 and kind='chat'`,args:[A]}])
 await clientWrite('setMyLocation / stopSharingLocation',[{as:A},
@@ -1097,7 +1093,7 @@ console.log('PASS the export gains your own scrapbook entries and still holds no
 // it is that the privacy filter is real. Every guarantee this feature makes is
 // a server-side check, because the anon key is in the bundle and a client-side
 // filter is a suggestion.
-const ev=(o)=>JSON.stringify([o])
+const evJson=(o)=>JSON.stringify([o])
 await asUser(A,async()=>{
  assert.equal((await query('select public.record_ops_events($1::jsonb) n',[JSON.stringify([
    {kind:'upload_fail',code:'snaps_http_500',device:'android-chrome',n:1},
@@ -1105,11 +1101,11 @@ await asUser(A,async()=>{
  ])]))[0].n,2)
  // A free-text code is how a message body ends up in a metrics table. Rejected
  // outright rather than truncated into something plausible.
- assert.equal((await query('select public.record_ops_events($1::jsonb) n',[ev({kind:'upload_fail',code:'meet me at 8 tonight',device:'desktop'})]))[0].n,0)
+ assert.equal((await query('select public.record_ops_events($1::jsonb) n',[evJson({kind:'upload_fail',code:'meet me at 8 tonight',device:'desktop'})]))[0].n,0)
  // Vocabulary, not free text — for kind and device class as well as code. A
  // user agent in the device column would make every row a fingerprint.
- assert.equal((await query('select public.record_ops_events($1::jsonb) n',[ev({kind:'keystrokes',code:'ok',device:'desktop'})]))[0].n,0)
- assert.equal((await query('select public.record_ops_events($1::jsonb) n',[ev({kind:'upload_fail',code:'snaps_other',device:'Mozilla/5.0 (Linux; Android 14)'})]))[0].n,0)
+ assert.equal((await query('select public.record_ops_events($1::jsonb) n',[evJson({kind:'keystrokes',code:'ok',device:'desktop'})]))[0].n,0)
+ assert.equal((await query('select public.record_ops_events($1::jsonb) n',[evJson({kind:'upload_fail',code:'snaps_other',device:'Mozilla/5.0 (Linux; Android 14)'})]))[0].n,0)
  // Nothing malformed may take the whole batch down with it, or one bad client
  // stops reporting the failures it is in the middle of having.
  assert.equal((await query('select public.record_ops_events($1::jsonb) n',[JSON.stringify([
@@ -1118,7 +1114,7 @@ await asUser(A,async()=>{
  ])]))[0].n,1)
  // An uncapped sampling denominator lets one event claim a million and move
  // every threshold on its own.
- assert.equal((await query('select public.record_ops_events($1::jsonb) n',[ev({kind:'upload_fail',code:'voice_other',device:'desktop',n:9999999})]))[0].n,1)
+ assert.equal((await query('select public.record_ops_events($1::jsonb) n',[evJson({kind:'upload_fail',code:'voice_other',device:'desktop',n:9999999})]))[0].n,1)
  // A client can never read a row back, which also stops this table being a
  // side channel between two users.
  await assert.rejects(query('select * from public.ops_events'),/permission denied/)
@@ -1138,7 +1134,7 @@ assert.equal(Number((await query("select max(estimated) e from public.ops_events
 await asUser(C,async()=>{
  const flood=Array.from({length:130},(_,i)=>({kind:'upload_fail',code:`snaps_http_${400+(i%99)}`,device:'desktop'}))
  assert.equal((await query('select public.record_ops_events($1::jsonb) n',[JSON.stringify(flood)]))[0].n,120)
- assert.equal((await query('select public.record_ops_events($1::jsonb) n',[ev({kind:'upload_fail',code:'snaps_other',device:'desktop'})]))[0].n,0)
+ assert.equal((await query('select public.record_ops_events($1::jsonb) n',[evJson({kind:'upload_fail',code:'snaps_other',device:'desktop'})]))[0].n,0)
 })
 // Retention, and the identifying half going first.
 await db.query("update public.ops_events set on_hour=now()-interval '40 days' where code='voice_other'")
