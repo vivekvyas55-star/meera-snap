@@ -2448,6 +2448,102 @@ pool size read at call time, so adding a puzzle lengthens the cycle. The IST
 - `.ed-card` and `.mf-done` are vibrant fills and are listed in index.css's
   fixed-light context. They are painted from CSS, not from an inline style, so
   the fill and the pinned ink cannot come apart.
+## Two solo games, device-local — Mood Garden and Tiny Escape Room
+
+Both are self-contained entry components that take **no props**, so the solo
+"little break" screen drops each in with one line and owns nothing about them.
+
+### Mood Garden (`components/MoodGarden.jsx`, `lib/moodGarden.js`, `lib/moodStore.js`)
+
+**MOOD DATA IS OWN-EYES-ONLY, and that is the load-bearing rule of the
+feature.** Meera is a two-person app, and a mood history one partner can see
+about the other is a coercive-control vector; shipping one in a relationship
+app would be actively harmful. So: no table, no migration, no RPC, no supabase
+import, nothing pair-scoped, nothing in the Together layer, nothing on a
+friend's profile, no share affordance. It lives in one localStorage key
+(`meera:mood-garden-v1`) that carries no user id because there is nothing to
+scope it to, it does not sync, and it is not in `export_my_data()`. Losing the
+phone loses the garden; the alternative is a copy on a server.
+
+That is held **structurally**, not by memory. `tests/mood-garden.test.jsx`
+asserts `MoodGarden.length === 0` (a `friend` or `userId` prop fails the
+build), greps all three modules for a supabase import / `.rpc(` / `.from(` /
+`fetch(`, and greps their *code* — comments stripped — for `friend`,
+`partner`, `peer`, `userId`, `pairKey`, `share`, `together`, `profile`,
+`notify(`. It also asserts each file still explains why. If a change makes one
+of those fail, that is the conversation, not a lint fix.
+
+**The garden cannot punish a gap, because there is no term that could.**
+`growthStage(ageDays)` reads a plant's OWN age and nothing else — not
+recency, not a run of days — so a plant can never shrink and being away three
+weeks means coming back to the garden at its fullest. No streak, no "you
+haven't checked in", no withering, and a test asserts that no string the
+module can produce matches that vocabulary. Six moods, none a failure state;
+a week of `low`/`heavy` grows bluebells and night irises against a dusk sky,
+and **three night irises are what unlock the fireflies** — the hardest mood
+buys the nicest thing in the garden, deliberately. Unlocks carry a hint
+("twelve plants and the garden gets an edge to it"), never `3 of 12`: a
+progress bar is a chore with a bar on it.
+
+**Three states.** `undefined` not read, `null` the read failed, `[]` really
+empty. A failed read renders "we could not read your garden on this device"
+with a retry — never an empty plot, which is a claim about someone's history
+they would feel — and **logging is disabled while the read failed**, because
+we do not overwrite a history we could not see. A corrupt JSON blob is
+deliberately not healed by overwriting; "Clear the garden" is the only way out
+of it, and it is the owner's call. A `setItem` that throws still serves the
+session and says the plant will not survive a reload.
+
+Days are IST (`dayKey`), like `ist_date()` and the question of the day, and
+`shortDate` spells the months out — `Intl` returns `Sept` on ICU 72+ and `Sep`
+before it, so the date would change spelling under the owner when their
+browser updated. One plant per day, re-choosing replaces it. The plot holds the
+newest 24; earlier days are counted ("and 9 more, from earlier"), never
+deleted. Placement is hashed from the day string, so the garden never
+reshuffles itself between renders.
+
+The whole scene is **one SVG with no image and no asset**, and every animation
+is CSS whose keyframes end on the resting state — `styles/garden.css` carries
+its own `prefers-reduced-motion` block as well as relying on the global one,
+because a growing garden is exactly the feature that would keep swaying
+through a loosened rule. There is no `requestAnimationFrame` and no timer in
+the component, and a test asserts it.
+
+### Tiny Escape Room (`components/TinyEscape.jsx`, `lib/escapeRoom.js`, `lib/chime.js`)
+
+Three locks, two to five minutes, a different room every time
+(4! × 4! × 3⁴ × 9³ × 3!). The rules are pure with injectable randomness, like
+`runner.js` and `geo.js`: `tests/escape-room.test.js` walks a complete solve
+for a hundred seeds, which is the only way to know a seed cannot produce an
+unopenable room.
+
+1. **The picture.** Four objects each carry a shape; a framed picture gives the
+   order. → the drawer, and a chime.
+2. **The chime.** Three bells play a four-note phrase. **Sound is a second
+   channel, never the only one** — each note also lights its bell, so the lock
+   is solvable on silent, with no `AudioContext`, or by someone who cannot hear
+   it. `strike()` reports whether anything actually sounded and the room says
+   so rather than leaving a player waiting. → a slip.
+3. **The dials.** Each object has carried a number in plain sight since the
+   first second; the slip only says the order.
+
+**Nothing punishes.** No countdown, no lives, no score, no best time kept,
+nobody to compare against. A wrong code leaves the dials exactly where they
+were — re-entering three digits you already chose is a punishment with no
+lesson in it. After three misses on the lock you are actually on, `hintFor`
+offers where to look, never what to type; a struggle on lock 1 buys nothing
+about lock 2.
+
+`lib/chime.js` generates the bells with Web Audio (no asset, like
+`ringtone.js`) and never throws into the caller; `primeChime()` must ride the
+tap that starts a run or mobile keeps it silent. The room is `Portal`-wrapped
+and registers `useBackLayer`. The overlay is an **immersive** surface —
+deliberately dark in both schemes, like the camera and the viewers — and both
+it and the indigo card are in index.css's fixed-DARK list; `.er-slip` (lime) is
+in the fixed-LIGHT one. `.mg-today` (lavender) and `.mg-unlock.is-on` (lime)
+are listed too. Both test files re-derive the painted selectors from the
+stylesheet and fail if one is missing from a list — the `.fp-stat` bug, caught
+mechanically rather than after dark.
 
 ## Design language — ABC (Behance) is the identity; follow it for ALL new UI
 

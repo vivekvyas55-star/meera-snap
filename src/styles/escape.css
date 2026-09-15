@@ -1,0 +1,399 @@
+/* ==========================================================================
+   Tiny escape room.
+
+   Two surfaces. The CARD is ABC: an indigo full-bleed fill, a 300-weight
+   display heading, a pill chip for the metadata, and a dark circular button
+   for the primary action. The ROOM is immersive — deliberately dark in both
+   schemes, the same decision the camera and the snap/story viewers already
+   make, because a lit room on a white page is not a room.
+
+   Both are fixed contexts and both are listed in index.css: .er and .er-card
+   in the fixed-DARK block (white ink on their own ground), .er-slip in the
+   fixed-LIGHT one (it is a lime fill with words on it). A vibrant fill that
+   is not in one of those lists is how .fp-stat ended up near-white text on
+   lavender at night — if you paint anything else here, add it in the same
+   change.
+
+   No images anywhere: the objects, the bells and the door are SVG, and the
+   chime is generated (lib/chime.js). Egress is the scarcest resource here.
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   The card in the slot.
+   -------------------------------------------------------------------------- */
+.er-card {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-5) var(--sp-4);
+  border-radius: var(--r-card);
+  background: var(--indigo);
+  /* The fixed-dark block in index.css pins the tokens for this subtree but
+     does not set `color` itself, so each listed element claims its own. */
+  color: var(--ink);
+}
+
+.er-card-copy { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+
+.er-eyebrow {
+  margin: 0;
+  font-size: var(--fs-eyebrow);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.er-card-title {
+  margin: 0;
+  font-size: var(--fs-h1);
+  font-weight: 300;
+  letter-spacing: -0.03em;
+  line-height: 1.08;
+  color: var(--ink);
+}
+
+.er-card-line {
+  margin: 0;
+  font-size: var(--fs-meta);
+  line-height: 1.4;
+  color: var(--muted);
+}
+
+.er-chip {
+  align-self: flex-start;
+  margin-top: var(--sp-2);
+  padding: 4px 11px;
+  border-radius: var(--r-pill);
+  background: var(--card);
+  color: var(--ink);
+  font-size: var(--fs-micro);
+  font-weight: 650;
+}
+
+.er-go {
+  flex: 0 0 auto;
+  width: 52px; height: 52px;
+  display: flex; align-items: center; justify-content: center;
+  border: 0;
+  border-radius: var(--r-pill);
+  /* The dark circular action, pinned: inside a fixed-dark context --action
+     has been inverted for the light ink, and this button wants the near-black
+     of the reference, on indigo, in both schemes. */
+  background: #16161a;
+  color: #ffffff;
+  cursor: pointer;
+  transition: transform 120ms ease;
+}
+.er-go:active { transform: scale(0.93); }
+.er-go svg { width: 22px; height: 22px; }
+
+/* --------------------------------------------------------------------------
+   The room. Immersive, fixed dark, portaled out of the pager.
+   -------------------------------------------------------------------------- */
+.er {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  background: #191a2c;
+  background-image:
+    radial-gradient(120% 70% at 50% 0%, #2c2e4d 0%, #191a2c 62%);
+  padding: calc(var(--safe-top) + var(--sp-3)) var(--sp-4)
+           calc(var(--safe-bottom) + var(--sp-4));
+  overflow-y: auto;
+  color: var(--ink);
+  animation: er-in 240ms ease both;
+}
+
+@keyframes er-in { from { opacity: 0; } to { opacity: 1; } }
+
+.er-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-4);
+}
+
+.er-progress { display: flex; gap: 6px; }
+.er-pip {
+  width: 26px; height: 4px;
+  border-radius: var(--r-pill);
+  background: var(--hairline);
+}
+.er-pip.is-now  { background: var(--lime); }
+.er-pip.is-done { background: var(--lavender); }
+
+.er-close {
+  width: 38px; height: 38px;
+  display: flex; align-items: center; justify-content: center;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: var(--card);
+  color: var(--ink);
+  cursor: pointer;
+}
+.er-close svg { width: 19px; height: 19px; }
+
+.er-body { flex: 1; display: flex; flex-direction: column; }
+
+.er-stage { display: flex; flex-direction: column; gap: var(--sp-3); }
+
+.er-h {
+  margin: 0;
+  font-size: var(--fs-h1);
+  font-weight: 300;
+  letter-spacing: -0.03em;
+  color: var(--ink);
+}
+
+.er-sub {
+  margin: 0;
+  font-size: var(--fs-meta);
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+/* --------------------------------------------------------------------------
+   Lock 1 — the picture and the four things.
+   -------------------------------------------------------------------------- */
+.er-frame {
+  display: flex;
+  justify-content: space-around;
+  gap: var(--sp-2);
+  padding: var(--sp-4) var(--sp-3);
+  border: 3px solid rgba(255, 255, 255, 0.28);
+  border-radius: var(--r-row);
+  background: var(--card);
+  color: var(--ink);
+}
+
+.er-frame-shape { display: flex; flex-direction: column; align-items: center; gap: 3px; }
+.er-frame-n { font-size: var(--fs-micro); font-weight: 700; color: var(--muted); }
+
+.er-objects {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--sp-2);
+}
+
+.er-obj {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 1 / 1;
+  padding: var(--sp-3);
+  border: 1.5px solid transparent;
+  border-radius: var(--r-card);
+  background: var(--card);
+  color: var(--ink);
+  cursor: pointer;
+  transition: transform 120ms ease, border-color 160ms ease;
+}
+button.er-obj:active { transform: scale(0.97); }
+.er-obj.is-done { border-color: var(--lime); }
+.er-obj.is-still { cursor: default; }
+.er-obj:focus-visible { outline: 2px solid var(--lime); outline-offset: 2px; }
+
+.er-obj-art { width: 74%; max-width: 92px; display: block; }
+.er-obj-art svg { display: block; width: 100%; height: auto; }
+
+.er-obj-mark {
+  position: absolute;
+  top: 8px; right: 8px;
+  display: flex;
+  padding: 4px;
+  border-radius: var(--r-pill);
+  background: var(--surface);
+  color: var(--ink);
+}
+
+.er-objects-small { grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.er-objects-small .er-obj { padding: 6px; border-radius: var(--r-tile); }
+
+/* --------------------------------------------------------------------------
+   Lock 2 — the bells.
+   -------------------------------------------------------------------------- */
+.er-play {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 10px 18px;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: #16161a;
+  color: #ffffff;
+  font: inherit;
+  font-size: var(--fs-meta);
+  font-weight: 650;
+  cursor: pointer;
+}
+.er-play svg { width: 17px; height: 17px; }
+
+.er-bells { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--sp-2); }
+
+.er-bell {
+  padding: var(--sp-4) var(--sp-2);
+  border: 0;
+  border-radius: var(--r-card);
+  background: var(--card);
+  cursor: pointer;
+  transition: transform 120ms ease, background 140ms ease;
+}
+.er-bell svg { display: block; width: 100%; height: auto; max-height: 64px; }
+.er-bell-0 { color: #8aa6e6; }
+.er-bell-1 { color: #c4a5e8; }
+.er-bell-2 { color: #d6e85a; }
+.er-bell:active { transform: scale(0.96); }
+
+/* The lit state is INFORMATION, not decoration: it is the entire second
+   channel that makes this lock solvable with the sound off. It is a colour
+   and a background change rather than an animation, so nothing about
+   reduced motion can take it away. */
+.er-bell.is-lit { background: rgba(255, 255, 255, 0.3); }
+.er-bell.is-lit svg { filter: drop-shadow(0 0 10px currentColor); }
+
+.er-beads { display: flex; gap: 6px; }
+.er-bead {
+  width: 9px; height: 9px;
+  border-radius: 50%;
+  background: var(--hairline);
+}
+.er-bead.is-on { background: var(--lime); }
+
+/* --------------------------------------------------------------------------
+   Lock 3 — the slip and the dials.
+   -------------------------------------------------------------------------- */
+.er-slip {
+  padding: var(--sp-4);
+  border-radius: var(--r-row);
+  background: var(--lime);
+  transform: rotate(-0.8deg);
+}
+.er-slip-line {
+  margin: 0;
+  font-size: var(--fs-lead);
+  font-weight: 300;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+}
+
+.er-recall { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; }
+.er-recall li { display: flex; gap: var(--sp-2); font-size: var(--fs-meta); }
+.er-recall-obj { color: var(--ink); font-weight: 650; }
+.er-recall-what { color: var(--muted); }
+
+.er-dials { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--sp-2); }
+
+.er-dial {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: var(--sp-2);
+  border-radius: var(--r-card);
+  background: var(--card);
+}
+.er-dial button {
+  width: 100%;
+  padding: 6px 0;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: var(--fs-lead);
+  cursor: pointer;
+}
+.er-dial button:active { background: var(--card-press); }
+.er-dial-n {
+  font-size: 34px;
+  font-weight: 300;
+  letter-spacing: -0.04em;
+  line-height: 1.1;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.er-try,
+.er-quiet {
+  padding: 13px 22px;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: #16161a;
+  color: #ffffff;
+  font: inherit;
+  font-size: var(--fs-body);
+  font-weight: 650;
+  cursor: pointer;
+}
+.er-quiet { background: var(--card); color: var(--ink); }
+
+/* --------------------------------------------------------------------------
+   Feedback. A line that always occupies its row, so nothing jumps when a
+   wrong tap says so and nothing jumps back when it stops.
+   -------------------------------------------------------------------------- */
+.er-say {
+  margin: var(--sp-4) 0 0;
+  min-height: 1.3em;
+  font-size: var(--fs-meta);
+  color: transparent;
+}
+.er-say.is-wrong { color: var(--ink); }
+
+.er-hint {
+  margin: var(--sp-2) 0 0;
+  padding: var(--sp-3);
+  border-radius: var(--r-row);
+  background: var(--card);
+  color: var(--muted);
+  font-size: var(--fs-meta);
+  line-height: 1.45;
+}
+
+/* --------------------------------------------------------------------------
+   Out.
+   -------------------------------------------------------------------------- */
+.er-out { align-items: center; text-align: center; padding-top: var(--sp-5); }
+.er-door { display: flex; justify-content: center; }
+.er-door-leaf {
+  transform-origin: 14px 50%;
+  animation: er-open 700ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+/* Ends open, so with the duration collapsed the door is simply already open. */
+@keyframes er-open {
+  from { transform: perspective(300px) rotateY(0deg); }
+  to   { transform: perspective(300px) rotateY(-52deg); }
+}
+
+.er-out-actions { display: flex; flex-wrap: wrap; gap: var(--sp-2); justify-content: center; }
+
+/* 320px: two objects across stays comfortable, and the three dials still fit
+   with the 34px numeral. Nothing here has a min-width, so the column never
+   scrolls sideways. */
+@media (max-width: 340px) {
+  .er { padding-left: var(--sp-3); padding-right: var(--sp-3); }
+  .er-card { padding: var(--sp-4) var(--sp-3); }
+  .er-dial-n { font-size: 28px; }
+  .er-obj { padding: var(--sp-2); }
+}
+
+/* --------------------------------------------------------------------------
+   Reduced motion. index.css already collapses durations and forces
+   iteration-count: 1; this is the local restatement, because the room should
+   not depend on a rule in another file to stop moving. Both animations here
+   are one-shots that end on their finished state, so holding them there costs
+   nothing: the room fades in already visible and the door is already open.
+   The bell flash is deliberately NOT disabled — it is information.
+   -------------------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  .er { animation: none; }
+  .er-door-leaf {
+    animation: none;
+    transform: perspective(300px) rotateY(-52deg);
+  }
+}
