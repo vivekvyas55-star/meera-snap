@@ -335,7 +335,7 @@ function Scene({ garden, extras, loading }) {
       </svg>
 
       {!loading && garden.total === 0 && (
-        <p className="mg-empty">Nothing planted yet. Choose how today feels.</p>
+        <p className="mg-empty">Choose how today feels.</p>
       )}
     </div>
   )

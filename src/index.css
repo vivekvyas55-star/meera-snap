@@ -312,7 +312,10 @@
 .pc-hero,
 .pc-card.lavender,
 .pc-card.lime,
-.pc-card.coral {
+.pc-card.coral,
+.mg-today,
+.mg-unlock.is-on,
+.er-slip {
   --ink: #16161a;
   /* 0.62 left the sub-line on a lavender card at 3.7:1. */
   --muted: rgba(22, 22, 26, 0.72);
@@ -342,7 +345,9 @@
 .install-body,
 .game-banner,
 .tabbar,
-.kept-preview {
+.kept-preview,
+.er,
+.er-card {
   --ink: #ffffff;
   /* 0.7 was 4.0:1 on indigo, the darkest of the fixed-dark grounds. */
   --muted: rgba(255, 255, 255, 0.8);

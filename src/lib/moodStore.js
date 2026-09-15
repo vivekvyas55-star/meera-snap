@@ -3,7 +3,8 @@
 //
 // OWN-EYES-ONLY. A mood log is among the most personal things a person keeps,
 // and in a two-person app it is the one record that must never be readable by
-// the other person. So there is no table, no migration, no RPC and no
+// the other person — a mood history one partner can see about the other is a
+// coercive-control vector, not a shortcoming in the sharing options. So there is no table, no migration, no RPC and no
 // supabase import in this file, and there must never be one. The storage key
 // carries no user id because there is nothing to scope it to — the garden
 // belongs to the phone, and it does not sync, back up, export or appear in

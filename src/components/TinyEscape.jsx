@@ -6,7 +6,6 @@ import {
   NUMBER_LABEL,
   OBJECTS,
   OBJECT_LABEL,
-  answerCode,
   clearFeedback,
   createRoom,
   hintFor,
@@ -423,5 +422,3 @@ function ObjectArt({ id, n }) {
     </svg>
   )
 }
-
-export { answerCode }
