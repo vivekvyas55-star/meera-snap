@@ -1,0 +1,111 @@
+/* ==========================================================================
+   The five-slot tab bar and its badges
+   ==========================================================================
+
+   The bar itself is defined in index.css (`.tabbar`) and stays exactly what it
+   was: dark near-black floating chrome, a filled light-lavender pill behind the
+   current slot, thin-line icons, an 11px label. This file only does what going
+   from three slots to five requires — the badge, and the width budget.
+
+   Every selector here is deliberately ONE step more specific than its
+   counterpart in index.css (`nav.tabbar` rather than `.tabbar`,
+   `.tabbar button .nav-glyph` rather than `.tabbar .glyph`) so the result does
+   not depend on which stylesheet the bundler happens to emit first. index.css
+   belongs to another pass and is not edited from here.
+
+   Tokens only: --sp-*, --r-*, --fs-*, and the palette. Nothing is painted from
+   JS, because a vibrant fill applied inline never enters the fixed-light /
+   fixed-dark context list that lives in index.css — and that list cannot be
+   added to from this file. `.tabbar` is already in its fixed-DARK half, so the
+   badge inherits a chrome-correct --ink and --muted without help.
+   ========================================================================== */
+
+/* The active slot is a capsule, not a rounded square. Pill chips are already
+   the design language's way of saying "this one"; --r-pill is the token for
+   them and the bar had a hand-picked 20px. */
+nav.tabbar button.active {
+  border-radius: var(--r-pill);
+}
+
+/* The badge is anchored to the GLYPH, not to the button: it has to ride the
+   icon's corner so it reads the same whether or not the slot is the active
+   pill, and so it never collides with the label underneath. */
+.tabbar button .nav-glyph {
+  position: relative;
+  overflow: visible;
+}
+
+.tabbar .nav-badge {
+  position: absolute;
+  top: -5px;
+  /* Just past the icon's right edge. The glyph box is 22px tall and the icons
+     are drawn on a 24px grid, so this hangs the badge over the corner rather
+     than over the artwork. */
+  left: 50%;
+  margin-left: 5px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 var(--sp-1);
+  border-radius: var(--r-pill);
+  background: var(--coral);
+  color: var(--on-fill);
+  font-size: var(--fs-eyebrow);
+  font-weight: 600;
+  line-height: 1;
+  display: grid;
+  place-items: center;
+  /* A hairline of the bar's own ground, so the badge stays legible where it
+     overlaps the active pill. */
+  box-shadow: 0 0 0 2px var(--chrome);
+}
+
+/* No number to show — the passcode warning is a state, not a quantity. */
+.tabbar .nav-badge.is-dot {
+  min-width: 9px;
+  width: 9px;
+  height: 9px;
+  padding: 0;
+  top: -3px;
+  margin-left: 6px;
+}
+
+/* One line, ellipsised rather than wrapped: a label that wraps turns one slot
+   two lines tall and shoves the bar into the notification strip above it. */
+.tabbar .nav-tab-label {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* --------------------------------------------------------------------------
+   320px — five labelled slots is the tightest the bar has ever been.
+
+   Measured in Chrome at 320/360/390/420 with all five labels and three badges
+   on screen. The bar's existing chrome — 14px of gutter each side, 7px of
+   padding, 5px between slots — leaves 320 - 28 - 14 - 20 = 258px, i.e. a
+   51.6 x 52px slot at 320px. The widest label is "Camera" at 42px and
+   "Stories" is 39px, so nothing is ellipsised and every slot clears the 44px
+   touch minimum in both directions with ~10px to spare.
+
+   That is not much spare, so below 361px the bar reclaims its own chrome
+   rather than shrinking the words to nothing: narrower gutters, a tighter gap,
+   one step down in type, which buys a 54.4px slot for a 10px label. The labels
+   STAY — five unlabelled icons is a guessing game, and this bar now has two
+   slots ("Us", "Profile") whose glyphs do not name themselves. The 52px
+   minimum height is untouched, so every slot is still a 44px+ target.
+   -------------------------------------------------------------------------- */
+@media (max-width: 360px) {
+  nav.tabbar {
+    left: var(--sp-3);
+    right: var(--sp-3);
+    gap: 2px;
+    padding: var(--sp-2);
+  }
+  nav.tabbar button {
+    font-size: 10px;
+    letter-spacing: 0;
+    padding: 3px 1px;
+  }
+}

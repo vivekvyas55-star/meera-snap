@@ -20,7 +20,7 @@ import { supabase } from '../lib/supabase'
 import { groupThumb, pruneStoryThumbs, rememberStoryThumb } from '../lib/storyThumbs'
 import '../styles/capture.css'
 
-export default function Stories({ active, onCapture }) {
+export default function Stories({ active, onCapture, onSignals }) {
   const { profile } = useAuth()
   const me = profile.id
   const alias = useAlias()
@@ -55,8 +55,15 @@ export default function Stories({ active, onCapture }) {
     finally { if (request === requestRef.current) setLoading(false) }
   }, [])
 
+  // Loads when the pane becomes active AND once on mount. The mount load is
+  // what makes the tab bar's "new stories" badge true before you have ever
+  // opened this pane — a badge that only appears after you visit the screen it
+  // is about is not a badge. It is metadata, not media: the row previews come
+  // from bytes already spent (lib/storyThumbs.js), so this costs no egress.
+  const first = useRef(true)
   useEffect(() => {
-    if (active) load()
+    if (active || first.current) load()
+    first.current = false
   }, [active, load])
 
   useEffect(() => {
@@ -87,6 +94,18 @@ export default function Stories({ active, onCapture }) {
       // stories, then already-seen — so you always see your own at the top.
       .sort((a, b) => Number(b.mine) - Number(a.mine) || Number(a.allSeen) - Number(b.allSeen))
   }, [stories, views, me])
+
+  // What the tab bar may badge: friends with a story you have not watched.
+  // Never "you have not posted today" — see the rule in lib/navBadges.js.
+  // `null` while we are still loading or after a failed read, which draws
+  // nothing; an absent badge claims nothing, a number is a claim.
+  const unseenAuthors = useMemo(
+    () => groups.filter((g) => !g.mine && g.unseen > 0).length,
+    [groups]
+  )
+  useEffect(() => {
+    onSignals?.({ unseenStories: loading || error ? null : unseenAuthors })
+  }, [onSignals, loading, error, unseenAuthors])
 
   const currentGroup = groups.find(g => g.userId === openAuthor)
   const mine = groups.find((g) => g.mine)

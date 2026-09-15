@@ -1,20 +1,16 @@
 import { useCallback, useEffect, useState } from 'react'
 import {
-  clearStatusNote,
   getSecurityQuestion,
   getSnapScore,
   listFriendsWithProfiles,
-  listStatusNotes,
   setBirthday,
   setSecurityQuestion,
-  setStatusNote,
   updateProfile,
 } from '../lib/db'
 import { useAuth } from '../hooks/useAuth'
 import Confirm from '../components/Confirm'
 import Plans from './Plans'
 import Billing from './Billing'
-import PlayTogether from './PlayTogether'
 import { useToast } from '../hooks/useToast'
 import Avatar from '../components/Avatar'
 import {
@@ -26,12 +22,8 @@ import {
   ChevronIcon,
   CoinIcon,
   FlameIcon,
-  GamepadIcon,
-  HeartIcon,
-  ImageIcon,
   KeyIcon,
   LockIcon,
-  NoteIcon,
   PowerIcon,
   ShieldIcon,
   SmileyIcon,
@@ -42,8 +34,6 @@ import { lockApp } from '../lib/appLock'
 import { usingDefaultPin } from '../lib/pinStore'
 import { useBackLayer } from '../hooks/useBackLayer'
 import PinSetup from '../components/PinSetup'
-import Memories from './Memories'
-import Together from './Together'
 import { SECURITY_QUESTIONS } from '../lib/securityQuestions'
 import { blockedReason, disablePush, enablePush, isEnabled } from '../lib/push'
 import SettingsGroup from '../components/SettingsGroup'
@@ -77,9 +67,12 @@ const EMOJI_CHOICES = [
 // actually arrive with ("who can reach me", "what is this holding", "how do I
 // get out") had no answer anywhere on it.
 //
-// Six groups, in the order those questions get asked: Identity, Shared
-// moments, Play, Notifications, Privacy and lock, Account and data. Every
-// control that already existed is still here; the new ones are the answers.
+// FOUR groups, in the order those questions get asked: Identity, Notifications,
+// Privacy and lock, Account and data. This is a SETTINGS screen again. It had
+// drifted back into a catch-all — six groups, with Together, Memories, the
+// status note and Play hanging off it because there was nowhere else to put
+// them — and the tab bar's fourth slot is now that somewhere: "Shared moments"
+// and "Play" moved WHOLE to screens/Us.jsx. Moved, not copied: one door each.
 //
 // Second thing that changed: several controls wrote to the server and said
 // nothing. useSaveState + <SaveState> give each one a line of its own that
@@ -92,7 +85,7 @@ const EMOJI_CHOICES = [
 // hairline between them, navigation rows that carry the reference's dark
 // circular action, and exactly one escalation of button weight — grey pill,
 // ink outline, coral outline — where coral means nothing but danger.
-export default function Profile({ onBack, openPlay = false, onPlayOpened }) {
+export default function Profile({ onBack }) {
   const { profile, setProfile, signOut } = useAuth()
   const me = profile.id
   const toast = useToast()
@@ -102,8 +95,6 @@ export default function Profile({ onBack, openPlay = false, onPlayOpened }) {
   const [hue, setHue] = useState(profile.avatar_hue ?? 45)
   const [friendCount, setFriendCount] = useState(null)
   const [score, setScore] = useState(null)
-  const [showMemories, setShowMemories] = useState(false)
-  const [showTogether, setShowTogether] = useState(false)
   const [confirmLock, setConfirmLock] = useState(false)
   const [pinSetup, setPinSetup] = useState(false)
   // Shown here and NOWHERE else. On the lock screen it would tell whoever is
@@ -113,7 +104,6 @@ export default function Profile({ onBack, openPlay = false, onPlayOpened }) {
   const [showBilling, setShowBilling] = useState(false)
   const [ent, setEnt] = useState(null)
   const [rate, setRate] = useState(null)
-  const [showPlay, setShowPlay] = useState(openPlay)
   const [secQ, setSecQ] = useState(SECURITY_QUESTIONS[0])
   const [secA, setSecA] = useState('')
   // undefined = we have not been able to ask, null = asked and there is none,
@@ -121,8 +111,6 @@ export default function Profile({ onBack, openPlay = false, onPlayOpened }) {
   // the three when it means another.
   const [storedQ, setStoredQ] = useState(undefined)
   const [birthday, setBday] = useState(profile.birthday || '')
-  const [note, setNote] = useState('')
-  const [noteSaved, setNoteSaved] = useState('')
   const [pushOn, setPushOn] = useState(false)
   // null once checked and available; a string explains why it can't be enabled.
   const pushBlocked = blockedReason()
@@ -131,17 +119,9 @@ export default function Profile({ onBack, openPlay = false, onPlayOpened }) {
   // field look like it is still going.
   const profileSave = useSaveState()
   const birthdaySave = useSaveState()
-  const noteSave = useSaveState()
   const pushSave = useSaveState()
   const securitySave = useSaveState()
   const pinSave = useSaveState()
-
-  useEffect(() => {
-    if (openPlay) {
-      setShowPlay(true)
-      onPlayOpened?.()
-    }
-  }, [openPlay, onPlayOpened])
 
   useEffect(() => {
     isEnabled(me).then(setPushOn).catch(() => {})
@@ -151,12 +131,6 @@ export default function Profile({ onBack, openPlay = false, onPlayOpened }) {
     // The monthly rate comes from the server rather than a constant here, so
     // this tile and the Plans screen can never quote different arithmetic.
     getBillingSettings().then((cfg) => setRate(cfg.credits_per_month)).catch(() => {})
-    listStatusNotes()
-      .then((byUser) => {
-        setNoteSaved(byUser[me] ?? '')
-        setNote(byUser[me] ?? '')
-      })
-      .catch(() => {})
   }, [me])
 
   // Which question is on file. Saving REPLACES it, and the old screen opened
@@ -205,20 +179,6 @@ export default function Profile({ onBack, openPlay = false, onPlayOpened }) {
     // A failed write must not leave the new date sitting in the field looking
     // saved. Put back what the server still holds and let the error speak.
     if (!ok) setBday(previous)
-  }
-
-  const saveNote = async () => {
-    const text = note.trim()
-    await noteSave.run(async () => {
-      if (text) {
-        await setStatusNote(me, text)
-        toast('Note set — visible to friends for 24h')
-      } else {
-        await clearStatusNote(me)
-        toast('Note cleared')
-      }
-      setNoteSaved(text)
-    })
   }
 
   // Must run straight off the tap: Safari rejects a permission prompt that
@@ -277,23 +237,15 @@ export default function Profile({ onBack, openPlay = false, onPlayOpened }) {
     })
   }
 
-  const closeMemories = useCallback(() => setShowMemories(false), [])
-  const closeTogether = useCallback(() => setShowTogether(false), [])
   const closePlans = useCallback(() => setShowPlans(false), [])
   const closeBilling = useCallback(() => setShowBilling(false), [])
-  const closePlay = useCallback(() => setShowPlay(false), [])
 
   // Each sub-screen is its own Back layer. Without these, Android's Back from
-  // Memories, Plans or Play closed the whole Profile behind them — one press
-  // skipping two screens.
-  useBackLayer(showMemories, closeMemories)
-  useBackLayer(showTogether, closeTogether)
+  // Plans or Billing closed the whole Profile behind them — one press skipping
+  // two screens.
   useBackLayer(showPlans, closePlans)
   useBackLayer(showBilling, closeBilling)
-  useBackLayer(showPlay, closePlay)
 
-  if (showMemories) return <Memories me={me} onBack={closeMemories} />
-  if (showTogether) return <Together me={me} onBack={closeTogether} />
   if (showPlans) return <Plans onBack={closePlans} />
   // Billing and Plans are SIBLINGS, not nested: the link between them swaps one
   // for the other, so Back from either lands on Profile rather than unwinding
@@ -306,7 +258,6 @@ export default function Profile({ onBack, openPlay = false, onPlayOpened }) {
       />
     )
   }
-  if (showPlay) return <PlayTogether onBack={closePlay} />
 
   return (
     <div className="app" style={{ display: 'flex', flexDirection: 'column', background: '#fff' }}>
@@ -491,107 +442,7 @@ export default function Profile({ onBack, openPlay = false, onPlayOpened }) {
         </SettingsGroup>
 
         {/* ================================================================
-            2 — SHARED MOMENTS
-            ================================================================ */}
-        <SettingsGroup
-          eyebrow="Shared moments"
-          title="What friends see"
-          hint="Everything here is visible to accepted friends and nobody else."
-          icon={<NoteIcon width={19} height={19} />}
-        >
-          <div className="pc-label-row">
-            {/* Not a <label>: the field's accessible name is "Status note",
-                which is what it is, while the visible line is the question it
-                answers. */}
-            <div className="pc-label">What’s up?</div>
-            {noteSaved ? <span className="pc-chip on">Live for friends</span> : null}
-          </div>
-          <p className="field-hint" id="pc-note-hint">
-            A line your friends see under your name. Disappears after 24 hours.
-          </p>
-          <input
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            maxLength={80}
-            placeholder="Studying · At home · Out for chai"
-            className="field"
-            aria-label="Status note"
-            aria-describedby="pc-note-hint"
-          />
-          <button
-            className="btn-dark"
-            onClick={saveNote}
-            disabled={noteSave.busy || note.trim() === noteSaved.trim()}
-          >
-            {noteSave.busy ? 'Saving…' : note.trim() ? 'Set note' : 'Clear note'}
-          </button>
-          <SaveState
-            state={noteSave.state}
-            error={noteSave.error}
-            savedLabel={noteSaved ? 'Note set for 24 hours' : 'Note cleared'}
-          />
-
-          <div className="pc-label">Memories</div>
-          <p className="field-hint">
-            Snaps you chose to keep. Private to you — nobody else can open this.
-          </p>
-          <button onClick={() => setShowMemories(true)} className="pc-nav">
-            <span className="pc-nav-icon" aria-hidden="true">
-              <ImageIcon width={19} height={19} />
-            </span>
-            <span className="pc-nav-title">Open Memories</span>
-            <span className="pc-nav-go" aria-hidden="true">
-              <ArrowIcon width={17} height={17} />
-            </span>
-          </button>
-
-          {/* Together lives in this group rather than a seventh one: "Shared
-              moments" is already where the shared-and-kept surfaces live
-              (Memories sits directly above it), and the screen is deliberately
-              six groups. Chat's friend sheet would be the other natural door,
-              but that header has no spare width and the sheet is already three
-              features deep. */}
-          <div className="pc-label">Together</div>
-          <p className="field-hint">
-            A shared timeline and scrapbook for one friendship. Off until you both turn it on.
-          </p>
-          <button onClick={() => setShowTogether(true)} className="pc-nav">
-            <span className="pc-nav-icon" aria-hidden="true">
-              <HeartIcon width={19} height={19} />
-            </span>
-            <span className="pc-nav-title">Open Together</span>
-            <span className="pc-nav-go" aria-hidden="true">
-              <ArrowIcon width={17} height={17} />
-            </span>
-          </button>
-        </SettingsGroup>
-
-        {/* ================================================================
-            3 — PLAY
-            ================================================================ */}
-        <SettingsGroup
-          eyebrow="Play"
-          title="Games together"
-          icon={<GamepadIcon width={19} height={19} />}
-        >
-          {/* Play shipped with its screen wired up but nothing anywhere calling
-              setShowPlay — the whole feature was unreachable from the running
-              app. This is that entry point. The description stays outside the
-              button so the button's accessible name is the word on it. */}
-          <p className="field-hint">A game with a friend, played turn by turn inside Meera.</p>
-          <button onClick={() => setShowPlay(true)} className="pc-nav">
-            <span className="pc-nav-icon" aria-hidden="true">
-              <GamepadIcon width={19} height={19} />
-            </span>
-            <span className="pc-nav-title">Play</span>
-            <span className="pc-nav-go" aria-hidden="true">
-              <ArrowIcon width={17} height={17} />
-            </span>
-          </button>
-        </SettingsGroup>
-
-        {/* ================================================================
-            4 — NOTIFICATIONS
+            2 — NOTIFICATIONS
             ================================================================ */}
         <SettingsGroup
           eyebrow="Notifications"
@@ -635,7 +486,7 @@ export default function Profile({ onBack, openPlay = false, onPlayOpened }) {
         </SettingsGroup>
 
         {/* ================================================================
-            5 — PRIVACY AND LOCK
+            3 — PRIVACY AND LOCK
             ================================================================ */}
         <SettingsGroup
           eyebrow="Privacy and lock"
@@ -741,7 +592,7 @@ export default function Profile({ onBack, openPlay = false, onPlayOpened }) {
         </SettingsGroup>
 
         {/* ================================================================
-            6 — ACCOUNT AND DATA
+            4 — ACCOUNT AND DATA
             ================================================================ */}
         <SettingsGroup
           eyebrow="Account and data"

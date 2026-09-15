@@ -15,18 +15,24 @@ const Chat = lazy(() => import('./screens/Chat'))
 import CameraScreen from './screens/CameraScreen'
 import Stories from './screens/Stories'
 const Profile = lazy(() => import('./screens/Profile'))
+const Us = lazy(() => import('./screens/Us'))
 const SnapMap = lazy(() => import('./screens/SnapMap'))
 const PlayTogether = lazy(() => import('./screens/PlayTogether'))
 import { ToastProvider } from './components/Toast'
 import { useToast } from './hooks/useToast'
 import { CallProvider } from './hooks/CallProvider'
 import CallOverlay from './components/CallOverlay'
-import { findByUsername, sendFriendRequest, listPendingGameInvites, listAcceptedGameInviteResponses, getProfile, resolveGameInvite, acknowledgeGameInvite } from './lib/db'
+import { findByUsername, sendFriendRequest, listPendingGameInvites, listAcceptedGameInviteResponses, listActiveGameRooms, getProfile, resolveGameInvite, acknowledgeGameInvite } from './lib/db'
+import { playState } from './lib/gameState'
 import { primeRing } from './lib/ringtone'
 import { saveSubscription } from './lib/push'
 import { AliasClockProvider } from './hooks/AliasClockProvider'
 import { OnlinePresenceProvider } from './hooks/OnlinePresenceProvider'
-import { CameraIcon, ChatIcon, StoriesIcon } from './components/Icons'
+import { CameraIcon, ChatIcon, HeartIcon, SmileyIcon, StoriesIcon } from './components/Icons'
+import TabBar from './components/TabBar'
+import { PANE_TABS, TABS, activeTabKey } from './lib/nav'
+import { navBadges } from './lib/navBadges'
+import { usingDefaultPin } from './lib/pinStore'
 import InstallPrompt from './components/InstallPrompt'
 import OutboxDelivery from './components/OutboxDelivery'
 import PeerName from './components/PeerName'
@@ -40,11 +46,19 @@ import { installTelemetryFlush } from './lib/telemetry'
 import { useBackLayer } from './hooks/useBackLayer'
 import { signalReceiver } from './lib/privateRealtime'
 
-const PANES = [
-  { key: 'chat', label: 'Chat', Icon: ChatIcon },
-  { key: 'camera', label: 'Camera', Icon: CameraIcon },
-  { key: 'stories', label: 'Stories', Icon: StoriesIcon },
-]
+// The tabs, with their artwork. The ORDER and the pane mapping live in
+// lib/nav.js — this file only supplies the glyphs, because icons are JSX and
+// the ordering is a fact about the app that a test has to be able to read
+// without rendering anything.
+const ICONS = {
+  chat: ChatIcon,
+  camera: CameraIcon,
+  stories: StoriesIcon,
+  us: HeartIcon,
+  profile: SmileyIcon,
+}
+const BAR_TABS = TABS.map((t) => ({ ...t, Icon: ICONS[t.key] }))
+const PANES = PANE_TABS
 
 function Shell() {
   const { session, profile, loading, profileError, retryProfile } = useAuth()
@@ -55,6 +69,7 @@ function Shell() {
   // underneath so closing Play returns to it.
   const [playWith, setPlayWith] = useState(null)
   const [showProfile, setShowProfile] = useState(false)
+  const [showUs, setShowUs] = useState(false)
   const [showMap, setShowMap] = useState(false)
   const [openPlay, setOpenPlay] = useState(false)
   const [gameInvite, setGameInvite] = useState(null)
@@ -72,10 +87,10 @@ function Shell() {
   // Horizontal swipe between the three panes. Vertical movement is ignored so
   // the gesture never fights the chat list's scrolling.
   const onTouchStart = (e) => {
-    // showMap belongs here with the rest: the pager is display:none'd and inert
-    // under an overlay so this rarely matters, but a guard that lists three of
-    // the four overlays is a trap for whoever adds the fifth.
-    if (openChat || showProfile || showMap || editing) return
+    // Every overlay belongs here: the pager is display:none'd and inert under
+    // one so this rarely matters, but a guard that lists three of the four is a
+    // trap for whoever adds the fifth — which is exactly what Us is.
+    if (openChat || showProfile || showUs || showMap || editing) return
     const t = e.touches[0]
     touch.current = { x: t.clientX, y: t.clientY, axis: null }
   }
@@ -112,6 +127,67 @@ function Shell() {
   const goToChat = useCallback((friend) => {
     setOpenChat(friend)
   }, [])
+
+  // ------------------------------------------------------------------
+  // The tab bar's badges.
+  //
+  // Every one of these numbers was already being computed somewhere and then
+  // kept inside the screen that owns it. Nothing new is fetched for the chat
+  // and story counts — the screens that already poll them report them up —
+  // and the rule about what may be badged at all lives in lib/navBadges.js.
+  //
+  // THREE STATES: `null` means "we could not find out" and draws nothing, `0`
+  // means nobody is waiting and also draws nothing. They are indistinguishable
+  // on the bar, which is fine, because an absent badge claims nothing while a
+  // number claims somebody is waiting on you.
+  // ------------------------------------------------------------------
+  const [chatSignals, setChatSignals] = useState({ unreadChats: null, friendRequests: null, openQuestions: null })
+  const [storySignals, setStorySignals] = useState({ unseenStories: null })
+  const [gameSignals, setGameSignals] = useState({ gameInvites: null, yourTurnGames: null })
+  // Read once here and re-read when Profile closes, which is the only place it
+  // can change. It is a localStorage flag, not a comparison against the
+  // shipped default — see pinStore.usingDefaultPin.
+  const [defaultPin, setDefaultPin] = useState(() => { try { return usingDefaultPin() } catch { return null } })
+
+  // One RPC, polled slowly and only while the tab is being looked at. Play's
+  // own screens poll it every 3-6s while they are open; a badge does not need
+  // that, and egress is the scarcest resource here.
+  const meId0 = profile?.id
+  useEffect(() => {
+    if (!meId0) return undefined
+    let live = true
+    const load = () => {
+      listActiveGameRooms()
+        .then((rooms) => {
+          if (!live) return
+          let invites = 0
+          let turns = 0
+          for (const room of rooms ?? []) {
+            const key = playState(room, meId0).key
+            if (key === 'invited') invites += 1
+            else if (key === 'your-turn') turns += 1
+          }
+          setGameSignals({ gameInvites: invites, yourTurnGames: turns })
+        })
+        // A failed poll leaves the badge at whatever it already said rather
+        // than clearing it: dropping one request is not evidence that nobody
+        // is waiting. It stays null until the first success.
+        .catch(() => {})
+    }
+    load()
+    const timer = setInterval(() => { if (document.visibilityState === 'visible') load() }, 20000)
+    const onFocus = () => { if (document.visibilityState === 'visible') load() }
+    window.addEventListener('focus', onFocus)
+    document.addEventListener('visibilitychange', onFocus)
+    return () => {
+      live = false
+      clearInterval(timer)
+      window.removeEventListener('focus', onFocus)
+      document.removeEventListener('visibilitychange', onFocus)
+    }
+  }, [meId0])
+
+  const badges = navBadges({ ...chatSignals, ...storySignals, ...gameSignals, defaultPasscode: defaultPin === true })
 
   // Realtime makes the banner instant when the receiver is ready. The database
   // check makes it reliable when an invite lands during startup, reconnection,
@@ -201,9 +277,10 @@ function Shell() {
   // time. The bookkeeping lives in lib/backStack.js because Profile's
   // sub-screens and Chat's sheets are layers too, and Back used to jump
   // straight past them to here.
-  useBackLayer(Boolean(openChat || showProfile || showMap), () => {
+  useBackLayer(Boolean(openChat || showProfile || showUs || showMap), () => {
     setOpenChat(null)
     setShowProfile(false)
+    setShowUs(false)
     setShowMap(false)
   })
   // Pushed after the one above, so Back closes the board before the chat.
@@ -246,7 +323,17 @@ function Shell() {
   const overlay = playWith ? (
     <PlayTogether onBack={() => setPlayWith(null)} />
   ) : showProfile ? (
-    <Profile onBack={() => setShowProfile(false)} openPlay={openPlay} onPlayOpened={() => setOpenPlay(false)} />
+    <Profile onBack={() => { setShowProfile(false); try { setDefaultPin(usingDefaultPin()) } catch { setDefaultPin(null) } }} />
+  ) : showUs ? (
+    <Us
+      me={profile.id}
+      onBack={() => setShowUs(false)}
+      openPlay={openPlay}
+      onPlayOpened={() => setOpenPlay(false)}
+      // "Just us" and an unanswered question both live inside a conversation,
+      // so Us hands the person across rather than rebuilding either here.
+      onOpenChat={(friend) => { setShowUs(false); setOpenChat(friend) }}
+    />
   ) : showMap ? (
     <SnapMap onBack={() => setShowMap(false)} />
   ) : openChat ? (
@@ -308,31 +395,32 @@ function Shell() {
             onOpenChat={goToChat}
             onOpenProfile={() => setShowProfile(true)}
             onOpenMap={() => setShowMap(true)}
+            onSignals={setChatSignals}
           />
         </div>
         <div className="pane" inert={pane !== 1} aria-hidden={pane !== 1}>
           <CameraScreen active={pane === 1 && !overlay} onSent={() => setPane(0)} onEditing={setEditing} />
         </div>
         <div className="pane" inert={pane !== 2} aria-hidden={pane !== 2}>
-          <Stories active={pane === 2 && !overlay} onCapture={() => setPane(1)} />
+          <Stories active={pane === 2 && !overlay} onCapture={() => setPane(1)} onSignals={setStorySignals} />
         </div>
       </div>
 
-      <nav className="tabbar" aria-label="Main navigation">
-        {PANES.map(({ key, label, Icon }, i) => (
-          <button
-            key={key}
-            className={pane === i ? 'active' : ''}
-            onClick={() => setPane(i)}
-            aria-current={pane === i ? 'page' : undefined}
-          >
-            <span className="glyph">
-              <Icon />
-            </span>
-            {label}
-          </button>
-        ))}
-      </nav>
+      {/* Five slots, three panes. The first three select a pager pane exactly
+          as they always did; the last two open an overlay that covers the
+          shell, the way Chat, Profile and Snap Map already do. Turning the
+          pager into five panes would move the camera off centre, and the
+          capture flow is built around it being in the middle. */}
+      <TabBar
+        tabs={BAR_TABS}
+        activeKey={activeTabKey(pane, showProfile ? 'profile' : showUs ? 'us' : null)}
+        badges={badges}
+        onSelect={(tab) => {
+          if (tab.kind === 'pane') setPane(tab.pane)
+          else if (tab.overlay === 'us') setShowUs(true)
+          else setShowProfile(true)
+        }}
+      />
 
       <InstallPrompt />
     </div>
@@ -355,7 +443,7 @@ function Shell() {
             try { sessionStorage.setItem(`meera:resume-game:${profile.id}`, JSON.stringify(gameInvite)) } catch {}
             if (gameInvite.id) acknowledgeGameInvite(gameInvite.id).catch(() => {})
           }
-          setGameInvite(null); setShowProfile(true); setOpenPlay(true)
+          setGameInvite(null); setShowUs(true); setOpenPlay(true)
         }}>Open</button>
         <button type="button" className="game-banner-dismiss" aria-label="Dismiss game invitation" onClick={async () => {
           try {
