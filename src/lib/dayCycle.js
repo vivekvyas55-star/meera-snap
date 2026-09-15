@@ -108,3 +108,20 @@ export function shuffle(items, rand = Math.random) {
   }
   return out
 }
+
+/**
+ * Today's item from a pool, for the surfaces that want the whole thing rather
+ * than the index: the mystery box, the runner's secret mission and the calming
+ * prompt all reduce to exactly this.
+ *
+ * `isoDate` is an IST date string, the same argument `puzzleForDay()` and
+ * `themeForDay()` take, so every daily surface in the client is called the
+ * same way. `null` means we could not work out which day it is, or the pool is
+ * empty — never a silent fallback to the first item, which would hand everyone
+ * the same puzzle forever the day Intl lost its timezone table.
+ */
+export function pickForDay(pool, isoDate, playerId = null) {
+  if (!Array.isArray(pool) || pool.length === 0) return null
+  const i = rotationIndex(istDayNumber(isoDate), phaseFor(playerId), pool.length)
+  return i == null ? null : pool[i]
+}

@@ -1,10 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Confirm from '../components/Confirm'
-import DinoRun from '../components/DinoRun'
-import EmojiDetective from '../components/EmojiDetective'
-import MemoryFlip from '../components/MemoryFlip'
-import { BackIcon, CheckIcon, CloseIcon, GridIcon, SmileyIcon } from '../components/Icons'
+import SoloPlay from './SoloPlay'
+import { BackIcon, CheckIcon, CloseIcon, GamepadIcon } from '../components/Icons'
 import { useAuth } from '../hooks/useAuth'
+import { useBackLayer } from '../hooks/useBackLayer'
 import { useAlias } from '../hooks/useAliasClock'
 import { peerAlias } from '../lib/alias'
 import { rematchGame, listFriendsWithProfiles, resolveGameInvite, syncGameRoom, endGameRoom, listActiveGameRooms, isVisibleTo, clearViewedChats, listMessages, sendChat, pairKey, markChatsOpened } from '../lib/db'
@@ -22,8 +21,6 @@ import '../styles/games.css'
 // this says what draws it. Keyed by the same game id, so a fourth game is one
 // entry in each and no change to the room, the invitation or the score.
 const BOARDS = { ttt: TicTacToeBoard, c4: ConnectFourBoard, checkers: CheckersBoard }
-
-const BEST_KEY = 'meera:dino-best'
 
 // EVERY name on these screens is the rotating alias, never display_name.
 //
@@ -341,7 +338,7 @@ export default function PlayTogether({ onBack }) {
   const actionBusy = useRef(false)
   const alias = useAlias()
   const { profile } = useAuth(); const me = profile.id
-  const [best, setBest] = useState(0); const [open, setOpen] = useState(null)
+  const [open, setOpen] = useState(null)
   const [actionLoading, setActionLoading] = useState(false)
   const [rooms, setRooms] = useState([])
   const [loading, setLoading] = useState(true)
@@ -351,7 +348,6 @@ export default function PlayTogether({ onBack }) {
   // is open. They are separate because the room's game is decided by the row,
   // and browsing the catalogue behind an open board must not change it.
   const [pick, setPick] = useState('ttt'); const [roomGame, setRoomGame] = useState('ttt')
-  useEffect(() => { try { setBest(Number(localStorage.getItem(BEST_KEY) || 0)) } catch {} }, [])
   useEffect(() => {
     let alive = true
     const refresh = async () => {
@@ -386,7 +382,8 @@ export default function PlayTogether({ onBack }) {
   // Opened from a conversation with no game running yet: preselect that friend
   // so the screen is one tap from an invitation rather than a dropdown.
   useEffect(() => { try { const withId = sessionStorage.getItem(`meera:play-with:${me}`); if (!withId) return; setSelected(withId); sessionStorage.removeItem(`meera:play-with:${me}`) } catch {} }, [me])
-  const record = (score) => { if (score <= best) return; setBest(score); try { localStorage.setItem(BEST_KEY, String(score)) } catch {} }
+  const closeSolo = useCallback(() => setOpen(null), [])
+  useBackLayer(open === 'solo', closeSolo)
   const chosen = useMemo(() => friends.find((f) => f.id === selected), [friends, selected])
   const inviteGame = async () => {
     if (!chosen || actionBusy.current) return
@@ -429,30 +426,16 @@ export default function PlayTogether({ onBack }) {
     if (game.status === 'pending' && game.recipient_id === me) { setInvite({ ...game, peer }); return }
     setSelected(peer.id); setRoom(game.room); setInviteId(game.id); setMark(game.sender_id === me ? 'X' : 'O'); setAccepted(game.status === 'accepted'); setRoomGame(game.game || 'ttt'); setOpen('room')
   }
+  // The solo half REPLACES this screen rather than rendering inside its list:
+  // it has its own header and its own scroll, and nesting an `.app` inside a
+  // `.list` would give it two of each. Back closes it before Play.
+  if (open === 'solo') return <SoloPlay me={me} onBack={closeSolo} />
   return <div className="app" style={{ display: 'flex', flexDirection: 'column', background: '#fff' }}>
     <div className="header"><button type="button" className="circle filled" onClick={onBack} aria-label="Back"><BackIcon /></button><h1>Play</h1></div>
     <div className="list profile-list">
       {invite && <Invite busy={actionLoading} invite={invite} onAccept={accept} onDismiss={dismissInvite} />}
       {open === 'room' && chosen ? (
         <GameRoom key={inviteId} me={me} friend={chosen} incoming={mark === 'O'} accepted={accepted} inviteId={inviteId} room={room} mark={mark} game={roomGame} onClose={closeGame} />
-      ) : open === 'run' ? (
-        <>
-          <p className="play-intro">Tap anywhere in the runner to start and jump. Your best stays only on this device.</p>
-          <button type="button" className="pill-btn" onClick={() => setOpen(null)}>All games</button>
-          <div style={{ marginTop: 12 }}><DinoRun best={best} onScore={record} /></div>
-        </>
-      ) : open === 'detective' ? (
-        <>
-          <p className="play-intro">A new case every day, at midnight IST. Nothing is sent anywhere.</p>
-          <button type="button" className="pill-btn" onClick={() => setOpen(null)}>All games</button>
-          <div style={{ marginTop: 12 }}><EmojiDetective playerId={me} /></div>
-        </>
-      ) : open === 'flip' ? (
-        <>
-          <p className="play-intro">Turn two, keep the pairs. Today&apos;s set changes at midnight IST.</p>
-          <button type="button" className="pill-btn" onClick={() => setOpen(null)}>All games</button>
-          <div style={{ marginTop: 12 }}><MemoryFlip playerId={me} /></div>
-        </>
       ) : (
         <div className="play-grid">
           {rooms.length > 0 && (
@@ -515,20 +498,15 @@ export default function PlayTogether({ onBack }) {
                   <button type="button" className="btn-dark" disabled={!chosen || actionLoading} onClick={inviteGame}>{actionLoading ? 'Sending…' : 'Invite'}</button>
                 </div>}
           </div>
-          {/* On your own. Three cards, no invitation, no friend needed — and
-              nothing on this side of the screen touches the network. */}
+          {/* On your own. ONE door, not a shelf: everything solo lives on
+              "Your little break" (screens/SoloPlay.jsx), and a game reachable
+              from two places is a game whose progress is kept in two places
+              soon afterwards. A line icon, not a 🦕 — emoji are content here,
+              never chrome. */}
           <span className="eyebrow pg-solo-head">On your own</span>
-          <button type="button" className="play-card" style={{ background: 'var(--card)' }} onClick={() => setOpen('run')}>
-            <span className="fp-row-icon">🦕</span>
-            <span className="fp-row-text"><span className="play-title">Runner</span><span className="play-sub">Beat your own best. {best > 0 ? `Your best is ${best}.` : ''}</span></span>
-          </button>
-          <button type="button" className="play-card" style={{ background: 'var(--card)' }} onClick={() => setOpen('detective')}>
-            <span className="fp-row-icon"><SmileyIcon width={20} height={20} /></span>
-            <span className="fp-row-text"><span className="play-title">Emoji Detective</span><span className="play-sub">Decode a film, song, feeling or phrase. One case a day.</span></span>
-          </button>
-          <button type="button" className="play-card" style={{ background: 'var(--card)' }} onClick={() => setOpen('flip')}>
-            <span className="fp-row-icon"><GridIcon width={20} height={20} /></span>
-            <span className="fp-row-text"><span className="play-title">Memory Flip</span><span className="play-sub">Faces, places, little things and colours. Match the pairs.</span></span>
+          <button type="button" className="play-card" style={{ background: 'var(--card)' }} onClick={() => setOpen('solo')}>
+            <span className="fp-row-icon"><GamepadIcon width={20} height={20} /></span>
+            <span className="fp-row-text"><span className="play-title">Your little break</span><span className="play-sub">The runner and today’s secret mission, a mystery box, two daily puzzles, a tiny escape room and your mood garden. Only on this phone.</span></span>
           </button>
         </div>
       )}

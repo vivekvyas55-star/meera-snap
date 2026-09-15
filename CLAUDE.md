@@ -2490,9 +2490,110 @@ injectable `rand` so obstacle spawning is deterministic under test. A canvas
 game is otherwise untestable, and the jump arc and collision box are exactly the
 kind of thing that breaks silently.
 
+## "Your little break" — the ONE solo surface (`screens/SoloPlay.jsx`)
+
+Four solo games were built by three agents in parallel and arrived as two
+competing surfaces plus two components nothing imported. They are reconciled
+into one screen, reached from a single card in Play.
+
+**Play keeps ONE door, not a shelf.** `PlayTogether` no longer imports
+`DinoRun`, `EmojiDetective` or `MemoryFlip` and no longer owns
+`meera:dino-best`; it renders one "Your little break" card and, when it is
+open, `SoloPlay` **replaces** the screen (it has its own header and its own
+scroll — nesting an `.app` inside a `.list` gives it two of each). A game
+reachable from two places is a game whose progress is kept in two places soon
+afterwards, which is exactly what had happened here.
+
+The order is the owner's, with the other puzzles grouped where a puzzle
+belongs: **Continue your game** (the runner + its secret mission, opened as a
+sub-view) · **Today's Mystery Box** (inline) · **More to play** (two doors,
+Emoji Detective and Memory Flip, each a sub-view) · **Tiny escape room** ·
+**Your mood garden** · **Personal bests** · **One calming prompt**. The three
+self-contained cards take no props and draw their own headings, so each lands
+with one line.
+
+**`MoodGarden` and `TinyEscape` had been tree-shaken out of the bundle
+entirely** — built, tested, and imported by nothing. Wiring them in is what put
+them there, and `tests/solo-screen.test.jsx` asserts the wiring rather than
+trusting it (`.mg` and `.er-card` render on this screen).
+`components/MoodGardenSlot.jsx` — the seam the garden was to arrive through —
+is **deleted rather than pointed at the real component**: it carried a `me`
+prop, and `MoodGarden.length === 0` is the enforcement that a mood history one
+partner can see about the other cannot be built by accident. A slot with a prop
+on it is the wrong wiring, not a shortcut. `SoloPlay` renders `<MoodGarden />`
+with nothing at all, and a test greps the call site for that.
+
+### ONE day-number module, ONE store
+
+Both halves of the reconciliation are the same lesson: two modules for one
+thing drift the first time one of them learns something the other does not.
+
+- **`lib/dayCycle.js` survives; `lib/istDay.js` is gone.** The two disagreed
+  about the epoch — 2024-01-01 against 1970-01-01. **2024 wins because it is
+  already in production and matches `202609090028_bot_rotation.sql` and
+  `pair_prompt()`**; a third convention in the client is the exact bug this
+  codebase already carries in SQL (`todays_prompt()` and `pair_prompt()` are 13
+  apart mod 30). The 1970 argument — that a 2024 epoch makes pre-2024 dates
+  negative and JS keeps the sign on `%` — is real but unreachable, and
+  `rotationIndex` guards it anyway; `tests/day-cycle.test.js` pins the guard
+  across 800 consecutive days either side of the epoch so it cannot be
+  "simplified" out.
+- `pickForDay(pool, isoDate, playerId)` is the shared helper. Every daily
+  surface in the client now takes an **IST date string**, like `puzzleForDay()`
+  and `themeForDay()` already did — `boxForDay`, `missionForDay` and
+  `calmForDay` were ported from day numbers to match. The rotation is still a
+  **cycle, not a draw**, and each pool's "every item before any repeat"
+  property is asserted in its own test file, so the epoch change could not
+  quietly shorten a cycle.
+- **`lib/soloProgress.js` survives; `lib/soloStore.js` is gone.** It had the
+  better three-state discipline: unparseable JSON answers `null` ("we do not
+  know") where the other treated it as a fresh device, which is an *answer*,
+  and one that would report "no personal bests" over a tally still recoverable
+  by hand. The day-scoped half (`box` / `mission` / `bests`, `soloForDay`,
+  `saveBox`, `saveMission`, `recordRunnerScore`) was ported onto it, under the
+  key **already in production** (`meera:solo-play-v1`) — a rename would have
+  silently retired every tally on somebody's phone. `meera:dino-best` keeps its
+  own long-standing key for the same reason.
+- **Rolling the day over is a DELETION.** Yesterday's box and mission are
+  replaced with empty ones and no note is kept that they were unfinished, which
+  is the whole of "missing a day is graceful" — there is no state left for a
+  future screen to be regretful about. The cumulative halves (the detective's
+  day map, Memory Flip's bests, `bests`) carry across untouched. A day we
+  cannot identify shows a fresh day and **writes nothing**: deleting today's
+  box because Intl went missing for a moment would be the feature destroying
+  real state over its own uncertainty.
+
+### Secret missions ride ON the runner, never inside it
+
+`lib/missions.js` observes a run and never writes to one — `watchFrame` reads
+the run after `step()` has decided the frame, stars are a pure function of
+`run.dist`, and a jump is counted only when `runner.js` actually accepts one
+(counting taps would let a mission be finished by hammering the screen in
+mid-air). `RUNNER_X` / `RUNNER_W` / `RUNNER_H` are **exported from `runner.js`**
+rather than copied, because a second copy of "where the runner stands" drifts
+and the mission then counts a different thing from the one the player watches go
+past. `tests/missions.test.js` pins the contract with two identical runs, one
+observed and one not, compared byte for byte.
+
+### The house rules, still binding
+
+Device-local only — no table, no migration, no round trip, and
+`tests/solo-progress.test.js` + `tests/solo-screen.test.jsx` grep for a
+`supabase` import, an `.rpc(` and a `fetch(`. No streaks, no guilt copy, no
+rankings, no nudges; both the calming prompts and the screen carry copy
+blocklists. `.solo-continue` (lavender), `.solo-box` (lime) and `.solo-calm`
+(coral) are painted from a **class**, not an inline style, and are listed in
+`index.css`'s fixed-light context — a test re-derives the painted selectors from
+`styles/solo.css` and fails if one is missing, which is the `.fp-stat` bug
+caught mechanically rather than after dark. The one looping animation
+(`solo-breathe`) is a real loop, and `styles/solo.css` may not out-shout the
+global reduced-motion rule with an `!important`; that is asserted too.
+
 ## Solo games: Emoji Detective and Memory Flip
 
-Two device-local games, reached from Play. `components/EmojiDetective.jsx` and
+Two device-local games, reached from "Your little break" (see above; they were
+reached from Play directly until the solo surfaces were reconciled).
+`components/EmojiDetective.jsx` and
 `components/MemoryFlip.jsx` are **self-contained cards, not screens** — no
 header, no back button, no overlay of their own — so they can be slotted into
 Play or any other surface without two shells fighting. Rules live in
@@ -2509,7 +2610,8 @@ failed read is **not written**, because writing would overwrite a tally we could
 not see.
 
 **`istDayNumber()` in `lib/dayCycle.js` is the client's single day-number
-helper, and its epoch is `2024-01-01`.** The database holds two conventions that
+helper, and its epoch is `2024-01-01`.** (A second module with a 1970 epoch was
+proposed and rejected — see "Your little break" above.) The database holds two conventions that
 disagree — `todays_prompt()` counts from the Unix epoch, `pair_prompt()` and
 `send_morning_quotes()` from 2024-01-01, 13 apart mod 30 — and this picks the
 one the newest rotation uses. Anything else in `src/` that needs "which day is
@@ -2543,8 +2645,10 @@ pool size read at call time, so adding a puzzle lengthens the cycle. The IST
   the fill and the pinned ink cannot come apart.
 ## Two solo games, device-local — Mood Garden and Tiny Escape Room
 
-Both are self-contained entry components that take **no props**, so the solo
-"little break" screen drops each in with one line and owns nothing about them.
+Both are self-contained entry components that take **no props**, so
+`screens/SoloPlay.jsx` drops each in with one line and owns nothing about them.
+They are wired in there now — until that landed, nothing imported either and
+both were tree-shaken out of the bundle.
 
 ### Mood Garden (`components/MoodGarden.jsx`, `lib/moodGarden.js`, `lib/moodStore.js`)
 
