@@ -39,14 +39,12 @@
 # The client half ships either way and hides itself: loadScheduled() tells a
 # missing RPC apart from a failed one, so on a database without this migration
 # the clock button and the strip simply do not render.
-202609150040_scheduled_messages
 # 202609140037 adds the deletion grace period and two tables to the export.
 # Shelved because it has not been applied by hand yet and must not be counted
 # against production until it is: AccountData falls back to the immediate
 # delete when account_deletion_state() answers PGRST202, so the screen is
 # correct either way. Apply it, schedule operations/schedule_account_purge.sql
 # separately, then remove this line.
-202609140037_deletion_grace
 # Operational telemetry. Shelved deliberately, not forgotten: it stands up a NEW
 # metadata store on a production database with three real users, where the
 # honest answer is that hour buckets and missing identifier columns reduce
@@ -60,7 +58,6 @@
 # 202609150041 makes the database emit a kind the live bundle renders as a
 # bogus "Photo" tile. It goes live only AFTER the frontend carrying the thread
 # event ships and is verified on the served bundle.
-202609150041_game_invite_events
 
 # 202609150060 is shelved ONLY because it is blocked on 202609140034, which is
 # itself on this list. It alters together_events (a new `game_result` kind) and
@@ -79,4 +76,3 @@
 # Games tab is simply not drawn — and, crucially, a read that merely FAILED
 # still draws it and says so, because a section that hides itself on a flaky
 # network is a failure rendered as an answer.
-202609150060_game_records
