@@ -27,7 +27,7 @@ export default function StorageUsage() {
     return () => { alive = false }
   }, [])
 
-  if (usage === undefined) return <div className="pc-empty pc-loading">Adding up your files…</div>
+  if (usage === undefined) return <div className="pc-empty pc-loading" role="status">Adding up your files…</div>
   if (usage === null) return null
 
   const parts = [

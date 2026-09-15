@@ -78,7 +78,7 @@ export default function LocationSharing() {
       </div>
 
       {state === undefined && !loadError && (
-        <div className="pc-empty pc-loading">Checking what you're sharing…</div>
+        <div className="pc-empty pc-loading" role="status">Checking what you're sharing…</div>
       )}
 
       {loadError && (

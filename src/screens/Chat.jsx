@@ -527,7 +527,7 @@ export default function Chat({ friend, onBack, onOpenPlay }) {
   }, [messages])
 
   return (
-    <div className="app" style={{ display: 'flex', flexDirection: 'column', position: 'relative' }}>
+    <div className="app screen">
       <div className="header">
         <button className="circle filled" onClick={leave} aria-label="Back">
           <BackIcon />
@@ -775,6 +775,9 @@ export default function Chat({ friend, onBack, onOpenPlay }) {
             }}
             rows={1}
             placeholder="Send a chat"
+            /* The placeholder was the only name this field had, and a
+               placeholder stops being one the moment you type into it. */
+            aria-label={`Message ${friendName}`}
             enterKeyHint="send"
           />
           {/* Sticker picker + voice note when the field is empty; send arrow when typing. */}
@@ -1144,13 +1147,16 @@ const TAPBACKS = ['❤️', '👍', '👎', '😂', '😮', '😢']
 // reference — so each copy lives and clears on its own schedule.
 function ForwardSheet({ me, message, onClose }) {
   const toast = useToast()
-  const [friends, setFriends] = useState([])
+  // undefined = not asked, null = the read failed, [] = you really have nobody.
+  // `[]` + a swallowed error told somebody sitting INSIDE a conversation that
+  // they had no one to forward to.
+  const [friends, setFriends] = useState(undefined)
   const [selected, setSelected] = useState([])
   const [sending, setSending] = useState(false)
   useEffect(() => {
     listFriendsWithProfiles(me)
       .then((l) => setFriends(l.filter((f) => f.status === 'accepted')))
-      .catch(() => {})
+      .catch(() => setFriends(null))
   }, [me])
   const toggle = (id) =>
     setSelected((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]))
@@ -1175,8 +1181,12 @@ function ForwardSheet({ me, message, onClose }) {
     <Portal>
       <Sheet onClose={onClose} label="Forward message">
           <h2 style={{ margin: '0 0 12px', fontWeight: 300, fontSize: 20 }}>Forward to</h2>
-          {friends.length === 0 && <div className="empty">No one to forward to.</div>}
-          {friends.map((f) => (
+          {friends === undefined && <div className="empty" role="status">Loading your people…</div>}
+          {friends === null && (
+            <div className="empty" role="alert">Couldn’t load your people. Close and try again.</div>
+          )}
+          {friends?.length === 0 && <div className="empty">No one to forward to.</div>}
+          {(friends ?? []).map((f) => (
             <button
               key={f.profile.id}
               className="fwd-row"

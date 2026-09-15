@@ -56,7 +56,11 @@ export default function SnapMap({ onBack }) {
   const [now, setNow] = useState(() => Date.now())
   const lastFix = useRef(null) // { lat, lng, at } — lets a Ghost→Share toggle reuse a recent fix
   const [busy, setBusy] = useState(false)
-  const [count, setCount] = useState(0)
+  // null = we have not been able to count. `0` is the claim "every friend is in
+  // Ghost Mode", which is the exact sentence CLAUDE.md's failures table already
+  // lists for this screen — the early return below protects the PINS, but the
+  // chip beside them was still initialised to the answer and never reset.
+  const [count, setCount] = useState(null)
   const [nearest, setNearest] = useState(null) // { name, km } — closest sharing friend
   // True only while we intend the row to exist. Checked on BOTH sides of every
   // write, so a fix that was already in flight when the user tapped Go Ghost can
@@ -81,7 +85,7 @@ export default function SnapMap({ onBack }) {
     // from every friend being in Ghost Mode, which is a claim about THEIR
     // privacy that we have no basis to make.
     const locs = await getVisibleLocations().catch(() => null)
-    if (locs === null) return
+    if (locs === null) { setCount(null); return }
     if (mapRef.current !== map) return // unmounted/re-inited during the await
     Object.values(markersRef.current).forEach((m) => m.remove())
     markersRef.current = {}
@@ -329,7 +333,7 @@ export default function SnapMap({ onBack }) {
   const updatedAgo = sharing ? timeAgo(myLoc?.updated_at, now) : null
 
   return (
-    <div className="app" style={{ display: 'flex', flexDirection: 'column' }}>
+    <div className="app screen">
       <div className="header">
         <button className="circle dark" onClick={onBack} aria-label="Back">
           <BackIcon />
@@ -357,9 +361,13 @@ export default function SnapMap({ onBack }) {
               <>
                 <div className="map-chips">
                   <span className="chip map-chip-live">Sharing</span>
-                  <span className="chip">
-                    {Math.max(0, count - 1)} friend{count - 1 === 1 ? '' : 's'} on the map
-                  </span>
+                  {count === null ? (
+                    <span className="chip">Counting who’s on the map…</span>
+                  ) : (
+                    <span className="chip">
+                      {Math.max(0, count - 1)} friend{count - 1 === 1 ? '' : 's'} on the map
+                    </span>
+                  )}
                 </div>
                 {/* Sharing a location without saying for how long is the dark
                     pattern this screen exists to avoid, so the deadline gets a

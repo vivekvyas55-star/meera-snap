@@ -1874,6 +1874,47 @@ Sources, each already computed by the screen that owns it and reported up:
   gap and drops one type step, to 54.4px slots. **The labels stay** — five bare
   icons is a guessing game, and two of these glyphs do not name themselves.
 
+## When a screen may have more than one entrance
+
+The tab-bar work moved every pair surface into `Us` "whole, not copied", and
+`PlayTogether` already states the rule for the solo games ("ONE door, not a
+shelf … a game reachable from two places is a game whose progress is kept in
+two places soon afterwards"). Play itself has two doors and is right to. Snap
+Map sat between those two precedents with nothing saying which it was, so the
+app had an unstated rule. It is stated here.
+
+> **A screen may have a second entrance only when that entrance carries a
+> different INTENT *and* supplies context the first cannot express.** A second
+> way to reach the same undifferentiated screen is not an entrance; it is a
+> duplicate, and a duplicate is where two copies of the state come from.
+
+- **Play: two doors, both earned.** `Us → Play` is browse-and-start. The
+  `PlayChip` in a conversation resumes *that pair's* board and hands the room
+  and the mark across in `sessionStorage` — context the browse door has no way
+  to name. Different intent, different payload.
+- **The solo games: one door.** "Your little break" inside Play. They were
+  built by three agents in parallel and arrived as two competing surfaces; the
+  progress key was about to be written from both.
+- **Just us: one door, plus a LINK.** It is per-conversation by design, so `Us`
+  opens the conversation rather than rebuilding the feature. A link that lands
+  you where the feature already lives is not a second entrance.
+- **Snap Map: one door, and it is in `Us`** (15 Sep 2026). It is a pair surface
+  — where your friends are — and the chat-list header's circular button opened
+  the same all-friends map that a row in `Us` opens. No second intent, so it
+  was a duplicate rather than an entrance, and it was the last pair surface
+  living outside the pair layer. The button is gone. The row costs one tap more
+  and buys a label and a line of copy that a bare circle could not carry, which
+  on the screen whose whole design is honest defaults is worth the tap: the
+  hint names Ghost Mode as the default at the door.
+
+**Two entrances must also be ONE import.** `Us` imported `PlayTogether`
+statically while `App` imported it lazily. Rollup resolves that by hoisting
+Play into its own chunk and giving the `Us` chunk a **static** edge to it — so
+merely opening the Us tab downloaded seven games and three boards (~88 kB JS,
+~25 kB CSS) whether or not anybody tapped Play. Both routes now use the same
+`import()` specifier and the chunk arrives when Play is opened.
+`tests/one-door.test.js` pins all of it.
+
 ## Play is reachable from the conversation it is about
 
 `components/PlayChip.jsx` + `lib/gameState.js`. Play used to exist only at
@@ -2992,6 +3033,47 @@ own subtree, so a lavender card's contents stay legible without a second copy of
 every rule. **A vibrant fill applied from an INLINE style never enters that
 context** — that is how `.fp-stat` ended up near-white text on lavender at
 night. If you paint a card from JS, add its selector to the list.
+
+**The invariant runs BOTH ways, and both directions have shipped:**
+
+> A selector belongs in a list **if and only if** its background is a fixed fill
+> that does not change between schemes.
+
+- **Missing** is the `.fp-stat` direction: a vibrant fill outside the context,
+  near-white text on lavender at 2am.
+- **Wrongly listed** is `.play-card`, found by eye on a phone after 950 tests
+  passed. It sat in the fixed-light list while both its usages are **neutral**
+  (SoloPlay's `.solo-door` has no fill; PlayTogether's entry card paints
+  `var(--card)`), so "More to play" rendered dark ink on a dark card at night.
+  A surface that follows the theme must not be pinned against it.
+
+`tests/theme-context.test.js` derives the painted selectors from every
+stylesheet and asserts both halves; `tests/solo-screen.test.jsx` and
+`tests/mood-garden.test.jsx` keep their file-local versions of the first half.
+Two lists carry the judgements the CSS cannot state: `JS_PAINTED` (painted from
+a component, and the test greps that component so an entry cannot outlive it)
+and `NO_WORDS` (a disc, pip, bead, bar or dot — nothing inside it reads
+`--ink`). A fill that carries words and pins its own `color:` needs no context;
+that is the other legitimate pattern, and the test knows it. Verified by
+mutation in both directions.
+
+**A ground painted from JS cannot follow the theme either — that is the same
+lesson one scale up.** Chat, Profile, Plans, Memories, Us, Snap Map and Play
+each replace the shell, and all seven carried their layout as an inline style
+object; **five of them included `background: '#fff'`**. An inline declaration
+outranks every selector in `index.css`, so at night those five stayed white
+while `--ink` went near-white. The stopgap was the only `!important` in the
+sheet, re-asserting `var(--bg)` over `.app[style]` inside the dark block.
+**`.screen` is the fix** — `<div className="app screen">`, no inline style —
+and the `!important` went with it. The test fails the build on any
+`background: '#…'` in a `.jsx` file.
+
+**A bare one-word class must not paint a vibrant fill.** `.play-your-turn` and
+`.play-invited` were global names, and `play-${state.key}` is also applied to
+the chat header's round Play button — so a bare `.play-your-turn` was aiming a
+lime fill at that button, and lost only because `.circle.filled` happens to be
+one step more specific. They are `.play-chip.play-*` now, which is the name the
+fixed-light list already used. See "GLOBAL NAMES THAT SWALLOW MARKUP".
 
 **Motion** lives in one block near the end of `index.css`. Sheets rise from the
 edge they are anchored to (`sheet-up` + `scrim-in`), toasts and the offline bar

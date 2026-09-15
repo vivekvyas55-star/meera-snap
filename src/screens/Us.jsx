@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { lazy, useCallback, useEffect, useState } from 'react'
 import {
   clearStatusNote,
   listActiveGameRooms,
@@ -25,13 +25,36 @@ import {
   GamepadIcon,
   HeartIcon,
   ImageIcon,
+  MapIcon,
   NoteIcon,
   SparkIcon,
 } from '../components/Icons'
 import Memories from './Memories'
-import PlayTogether from './PlayTogether'
 import Together from './Together'
 import '../styles/privacy.css'
+
+// ONE import strategy for Play. App.jsx already reaches this screen through a
+// `lazy()` — the from-a-conversation route — and Us used to reach the same
+// module through a STATIC import. Rollup resolved that by hoisting Play into
+// its own chunk and giving the Us chunk a static edge to it, so merely opening
+// the Us tab downloaded Play's ~88 kB of JS and ~25 kB of CSS (seven games,
+// three boards) whether or not anybody tapped Play. Two entrances, yes — two
+// import strategies, no. The dynamic import is the same specifier App uses, so
+// both routes now share one chunk that arrives when Play is actually opened.
+//
+// It suspends up to the boundary App wraps the whole overlay in; there is
+// deliberately no second Suspense here, since a fallback inside a screen that
+// is itself being replaced would flash twice.
+const PlayTogether = lazy(() => import('./PlayTogether'))
+
+// Snap Map is a pair surface — where your friends are — and until now it was
+// the one such surface left outside this screen, reached from a small circular
+// button in the chat-list header. That button is gone; this is its one door.
+// See "When a screen may have more than one entrance" in CLAUDE.md: the chip in
+// a conversation earns Play a second door because it resumes THAT pair's board,
+// which browsing cannot express. A shortcut to the same undifferentiated map
+// carries no second intent, so it was a duplicate rather than an entrance.
+const SnapMap = lazy(() => import('./SnapMap'))
 
 // The pair layer — everything in Meera that is about two people.
 //
@@ -53,6 +76,7 @@ export default function Us({ me, onBack, openPlay, onPlayOpened, onOpenChat }) {
   const [showMemories, setShowMemories] = useState(false)
   const [showTogether, setShowTogether] = useState(false)
   const [showPlay, setShowPlay] = useState(Boolean(openPlay))
+  const [showMap, setShowMap] = useState(false)
   const [picking, setPicking] = useState(false)
 
   const [note, setNote] = useState('')
@@ -151,6 +175,7 @@ export default function Us({ me, onBack, openPlay, onPlayOpened, onOpenChat }) {
   const closeMemories = useCallback(() => setShowMemories(false), [])
   const closeTogether = useCallback(() => setShowTogether(false), [])
   const closePlay = useCallback(() => setShowPlay(false), [])
+  const closeMap = useCallback(() => setShowMap(false), [])
   const closePicker = useCallback(() => setPicking(false), [])
 
   // Each sub-screen is its own Back layer, pushed after the layer App holds for
@@ -159,10 +184,12 @@ export default function Us({ me, onBack, openPlay, onPlayOpened, onOpenChat }) {
   useBackLayer(showMemories, closeMemories)
   useBackLayer(showTogether, closeTogether)
   useBackLayer(showPlay, closePlay)
+  useBackLayer(showMap, closeMap)
 
   if (showMemories) return <Memories me={me} onBack={closeMemories} />
   if (showTogether) return <Together me={me} onBack={closeTogether} />
   if (showPlay) return <PlayTogether onBack={closePlay} />
+  if (showMap) return <SnapMap onBack={closeMap} />
 
   const openWaiting = (item) => {
     if (item.to === 'play') setShowPlay(true)
@@ -170,7 +197,7 @@ export default function Us({ me, onBack, openPlay, onPlayOpened, onOpenChat }) {
   }
 
   return (
-    <div className="app" style={{ display: 'flex', flexDirection: 'column', background: '#fff' }}>
+    <div className="app screen">
       <div className="header pc-head">
         <button className="circle filled" onClick={onBack} aria-label="Back">
           <BackIcon />
@@ -259,6 +286,23 @@ export default function Us({ me, onBack, openPlay, onPlayOpened, onOpenChat }) {
             </span>
           </button>
 
+          <div className="pc-label">Snap Map</div>
+          {/* Ghost Mode is the default and there is no row in the database
+              until you tap Share, so the hint says what is true right now
+              rather than what the screen can do. */}
+          <p className="field-hint">
+            Where your friends are, if they chose to share. You start in Ghost Mode.
+          </p>
+          <button onClick={() => setShowMap(true)} className="pc-nav">
+            <span className="pc-nav-icon" aria-hidden="true">
+              <MapIcon width={19} height={19} />
+            </span>
+            <span className="pc-nav-title">Open Snap Map</span>
+            <span className="pc-nav-go" aria-hidden="true">
+              <ArrowIcon width={17} height={17} />
+            </span>
+          </button>
+
           <div className="pc-label">Together</div>
           <p className="field-hint">
             A shared timeline and scrapbook for one friendship. Off until you both turn it on.
@@ -326,7 +370,7 @@ export default function Us({ me, onBack, openPlay, onPlayOpened, onOpenChat }) {
             <h2>Just us</h2>
             {/* Three states again. undefined = still loading, null = the friend
                 list could not be read, [] = you have no accepted friends yet. */}
-            {friends === undefined && <p className="field-hint">Loading your people…</p>}
+            {friends === undefined && <p className="field-hint" role="status">Loading your people…</p>}
             {friends === null && <p className="field-hint">Couldn’t load your friends. Try again in a moment.</p>}
             {Array.isArray(friends) && friends.length === 0 && (
               <p className="field-hint">Add a friend first — this one needs two.</p>

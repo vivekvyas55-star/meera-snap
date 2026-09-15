@@ -96,7 +96,7 @@ export default function BlockedContacts({ me }) {
       </p>
 
       {blocked === null && !loadError && (
-        <div className="pc-empty pc-loading">Checking your block list…</div>
+        <div className="pc-empty pc-loading" role="status">Checking your block list…</div>
       )}
 
       {loadError && (
@@ -145,7 +145,7 @@ export default function BlockedContacts({ me }) {
             </div>
             <div className="pc-picker">
               {friends === null && !friendsError && (
-                <div className="pc-empty pc-loading">Loading your friends…</div>
+                <div className="pc-empty pc-loading" role="status">Loading your friends…</div>
               )}
               {friendsError && (
                 <div className="pc-fail" role="alert">

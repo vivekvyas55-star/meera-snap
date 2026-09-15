@@ -60,8 +60,15 @@ export default function VoicePlayer({ message, bar, onSeen }) {
     }
   }
   return (
-    <button className="msg-voice" style={{ borderLeftColor: bar }} onClick={toggle}>
-      <span className="voice-play">{playing ? '❚❚' : '▶'}</span>
+    <button
+      className="msg-voice"
+      style={{ borderLeftColor: bar }}
+      onClick={toggle}
+      aria-label={playing ? 'Pause voice note' : 'Play voice note'}
+      aria-pressed={playing}
+    >
+      {/* The glyph is the picture of the state, never the statement of it. */}
+      <span className="voice-play" aria-hidden="true">{playing ? '❚❚' : '▶'}</span>
       <span className="voice-wave" aria-hidden>
         {Array.from({ length: 14 }, (_, i) => (
           <i key={i} style={{ height: `${6 + ((i * 5) % 16)}px` }} />

@@ -260,7 +260,7 @@ export default function Profile({ onBack }) {
   }
 
   return (
-    <div className="app" style={{ display: 'flex', flexDirection: 'column', background: '#fff' }}>
+    <div className="app screen">
       <div className="header pc-head">
         <button className="circle filled" onClick={onBack} aria-label="Back">
           <BackIcon />

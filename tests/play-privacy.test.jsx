@@ -72,7 +72,7 @@ test('the in-room header, turn line, legend and chat name the partner by alias o
   )
   await screen.findByText('Your turn')
   // The away line, the legend and the chat placeholder are all on screen here.
-  fireEvent.click(screen.getByRole('button', { name: '💬 Chat while playing' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Chat while playing' }))
   expect(screen.getByLabelText(`Message ${alias()}`)).toBeTruthy()
   expect(container.textContent).toContain(alias())
   assertNoRealName(container)

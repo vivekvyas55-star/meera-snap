@@ -477,26 +477,24 @@ input, textarea { font: inherit; }
 .app { position: relative; height: 100dvh; width: 100%; overflow: hidden; background: var(--bg); }
 
 /* --------------------------------------------------------------------------
-   ESCAPE HATCH — delete this the day the inline styles go.
+   A FULL-SCREEN SURFACE THAT COVERS THE SHELL.
 
-   Profile, Plans, Memories and PlayTogether each render their whole screen as
-   `<div className="app" style={{ …, background: '#fff' }}>`. An inline
-   declaration outranks every selector in this file, so at night those four
-   screens stayed white while --ink went near-white: white text on a white
-   ground, four entire screens, and no rule here could reach them.
+   Chat, Profile, Plans, Memories, Us, Snap Map and Play each replace the pager
+   rather than rendering into it, and each needs the same three declarations.
+   All seven used to carry them as an inline style object — and five of those
+   included `background: '#fff'`.
 
-   `!important` is the only lever CSS has against an inline style, and it is
-   used exactly once, on exactly this. .app is `background: var(--bg)` anyway,
-   so the three screens that carry an inline style for LAYOUT only (Chat,
-   SnapMap, the pager's own hidden state) are unaffected by it.
+   An inline declaration outranks every selector in this file, so at night
+   those five screens stayed white while --ink went near-white: white text on a
+   white ground, five entire screens, and no rule here could reach them. The
+   stopgap was the only `!important` in the sheet, re-asserting var(--bg) over
+   `.app[style]` inside the dark block. This class is the actual fix, and the
+   `!important` went with it.
 
-   The real fix is a class — `.screen` — on those four elements; it is listed
-   in the handover with the other blocking inline styles. When it lands, this
-   block should go with them.
+   A ground painted from JS cannot follow the theme — the same lesson as the
+   fixed-light list above, one scale up. Paint a screen from a class.
    -------------------------------------------------------------------------- */
-@media (prefers-color-scheme: dark) {
-  .app[style] { background: var(--bg) !important; }
-}
+.screen { display: flex; flex-direction: column; background: var(--bg); }
 
 .pager {
   display: flex; height: 100%; width: 300%;
@@ -2480,11 +2478,19 @@ button:disabled { cursor: not-allowed; }
   font-size: var(--fs-meta); font-weight: 500;
 }
 .play-chip-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); flex: 0 0 auto; }
-/* Something is waiting for you. The one state that gets the loud colour. */
-.play-your-turn { background: var(--lime); font-weight: 650; }
-.play-your-turn .play-chip-dot { background: var(--ink); animation: pulse-dot 1.6s ease-in-out infinite; }
-.play-invited { background: var(--lavender); font-weight: 650; }
-.play-invited .play-chip-dot { background: var(--ink); }
+/* Something is waiting for you. The one state that gets the loud colour.
+   SCOPED TO .play-chip on purpose. These were bare one-word selectors, and
+   `.play-${state.key}` is also put on the chat header's round Play button
+   (`circle filled play-btn play-your-turn`), so a bare `.play-your-turn` was
+   aiming a lime fill at that button too — it lost only because `.circle.filled`
+   happens to be one step more specific. The fixed-light list names
+   `.play-chip.play-your-turn`, and the fill has to be reachable under the same
+   name or the pairing is only true by luck. See "GLOBAL NAMES THAT SWALLOW
+   MARKUP" above. */
+.play-chip.play-your-turn { background: var(--lime); font-weight: 650; }
+.play-chip.play-your-turn .play-chip-dot { background: var(--ink); animation: pulse-dot 1.6s ease-in-out infinite; }
+.play-chip.play-invited { background: var(--lavender); font-weight: 650; }
+.play-chip.play-invited .play-chip-dot { background: var(--ink); }
 .play-resume .play-chip-dot { background: var(--accent); }
 .play-waiting .play-chip-dot, .play-away .play-chip-dot { background: var(--muted); }
 @keyframes pulse-dot { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }

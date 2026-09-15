@@ -43,7 +43,8 @@ function ledgerLabel(row) {
 
 export default function Plans({ onBack }) {
   const toast = useToast()
-  const [plans, setPlans] = useState([])
+  // undefined = not asked yet, null = the read failed, [] = no active plans.
+  const [plans, setPlans] = useState(undefined)
   const [ent, setEnt] = useState(null)
   const [rate, setRate] = useState(null)
   // undefined = not asked yet, null = the read failed, [] = no rows. Only the
@@ -52,8 +53,8 @@ export default function Plans({ onBack }) {
   const [busy, setBusy] = useState(false)
 
   const load = () => {
-    listPlans().then(setPlans)
-    getEntitlement().then(setEnt)
+    listPlans().then(setPlans).catch(() => setPlans(null))
+    getEntitlement().then(setEnt).catch(() => setEnt(null))
     getBillingSettings().then((s) => setRate(s.credits_per_month))
     listCreditHistory().then(setHistory)
   }
@@ -86,7 +87,7 @@ export default function Plans({ onBack }) {
   const runsOut = ent?.credits_until ? new Date(ent.credits_until) : null
 
   return (
-    <div className="app" style={{ display: 'flex', flexDirection: 'column', background: '#fff' }}>
+    <div className="app screen">
       <div className="header">
         <button className="circle filled" onClick={onBack} aria-label="Back">
           <BackIcon />
@@ -128,14 +129,33 @@ export default function Plans({ onBack }) {
             Trial — {left} day{left === 1 ? '' : 's'} left.
           </div>
         )}
-        {!ent?.enforced && (
+        {/* "Everything is free for now" is a claim about somebody's money, so
+            it is made only when the server actually said billing is off.
+            `!ent?.enforced` was true for three different situations — not asked
+            yet, the read failed, and genuinely off — and getEntitlement() fails
+            OPEN with a fallback that is byte-for-byte a real `status: 'none'`
+            row. Billing.jsx already reads `unknown` for exactly this reason;
+            this screen did not. */}
+        {ent && !ent.unknown && !ent.enforced && (
           <div className="field-hint">
             Plans aren’t switched on yet. Everything is free for now, and the meter
             above is only counting.
           </div>
         )}
+        {ent?.unknown && (
+          <div className="field-hint" role="status">
+            We couldn’t check your billing just now. Nothing has changed — this
+            screen only failed to ask.
+          </div>
+        )}
 
-        {plans.map((p) => (
+        {plans === null && (
+          <div className="field-hint" role="status">
+            Couldn’t load the plans. They haven’t gone anywhere; this list just
+            didn’t load.
+          </div>
+        )}
+        {(plans ?? []).map((p) => (
           <div key={p.code} className={`plan-card${p.period === 'year' ? ' best' : ''}`}>
             <div className="plan-top">
               <span className="plan-name">{p.name}</span>
@@ -163,7 +183,7 @@ export default function Plans({ onBack }) {
               enforcement is off — the trial is one-shot and start_trial() can
               never re-arm it, so offering it before it buys anything spends it
               for nothing. That is exactly what happened to one account. */}
-          {ent?.status === 'none' && ent?.enforced && (
+          {ent?.status === 'none' && !ent?.unknown && ent?.enforced && (
           <button className="pill-btn" onClick={trial} disabled={busy}>
             {busy ? 'Starting…' : 'Start 3-day trial'}
           </button>
