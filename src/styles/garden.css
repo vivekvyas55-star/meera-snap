@@ -1,0 +1,413 @@
+/* ==========================================================================
+   Mood garden.
+
+   ABC language: a vibrant full-card fill for the one card that is a statement
+   (today's plant), an oversized 300-weight display heading, pill chips for
+   metadata, and a dark near-black pill for the primary action. Every space,
+   radius and size names a token from index.css — a literal hex is a rule dark
+   mode cannot follow.
+
+   The exception, deliberately: everything inside .mg-svg. The garden is a
+   drawn picture and its colours are CONTENT, the way a reaction emoji or an
+   avatar is content — a bluebell is a bluebell at 2am, for the same reason the
+   four vibrant fills do not move between schemes. What does move is the sky
+   behind it, because a near-white panel is a torch on a phone in bed, and this
+   app is used in bed. That is written out below rather than left to a token.
+
+   .mg-today is a lavender fill, so it lives in a permanently light world and
+   its ink is pinned in index.css's fixed-light list. .mg-unlock.is-on is lime
+   and is listed there too. If you paint anything else here from a vibrant
+   hue, add its selector to that list in the same change — that is exactly how
+   .fp-stat ended up near-white text on lavender at night.
+
+   MOTION. Every animation below has its resting, good-looking state at `to`,
+   so the global prefers-reduced-motion rule (index.css: 0.01ms and
+   animation-iteration-count: 1) lands each one on the picture you would want
+   anyway. There is also an explicit reduced-motion block at the end of this
+   file: the guarantee is too important to hold by reference to a rule in
+   another file, which is precisely the mistake four files in this codebase
+   made while the global rule did not exist at all. The garden is fully
+   legible with no motion whatsoever.
+   ========================================================================== */
+
+.mg {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.mg-head { display: flex; flex-direction: column; gap: 2px; }
+
+.mg-eyebrow {
+  margin: 0;
+  font-size: var(--fs-eyebrow);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.mg-title {
+  margin: 0;
+  font-size: var(--fs-h1);
+  font-weight: 300;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+  color: var(--ink);
+}
+
+.mg-line {
+  margin: 0;
+  min-height: 1.2em;           /* holds its place while the device is asked */
+  font-size: var(--fs-meta);
+  color: var(--muted);
+}
+
+/* --------------------------------------------------------------------------
+   The scene.
+   -------------------------------------------------------------------------- */
+.mg-scene {
+  position: relative;
+  border-radius: var(--r-card);
+  overflow: hidden;
+  background: var(--card);
+}
+
+.mg-svg { display: block; width: 100%; height: auto; }
+
+/* The sky. Three moods of light, none of them a judgement: the default, a
+   warm one once sunfaces have unlocked the dawn, and a dusk when the garden
+   leans towards night irises. A garden after a hard week goes BLUE and gets
+   fireflies — it is the prettiest the scene ever looks, on purpose. */
+.mg-sky-a { stop-color: #dceaf4; }
+.mg-sky-b { stop-color: #eef3e6; }
+.mg-scene.is-dawn .mg-sky-a { stop-color: #f7dfc4; }
+.mg-scene.is-dawn .mg-sky-b { stop-color: #fdf1dd; }
+.mg-scene.is-night .mg-sky-a { stop-color: #2e3560; }
+.mg-scene.is-night .mg-sky-b { stop-color: #5a5f8e; }
+
+/* Dark mode dims the daylight skies only. The dusk one is already dark, and
+   the plants themselves are untouched in both schemes. */
+@media (prefers-color-scheme: dark) {
+  .mg-sky-a { stop-color: #2a3442; }
+  .mg-sky-b { stop-color: #33402f; }
+  .mg-scene.is-dawn .mg-sky-a { stop-color: #4a3524; }
+  .mg-scene.is-dawn .mg-sky-b { stop-color: #5c422b; }
+}
+
+.mg-shadow { fill: rgba(40, 55, 25, 0.16); }
+.mg-moon { fill: #f4f0da; opacity: 0.9; }
+.mg-dew { fill: #ffffff; opacity: 0.75; }
+
+.mg-empty {
+  position: absolute;
+  inset: auto 0 38%;
+  margin: 0;
+  text-align: center;
+  font-size: var(--fs-meta);
+  /* On the scene's own sky, not the themed ground, so it is pinned. */
+  color: rgba(22, 22, 26, 0.66);
+}
+@media (prefers-color-scheme: dark) {
+  .mg-empty { color: rgba(255, 255, 255, 0.78); }
+}
+
+/* --------------------------------------------------------------------------
+   Small animations. Each `to` is the resting state.
+   -------------------------------------------------------------------------- */
+.mg-motion-sway    { animation: mg-sway 5.5s ease-in-out infinite; transform-origin: 50% 100%; }
+.mg-motion-drift   { animation: mg-sway 8s ease-in-out infinite; transform-origin: 50% 100%; }
+.mg-motion-breathe { animation: mg-breathe 7s ease-in-out infinite; transform-origin: 50% 100%; }
+.mg-motion-open    { animation: mg-open 9s ease-in-out infinite; transform-origin: 50% 100%; }
+
+@keyframes mg-sway {
+  0%   { transform: rotate(-1.6deg); }
+  50%  { transform: rotate(1.6deg); }
+  100% { transform: rotate(-1.6deg); }
+}
+@keyframes mg-breathe {
+  0%   { transform: scale(1); }
+  50%  { transform: scale(1.045); }
+  100% { transform: scale(1); }
+}
+@keyframes mg-open {
+  0%   { transform: rotate(-1deg) scale(1); }
+  50%  { transform: rotate(1deg) scale(1.03); }
+  100% { transform: rotate(-1deg) scale(1); }
+}
+
+.mg-fly { fill: #ffe98a; }
+.mg-fly-0 { animation: mg-fly 6s ease-in-out infinite; }
+.mg-fly-1 { animation: mg-fly 7.5s ease-in-out infinite 0.8s; }
+.mg-fly-2 { animation: mg-fly 9s ease-in-out infinite 1.6s; }
+
+/* Ends visible and at rest: with iteration-count collapsed to 1 the fireflies
+   simply sit where they are, lit, which is what you would draw anyway. */
+@keyframes mg-fly {
+  0%   { opacity: 0.35; transform: translate(0, 0); }
+  35%  { opacity: 1;    transform: translate(7px, -6px); }
+  70%  { opacity: 0.45; transform: translate(-5px, 4px); }
+  100% { opacity: 0.9;  transform: translate(0, 0); }
+}
+
+/* --------------------------------------------------------------------------
+   Chips and copy.
+   -------------------------------------------------------------------------- */
+.mg-chips { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+
+.mg-chip {
+  padding: 5px 11px;
+  border-radius: var(--r-pill);
+  background: var(--card);
+  color: var(--muted);
+  font-size: var(--fs-micro);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.mg-warn {
+  margin: 0;
+  padding: var(--sp-3);
+  border-radius: var(--r-row);
+  background: var(--card);
+  color: var(--muted);
+  font-size: var(--fs-meta);
+  line-height: 1.4;
+}
+
+/* --------------------------------------------------------------------------
+   Today. The one vibrant fill on this surface — listed in index.css's
+   fixed-light block so its ink is pinned.
+   -------------------------------------------------------------------------- */
+.mg-today {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-4);
+  border-radius: var(--r-card);
+  background: var(--lavender);
+}
+
+.mg-today-art {
+  flex: 0 0 auto;
+  width: 52px; height: 58px;
+  display: flex; align-items: flex-end; justify-content: center;
+  border-radius: var(--r-row);
+  background: rgba(255, 255, 255, 0.5);
+}
+
+.mg-today-copy { flex: 1; min-width: 0; }
+.mg-today-mood {
+  margin: 0;
+  font-size: var(--fs-lead);
+  font-weight: 300;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+}
+.mg-today-note {
+  margin: 2px 0 0;
+  font-size: var(--fs-meta);
+  color: var(--muted);
+  line-height: 1.35;
+}
+
+.mg-change {
+  flex: 0 0 auto;
+  padding: 8px 14px;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: var(--action);
+  color: var(--action-ink);
+  font: inherit;
+  font-size: var(--fs-micro);
+  font-weight: 650;
+  cursor: pointer;
+}
+.mg-change:active { background: var(--action-press); }
+
+/* --------------------------------------------------------------------------
+   The picker. Six plants, drawn, no emoji — emoji are never chrome, and a
+   mood picker made of faces is a judgement scale with faces on it.
+   -------------------------------------------------------------------------- */
+.mg-ask { display: flex; flex-direction: column; gap: var(--sp-3); }
+
+.mg-ask-line {
+  margin: 0;
+  font-size: var(--fs-lead);
+  font-weight: 300;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+}
+
+.mg-moods {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--sp-2);
+}
+
+.mg-mood {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: var(--sp-3) 4px var(--sp-2);
+  border: 1.5px solid transparent;
+  border-radius: var(--r-row);
+  background: var(--card);
+  color: var(--ink);
+  font: inherit;
+  cursor: pointer;
+  transition: transform 120ms ease, background 140ms ease;
+}
+.mg-mood:active { transform: scale(0.97); background: var(--card-press); }
+.mg-mood.is-on { border-color: var(--action); background: var(--tint); }
+.mg-mood:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.mg-mood-art { display: block; height: 42px; }
+.mg-mood-label {
+  font-size: var(--fs-micro);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.mg-cancel,
+.mg-retry,
+.mg-more {
+  align-self: flex-start;
+  padding: 10px 18px;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: var(--action);
+  color: var(--action-ink);
+  font: inherit;
+  font-size: var(--fs-meta);
+  font-weight: 650;
+  cursor: pointer;
+}
+.mg-cancel { background: var(--card); color: var(--ink); }
+.mg-more { align-self: stretch; }
+
+/* --------------------------------------------------------------------------
+   The read failed. Danger tokens, never a coral fill — coral is pinned to
+   danger on the Profile surface and a soft card is what an error looks like
+   everywhere else in this app.
+   -------------------------------------------------------------------------- */
+.mg-fail {
+  padding: var(--sp-4);
+  border-radius: var(--r-card);
+  border: 1px solid var(--danger-line);
+  background: var(--danger-bg);
+  gap: var(--sp-3);
+}
+.mg-fail-line {
+  margin: 0;
+  font-size: var(--fs-meta);
+  line-height: 1.45;
+  color: var(--danger-ink);
+}
+
+.mg-erase {
+  align-self: flex-start;
+  padding: 9px 16px;
+  border: 1.5px solid var(--danger-line);
+  border-radius: var(--r-pill);
+  background: transparent;
+  color: var(--danger-ink);
+  font: inherit;
+  font-size: var(--fs-meta);
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.mg-erase-note {
+  margin: var(--sp-2) 0 0;
+  font-size: var(--fs-micro);
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+/* --------------------------------------------------------------------------
+   The sheet.
+   -------------------------------------------------------------------------- */
+.mg-sheet-title {
+  margin: 0 0 var(--sp-1);
+  font-size: var(--fs-h2);
+  font-weight: 300;
+  letter-spacing: -0.02em;
+}
+.mg-sheet-sub {
+  margin: 0 0 var(--sp-4);
+  font-size: var(--fs-meta);
+  color: var(--muted);
+  line-height: 1.45;
+}
+.mg-sheet-h3 {
+  margin: var(--sp-5) 0 var(--sp-2);
+  font-size: var(--fs-sm);
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+
+.mg-legend { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-1); }
+.mg-legend-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-row);
+  background: var(--card);
+}
+.mg-legend-row.is-dim { background: transparent; opacity: 0.66; }
+.mg-legend-art { flex: 0 0 30px; display: flex; align-items: flex-end; }
+.mg-legend-copy { display: flex; flex-direction: column; }
+.mg-legend-name { font-size: var(--fs-sm); font-weight: 600; }
+.mg-legend-note { font-size: var(--fs-micro); color: var(--muted); }
+
+.mg-unlocks { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-2); }
+.mg-unlock {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--sp-3);
+  border-radius: var(--r-row);
+  background: var(--card);
+}
+.mg-unlock.is-on { background: var(--lime); }
+.mg-unlock-name { font-size: var(--fs-meta); font-weight: 700; letter-spacing: -0.01em; }
+.mg-unlock-line { font-size: var(--fs-meta); color: var(--muted); line-height: 1.4; }
+
+.mg .mg-erase { margin-top: var(--sp-5); }
+
+/* At 320px the six moods still need to be tappable. Two rows of three at
+   about 96px each clears the 44px target with room to spare; nothing here
+   has a min-width that could push the column into a horizontal scroll. */
+@media (max-width: 340px) {
+  .mg-moods { gap: 6px; }
+  .mg-mood { padding: var(--sp-2) 2px 6px; }
+  .mg-today { gap: var(--sp-2); padding: var(--sp-3); }
+  .mg-today-art { width: 44px; height: 50px; }
+}
+
+/* --------------------------------------------------------------------------
+   Reduced motion, stated here as well as globally.
+
+   index.css already collapses every duration to 0.01ms and forces
+   animation-iteration-count: 1, which is what actually stops an infinite
+   loop. This block is the belt to that brace, because a growing garden is
+   exactly the feature that would keep swaying through it if a rule were ever
+   loosened — and because four files in this codebase once documented a
+   protection that did not exist. Held at the resting state, the garden loses
+   nothing: every plant is fully drawn at `to`.
+   -------------------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  .mg-motion-sway,
+  .mg-motion-drift,
+  .mg-motion-breathe,
+  .mg-motion-open,
+  .mg-fly-0,
+  .mg-fly-1,
+  .mg-fly-2 {
+    animation: none !important;
+  }
+  .mg-fly { opacity: 0.9; }
+}
