@@ -365,7 +365,9 @@ export default function IntimateSession({ me, friend, onClose }) {
   const alias = useAlias()
   const partner = partnerLabel(friend, alias)
   const { session, rounds, closed, available, error, sync, applySession, dismissClosed } =
-    useIntimateSession(me, friend.id, { intervalMs: ROOM_POLL_MS, listen: true })
+    // `recall: true` — this is the one instance that carries the memory of a
+    // session that ended while the sheet was shut, and the one that says so.
+    useIntimateSession(me, friend.id, { intervalMs: ROOM_POLL_MS, listen: true, recall: true })
   const [busy, setBusy] = useState(false)
   // { url, deadline } while a photo is on screen, and nothing at all otherwise.
   // The url is never stored anywhere else, never cached and never re-requested.

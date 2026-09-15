@@ -244,6 +244,13 @@ export function statusLine(view, partner) {
 // not flatten them: only one of the three is about how the evening went.
 export function endedLine(session, me, partner) {
   if (!session) return null
+  // The row could not be read at all — the RLS window had closed by the time we
+  // looked, or the request failed. We know it is not open; we do not know which
+  // of the three ways it closed, and there is no likeliest one worth pretending
+  // to. This is deliberately a DIFFERENT sentence from the one below: "no
+  // longer open" is something the row told us, this is something we could not
+  // find out.
+  if (session.lookup_failed) return 'That session is over. We could not check how it ended.'
   const byMe = session.ended_by === me
   switch (session.ended_reason) {
     case 'declined':
