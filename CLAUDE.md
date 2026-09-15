@@ -2355,6 +2355,58 @@ injectable `rand` so obstacle spawning is deterministic under test. A canvas
 game is otherwise untestable, and the jump arc and collision box are exactly the
 kind of thing that breaks silently.
 
+## Solo games: Emoji Detective and Memory Flip
+
+Two device-local games, reached from Play. `components/EmojiDetective.jsx` and
+`components/MemoryFlip.jsx` are **self-contained cards, not screens** — no
+header, no back button, no overlay of their own — so they can be slotted into
+Play or any other surface without two shells fighting. Rules live in
+`lib/emojiDetective.js` and `lib/memoryFlip.js`, pure and with injectable
+randomness, the way `runner.js` and `gameState.js` are. Styles: `styles/solo.css`.
+
+**No database, no migration, no round trip, and no media file of any kind.**
+Clues are emoji from the system font, Memory Flip's tiles are emoji or flat
+colour, the card back is a CSS pattern. Progress is localStorage
+(`lib/soloProgress.js`, key `meera:solo-play-v1`), read through the three-state
+rule — `undefined` not asked, `null` the read FAILED, an object otherwise. A
+failed read never renders as "no personal best", and a round played on top of a
+failed read is **not written**, because writing would overwrite a tally we could
+not see.
+
+**`istDayNumber()` in `lib/dayCycle.js` is the client's single day-number
+helper, and its epoch is `2024-01-01`.** The database holds two conventions that
+disagree — `todays_prompt()` counts from the Unix epoch, `pair_prompt()` and
+`send_morning_quotes()` from 2024-01-01, 13 apart mod 30 — and this picks the
+one the newest rotation uses. Anything else in `src/` that needs "which day is
+it" imports it rather than writing a third. `rotationIndex(day, phase, size)`
+is the same cycle `202609090028_bot_rotation.sql` uses: **rotate, do not draw**,
+pool size read at call time, so adding a puzzle lengthens the cycle. The IST
+*date string* still comes from `istToday()` in db.js.
+
+- **A puzzle id is permanent.** Rotation indexes by POSITION in `PUZZLES`, but
+  `puzzleCode()` / `puzzleFromCode()` encode the `id` — `ED1-9L` — which is the
+  seam a future "send this one to her" uses: one chat message, no table, no RPC,
+  no media. Renumbering breaks codes already sent. A code the reader's pool does
+  not have resolves to null (check character), never to the wrong puzzle.
+- **No photo tiles.** Memory Flip's `createGame({ tiles })` is where an opt-in
+  photo board would attach, and the egress cost is written out at the top of
+  `lib/memoryFlip.js`: N pairs is N distinct storage objects, and it would have
+  to go through `memories.thumb_path` and the per-path `signedUrl()` cache, or
+  every shuffle re-downloads originals into 66px tiles. Not wired, deliberately.
+- **No rankings, no punishment.** Personal bests only, device-local, and a
+  missed day is never mentioned. Hints are free; "Show me" is remembered but is
+  not counted as a solve, so the one number the player sees stays true.
+- The board is **four columns at every pair count** — following the pair count
+  would give 31px cells at 320px, under the touch minimum.
+- **The card flip is a CSS transition between two end states**, not a keyframe
+  sequence. That is what makes the global `prefers-reduced-motion` rule safe:
+  it collapses the duration and the tile lands instantly face-up or face-down,
+  never stuck mid-rotation. The look-at-it pause between two tiles is
+  comprehension, not motion, and is NOT shortened.
+- `.ed-card` and `.mf-done` are vibrant fills and are listed in index.css's
+  fixed-light context. They are painted from CSS, not from an inline style, so
+  the fill and the pinned ink cannot come apart.
+
 ## Design language — ABC (Behance) is the identity; follow it for ALL new UI
 
 Meera's visual identity is the ABC language-app UI (Behance gallery 196137615).

@@ -324,6 +324,9 @@
 .ig-chip,
 .sched-bar,
 .sched-disclose,
+/* styles/solo.css — both painted from JS, same inline-fill case. */
+.ed-card,
+.mf-done,
 .pc-pending {
   --ink: #16161a;
   /* 0.62 left the sub-line on a lavender card at 3.7:1. */

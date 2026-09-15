@@ -295,3 +295,14 @@
   line-height: 1.4;
 }
 .ck-note .pill-btn { flex: 0 0 auto; }
+
+/* --------------------------------------------------------------------------
+   The solo shelf. Runner, Emoji Detective and Memory Flip sit under one
+   heading so the catalogue reads as two halves — with someone, and on your
+   own — rather than as one list where the last three cards need no friend and
+   never say so.
+   -------------------------------------------------------------------------- */
+.pg-solo-head {
+  display: block;
+  margin: var(--sp-5) 0 var(--sp-1);
+}
