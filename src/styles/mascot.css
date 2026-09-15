@@ -1,0 +1,136 @@
+/* ==========================================================================
+   THE BLOB — the mascot's only stylesheet.
+
+   NO COLOUR IS NAMED HERE. Not one hex, not one rgb(), not one hsl(). Every
+   paint in this file is either a token var() or `currentColor`, because the
+   owner's instruction is that Meera's palette does not change and the
+   mascot's four fills are the four that already exist. tests/mascot.test.jsx
+   greps this file for a colour literal and fails the build on one — that is
+   the constraint most likely to erode quietly, so it is asserted rather than
+   remembered.
+
+   The ink context (.blob-ink / .blob-ink-dark) is NOT defined here. It lives
+   in index.css beside the other fixed-light and fixed-dark selectors, because
+   that list is the one place that knows what the pinned values are, and a
+   second copy of them is how they drift apart at night.
+   ========================================================================== */
+
+.blob {
+  display: block;
+  overflow: visible;   /* accents sit right on the edge of the box */
+}
+
+/* --------------------------------------------------------------------------
+   Motion — one animation, and it has to be stoppable.
+
+   The bob loops, so `prefers-reduced-motion` has to be able to end it: the
+   global rule in index.css collapses the duration to 0.01ms AND sets
+   animation-iteration-count: 1, which is the half that actually stops an
+   infinite loop. For that to land somewhere good the RESTING pose must be at
+   both 0% and 100% — it is, so a collapsed run finishes on a still blob
+   standing on its own shadow rather than frozen mid-squash.
+
+   The block at the bottom of this file repeats the protection locally.
+   index.css records that four files in this repo once documented exactly this
+   global rule while the rule was not in the stylesheet at all, and every
+   animation they described ran at full speed for someone who had asked their
+   OS for none. Carrying our own copy means this one cannot be that again.
+   -------------------------------------------------------------------------- */
+.blob.is-animated .blob-body {
+  animation: blob-bob 4.6s ease-in-out infinite;
+  transform-origin: 60px 100px;
+}
+
+.blob.is-animated .blob-sprout {
+  animation: blob-sway 5.8s ease-in-out infinite;
+  transform-origin: 78px 26px;
+}
+
+@keyframes blob-bob {
+  0%, 100% { transform: translateY(0) scale(1, 1); }
+  50% { transform: translateY(-2.4px) scale(0.988, 1.012); }
+}
+
+@keyframes blob-sway {
+  0%, 100% { transform: rotate(0deg); }
+  35% { transform: rotate(4.5deg); }
+  70% { transform: rotate(-3deg); }
+}
+
+/* The polaroid does not bob — a pinned photograph that floats is a photograph
+   that is not pinned. Its blob keeps the sprout sway and nothing else. */
+.blob.is-polaroid .blob-body { animation: none; }
+
+/* --------------------------------------------------------------------------
+   The polaroid frame.
+
+   White card stock in both schemes, which is what --on-fill is for: "the one
+   ink that never moves". The hairline keeps the frame visible when it lands
+   on a white ground, and the pin is coral, the only saturated thing on it.
+   -------------------------------------------------------------------------- */
+.blob-frame {
+  fill: var(--on-fill);
+  stroke: var(--hairline);
+  stroke-width: 1;
+}
+
+.blob-pin {
+  stroke: var(--on-fill);
+  stroke-width: 1.5;
+}
+
+/* --------------------------------------------------------------------------
+   Placements.
+
+   Everything below is layout only. A blob is dropped into an existing surface
+   and takes the spacing tokens that surface already uses; none of these rules
+   touches a heading, a weight or a font. The reference's heavy black display
+   type is deliberately not brought across — Meera's headings are the
+   oversized light-weight ones the rest of the sheet defines, and the mascot is
+   an addition to that language rather than a replacement for it.
+   -------------------------------------------------------------------------- */
+
+/* Empty states. The blob replaces the tinted rounded-square symbol on the
+   three screens where the empty state is the whole screen. 320px: the blob is
+   sized in px at the call site and the column is centred, so it never has a
+   min-width of its own to overflow with. */
+.empty .blob {
+  margin: 0 auto;
+}
+
+/* "On this day" — a pinned photograph, which is what those capsules are. */
+.tg-onthisday-blob {
+  margin: 0 auto;
+}
+
+/* A reaction inside a solved Mystery Box. It sits BESIDE the answer rather
+   than above it, so the card does not grow a whole row taller on solve. The
+   row wraps at 320px, where 64px of blob plus the solution is tight — and
+   .solo-solved is a column already, so the unsolved state is untouched. */
+.solo-solved:has(.blob) {
+  flex-direction: row;
+  align-items: center;
+  gap: var(--sp-3);
+  flex-wrap: wrap;
+}
+
+.solo-solved .blob { flex: 0 0 auto; }
+
+.solo-solved-copy {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  min-width: 0;
+  flex: 1 1 10ch;
+}
+
+/* --------------------------------------------------------------------------
+   Local reduced-motion. Belt as well as braces — see the note above.
+   -------------------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  .blob.is-animated .blob-body,
+  .blob.is-animated .blob-sprout {
+    animation-duration: 0.01ms;
+    animation-iteration-count: 1;
+  }
+}

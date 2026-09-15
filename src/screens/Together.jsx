@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Avatar from '../components/Avatar'
+import Blob from '../components/Blob'
 import Confirm from '../components/Confirm'
 import Portal from '../components/Portal'
 import PrivateBadge from '../components/PrivateBadge'
@@ -204,7 +205,17 @@ function OnThisDayPane({ capsules, loading, resolve, onOpen, onRetry }) {
       {loading && capsules == null ? <p className="field-hint">Looking back…</p> : null}
       {!loading && Array.isArray(capsules) && !capsules.length ? (
         <div className="empty">
-          <div className="empty-symbol" aria-hidden="true"><CalendarIcon /></div>
+          {/* The polaroid variant, on the one surface in the app that is
+              literally about pinned photographs. Decorative — the heading
+              carries the meaning. */}
+          <Blob
+            frame="polaroid"
+            mood="content"
+            tone="lime"
+            ground="indigo"
+            size={132}
+            className="tg-onthisday-blob"
+          />
           <h2>Nothing from this day yet.</h2>
           <p>Add a scrapbook entry with the date it actually happened and it will come back on this day next year.</p>
         </div>

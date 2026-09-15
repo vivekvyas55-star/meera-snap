@@ -48,6 +48,7 @@ import KeptTogether from '../components/KeptTogether'
 import FriendSignals from '../components/FriendSignals'
 import HeartBurst from '../components/HeartBurst'
 import Confirm from '../components/Confirm'
+import Blob from '../components/Blob'
 import { ArrowIcon, BackIcon, CalendarIcon, ChatIcon, CheckIcon, ChevronIcon, CloseIcon, FlameIcon, ForwardIcon, GridIcon, HeartIcon, ImageIcon, LockIcon, MicIcon, GameIcon, PhoneIcon, PlayIcon, PlusIcon, ReplyIcon, SaveIcon, SmileyIcon, VideoIcon } from '../components/Icons'
 import { ConsentSwitch, SnapSaveDefaultCard } from '../components/SnapSaveConsent'
 import { useAudioRecorder } from '../hooks/useAudioRecorder'
@@ -631,7 +632,10 @@ export default function Chat({ friend, onBack, onOpenPlay }) {
         )}
         {visible.length === 0 && !loadError && (
           <div className="empty">
-            <div className="empty-symbol" aria-hidden="true"><ChatIcon /></div>
+            {/* Decorative. The heading and the line under it say what this
+                screen is; the blob is aria-hidden so a screen reader is not
+                read a drawing before the sentence that matters. */}
+            <Blob mood="content" tone="lavender" size={104} accent="curl" />
             <h2>Say the first thing.</h2>
             <p>Whatever you send here fades once it has been read.</p>
           </div>

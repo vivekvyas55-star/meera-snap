@@ -15,6 +15,7 @@ import Confirm from '../components/Confirm'
 import StoryHint from '../components/StoryHint'
 import { useToast } from '../hooks/useToast'
 import { PlusIcon, StoriesIcon } from '../components/Icons'
+import Blob from '../components/Blob'
 import { supabase } from '../lib/supabase'
 import { groupThumb, pruneStoryThumbs, rememberStoryThumb } from '../lib/storyThumbs'
 import '../styles/capture.css'
@@ -106,7 +107,7 @@ export default function Stories({ active, onCapture }) {
         {error && <div className="error">{error}<button onClick={load}>Retry</button></div>}
         {!loading && groups.length === 0 && !error && (
           <div className="empty">
-            <div className="empty-symbol" aria-hidden="true"><StoriesIcon /></div>
+            <Blob mood="happy" tone="coral" size={104} accent="swoop" />
             <h2>Everyday is worth sharing.</h2>
             <p>A morning sky. A favourite song. A little piece of your day.</p>
             {onCapture && <button className="btn-dark" onClick={onCapture}>Capture a moment</button>}

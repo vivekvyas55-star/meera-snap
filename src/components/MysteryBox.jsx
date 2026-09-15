@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { CheckIcon } from './Icons'
+import Blob from './Blob'
 import { checkAnswer } from '../lib/mysteryBox'
 
 // Today's Mystery Box — one short puzzle, opened once a day.
@@ -78,11 +79,28 @@ export default function MysteryBox({ puzzle, progress, onSolved, onRevealed, onA
         <p className="solo-sub">Opening…</p>
       ) : solved || revealed ? (
         <div className="solo-solved" role="status">
-          <strong>
-            {solved ? 'You got it — ' : 'The answer was '}
-            {puzzle.solution}
-          </strong>
-          <span className="solo-sub">A new box opens tomorrow.</span>
+          {/* A reaction, not a verdict. It appears only on `solved` — a wrong
+              guess gets the neutral line below and never a face, because a
+              puzzle meant to take two minutes on a bus must not pull an
+              expression at somebody for missing it. Indigo so it reads on the
+              lime card; labelled, because here the face IS the congratulation
+              and colour alone must not be the thing saying so. */}
+          {solved && (
+            <Blob
+              mood="happy"
+              tone="indigo"
+              size={64}
+              accent="spark"
+              label="You solved today's box"
+            />
+          )}
+          <div className="solo-solved-copy">
+            <strong>
+              {solved ? 'You got it — ' : 'The answer was '}
+              {puzzle.solution}
+            </strong>
+            <span className="solo-sub">A new box opens tomorrow.</span>
+          </div>
         </div>
       ) : (
         <>

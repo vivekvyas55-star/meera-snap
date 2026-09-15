@@ -3,7 +3,8 @@ import { deleteMemory, listMemories, postStory, signedUrl } from '../lib/db'
 import Confirm from '../components/Confirm'
 import { useToast } from '../hooks/useToast'
 import Portal from '../components/Portal'
-import { BackIcon, GridIcon, PlayIcon } from '../components/Icons'
+import { BackIcon, PlayIcon } from '../components/Icons'
+import Blob from '../components/Blob'
 
 // A private gallery of your own saved snaps. Owner-only (RLS). Tap one to view
 // it full-screen and re-share to your Story, save to your device, or delete.
@@ -47,7 +48,9 @@ export default function Memories({ me, onBack }) {
         )}
         {items?.length === 0 && !error && (
           <div className="empty">
-            <div className="empty-symbol" aria-hidden="true"><GridIcon /></div>
+            {/* Decorative: the heading below says what this screen is, so the
+                blob is aria-hidden and carries no meaning of its own. */}
+            <Blob mood="wink" tone="lime" size={104} accent="dashes" />
             <h2>Nothing kept yet.</h2>
             <p>Snaps you save in the camera land here — private, and only yours.</p>
           </div>

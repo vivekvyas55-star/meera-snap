@@ -2742,6 +2742,84 @@ are listed too. Both test files re-derive the painted selectors from the
 stylesheet and fail if one is missing from a list — the `.fp-stat` bug, caught
 mechanically rather than after dark.
 
+## The blob mascot — one parametric component, drawn in code
+
+`src/lib/mascot.js` (geometry), `src/components/Blob.jsx` (the renderer),
+`src/styles/mascot.css`, `tests/mascot.test.jsx`.
+
+A second Behance reference (Talkie, gallery 177296223) supplies a soft blob
+character: a squashed-circle body, a two-leaf sprout, a face of a few black
+strokes, a halftone dot fill, a soft ellipse shadow, a pinned polaroid frame,
+and a scatter of hand-drawn pen marks. **It supplies the FORM and none of the
+colour** — the owner's instruction is that Meera's palette does not change.
+
+```jsx
+<Blob mood="happy" tone="lime" size={96} accent="curl" />
+<Blob frame="polaroid" mood="content" tone="lime" ground="indigo" />
+<Blob mood="happy" tone="indigo" label="You solved today's box" />
+```
+
+`mood` (6) · `tone` (the four vibrant tokens) · `size` · `accent` (5 pen marks)
+· `frame="polaroid"` + `ground` · `label` · `animated`.
+
+- **Inline SVG only. No image asset of any kind, ever.** Not a PNG, not an
+  SVG-as-asset, not a sprite sheet, not an icon font. Media is the whole
+  hosting bill; a mascot set shipped as pictures would be the largest static
+  addition in this app's history. The halftone is an SVG `<pattern>` of small
+  circles, not a bitmap. The test walks `src/` and fails on any image, icon,
+  font or media file — `src/` has always been code only, and stays that way.
+- **Expressions are DATA.** `EXPRESSIONS` in `lib/mascot.js` is a table of path
+  strings; a new mood is one row, never a new component and never a new file.
+  `faceFor()` falls back to `neutral` for an unknown mood, because a blob with
+  no face is a bug that reads as a design choice. `accentFor()` does the
+  opposite and answers `null` — a face is mandatory, a pen mark is optional.
+- **No hex literal in any of the three files**, asserted by a regex over the
+  source (and mutation-checked). The body is `var(--lavender|--lime|--indigo|
+  --coral)`; the face, sprout and accents are `currentColor`; the halftone is
+  that same `currentColor` at 16%, which is the ink derived rather than a fifth
+  hue. If a fifth mood wants a fifth colour, **vary the expression instead** —
+  the face is where the range lives.
+- **The ink context is `.blob-ink` / `.blob-ink-dark`, both listed in
+  `index.css`'s fixed-light and fixed-dark blocks.** The four fills do not move
+  between schemes, so a lavender blob needs near-black strokes at 2am too;
+  without the listing its face would follow `--ink` to near-white and vanish.
+  This is the `.fp-stat` lesson applied up front. The **shadow ellipse sits
+  outside that group on purpose** — it belongs to the card the blob stands on,
+  so it reads `var(--wash)` from that surface. Inside it, an indigo blob would
+  cast a white shadow.
+- **Motion is CSS and it really stops.** One bob and one sprout sway, both
+  looping, both with the resting pose at 0% AND 100%, so the global
+  reduced-motion rule (0.01ms + `animation-iteration-count: 1`) lands on the
+  good-looking state. `mascot.css` carries its own reduced-motion block as well
+  — the four-files-documented-a-rule-that-did-not-exist problem. No rAF, no
+  timer, and no `!important` that could out-shout the global rule.
+- **Decorative by default** (`aria-hidden`); `label` promotes it to
+  `role="img"`. Colour is never the thing saying which mood it is — every
+  placement has words beside it.
+
+**Placed in five spots, deliberately not scattered:** the Chat, Memories and
+Stories empty states (a blob is what an empty state is for; it replaces the
+tinted `.empty-symbol` square there only), the "On this day" empty state as the
+polaroid variant (that surface is literally about pinned photographs), and a
+labelled reaction on a **solved** Mystery Box.
+
+**Two things from the reference are refused.** Its heavy black display type —
+Meera's headings are the oversized light-weight (300) ones, and `mascot.css`
+touches no heading, weight or font. And its engagement mechanics: it is a
+language app whose illustration sits on streaks, XP and progress rings, and the
+screen-time panel already turned a usage streak down as "the exact Snapchat
+mechanic this app copies for messages and must not copy for attention". There
+is no progress ring, no percentage and no guilt copy; a test holds the
+blocklist. `sad` is a reaction to something in a GAME — never a comment on
+somebody's habits, and pointing it at their absence is the change to stop at.
+
+**Where it deliberately does NOT go.** `MarketDecoy` (looking like Meera is
+exactly what would give that screen away), the camera and the snap/story
+viewers (fullscreen black immersive surfaces), and the **Mood Garden** — its
+six moods already have six named plants, and the whole module is built so a bad
+week grows the prettiest thing in it. A face that looks sad back at somebody who
+logged `heavy` is precisely the verdict `lib/moodGarden.js` refuses to contain.
+
 ## Design language — ABC (Behance) is the identity; follow it for ALL new UI
 
 Meera's visual identity is the ABC language-app UI (Behance gallery 196137615).

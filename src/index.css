@@ -343,6 +343,13 @@
 .er-slip,
 /* styles/intimate.css consent card — painted from JS. */
 .consent-card,
+/* components/Blob.jsx — the mascot's body IS a vibrant fill, painted from an
+   SVG attribute, which is the inline case with a different tag name. The four
+   fills do not move between schemes, so a lavender/lime/coral blob needs
+   near-black strokes at 2am as much as at noon; without this line its face and
+   halftone would follow --ink to near-white and disappear. Indigo blobs take
+   .blob-ink-dark in the list below instead. */
+.blob-ink,
 .pc-pending {
   --ink: #16161a;
   /* 0.62 left the sub-line on a lavender card at 3.7:1. */
@@ -375,6 +382,8 @@
 .tabbar,
 .kept-preview,
 .er,
+/* components/Blob.jsx — the indigo half of the same story. */
+.blob-ink-dark,
 .er-card {
   --ink: #ffffff;
   /* 0.7 was 4.0:1 on indigo, the darkest of the fixed-dark grounds. */
