@@ -140,7 +140,7 @@ export default function AccountData({ username }) {
       <div className="pc-label">Delete account</div>
 
       {state === null && !loadError && (
-        <div className="pc-empty pc-loading">Checking your account…</div>
+        <div className="pc-empty pc-loading" role="status">Checking your account…</div>
       )}
 
       {loadError && (

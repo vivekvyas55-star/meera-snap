@@ -72,7 +72,7 @@ const safeToday = () => {
 // is deliberately nothing to compare them against.
 function Bests({ store, runnerBest }) {
   if (store === undefined) {
-    return <p className="solo-sub">Looking…</p>
+    return <p className="solo-sub" role="status">Looking…</p>
   }
   // A failed read is NOT "you have no personal bests" — that is a claim, and
   // it is the exact bug this codebase has found seven times.
@@ -280,7 +280,10 @@ export default function SoloPlay({ me = '', onBack }) {
             these draws a whole game, and seven unpacked games in one scroll is
             a screen whose bottom half nobody ever sees. */}
         <section className="solo-more" aria-labelledby="solo-more-h">
-          <span className="eyebrow" id="solo-more-h">More to play</span>
+          {/* Its five siblings on this screen are h2.solo-h; this one was the
+              only section title rendered as a span, so a screen reader's
+              outline stopped here. The class keeps the eyebrow look. */}
+          <h2 className="solo-h eyebrow" id="solo-more-h">More to play</h2>
           <Door
             icon={<SmileyIcon width={20} height={20} />}
             title="Emoji Detective"

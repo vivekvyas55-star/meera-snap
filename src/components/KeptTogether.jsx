@@ -50,7 +50,7 @@ export default function KeptTogether({ friendId, friendName, onClose }) {
         </div>
 
         {error && <div className="thread-error" role="alert">{error}</div>}
-        {rows === null && !error && <div className="empty">Loading…</div>}
+        {rows === null && !error && <div className="empty" role="status">Loading…</div>}
         {rows?.length === 0 && (
           <div className="empty">
             Nothing kept yet.

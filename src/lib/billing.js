@@ -41,13 +41,17 @@ export async function startTrial() {
   return data?.[0] ?? OPEN
 }
 
+// null = the read FAILED, [] = there really are no active plans. `[]` on an
+// error would draw the shop with nothing in it, which reads as "Meera sells
+// nothing" rather than "we could not load the prices" — the house bug, on the
+// screen where it is about money.
 export async function listPlans() {
   const { data, error } = await supabase
     .from('billing_plans')
     .select('*')
     .eq('active', true)
     .order('sort')
-  if (error) return []
+  if (error) return null
   return data ?? []
 }
 

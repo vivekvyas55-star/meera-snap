@@ -459,5 +459,9 @@
   gap: var(--sp-2);
 }
 
-.solo-more .eyebrow { display: block; }
+/* margin-top: 0 because this is an <h2> — the other five section titles on
+   this screen are headings and this one was a <span>, so the outline stopped
+   here. The UA's own h2 margin is the only thing the tag change would have
+   moved; the eyebrow look is otherwise untouched. */
+.solo-more .eyebrow { display: block; margin-top: 0; }
 .solo-door { width: 100%; }

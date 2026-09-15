@@ -108,7 +108,7 @@ export default function Billing({ onBack, onOpenPlans }) {
             currently changes nothing, and saying otherwise would be a lie by
             omission on the one screen about money. */}
         {ent === undefined ? (
-          <div className="pc-empty pc-loading">Reading your billing…</div>
+          <div className="pc-empty pc-loading" role="status">Reading your billing…</div>
         ) : ent.unknown ? (
           <div className="pc-fail" role="alert">
             <div className="pc-fail-text">
@@ -164,9 +164,9 @@ export default function Billing({ onBack, onOpenPlans }) {
         {/* The subscription, and the state that has no obvious name. Held back
             until the read has finished: "we could not ask" is a different
             sentence from "we are asking", and only one of them is true here. */}
-        <div className="section">Your subscription</div>
+        <h3 className="section">Your subscription</h3>
         {ent === undefined ? (
-          <div className="pc-empty pc-loading">Checking your subscription…</div>
+          <div className="pc-empty pc-loading" role="status">Checking your subscription…</div>
         ) : (
           <div className={`pc-state bill-standing st-${standing.key}`}>
             <span className="pc-nav-icon" aria-hidden="true">
@@ -228,7 +228,7 @@ export default function Billing({ onBack, onOpenPlans }) {
         </details>
 
         {/* How the money works, in the terms the ledger actually uses. */}
-        <div className="section">How credits work</div>
+        <h3 className="section">How credits work</h3>
         <ul className="bill-facts">
           <li>
             <strong>They are prepaid.</strong> A month is taken from a balance that is
@@ -255,8 +255,8 @@ export default function Billing({ onBack, onOpenPlans }) {
           </li>
         </ul>
 
-        <div className="section">Credit history</div>
-        {history === undefined && <div className="pc-empty pc-loading">Reading your ledger…</div>}
+        <h3 className="section">Credit history</h3>
+        {history === undefined && <div className="pc-empty pc-loading" role="status">Reading your ledger…</div>}
         {history === null && (
           <div className="pc-fail" role="alert">
             <div className="pc-fail-text">

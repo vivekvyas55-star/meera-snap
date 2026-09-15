@@ -29,10 +29,10 @@ import RowSignal from '../components/RowSignal'
 import Portal from '../components/Portal'
 import Sheet from '../components/Sheet'
 const Snapcode = lazy(() => import('../components/Snapcode'))
-import { CheckIcon, MapIcon, PlusIcon, CloseIcon } from '../components/Icons'
+import { CheckIcon, PlusIcon, CloseIcon } from '../components/Icons'
 import '../styles/chatlist.css'
 
-export default function ChatList({ active = true, onOpenChat, onOpenProfile, onOpenMap, onSignals }) {
+export default function ChatList({ active = true, onOpenChat, onOpenProfile, onSignals }) {
   const { profile } = useAuth()
   const me = profile.id
   const toast = useToast()
@@ -224,9 +224,6 @@ export default function ChatList({ active = true, onOpenChat, onOpenProfile, onO
           <Avatar profile={profile} size="sm" />
         </button>
         <h1>Chat</h1>
-        <button className="circle filled" onClick={onOpenMap} aria-label="Snap Map">
-          <MapIcon />
-        </button>
         <button className="circle dark" onClick={() => setAdding(true)} aria-label="Add friend">
           <PlusIcon />
         </button>
@@ -327,9 +324,12 @@ export default function ChatList({ active = true, onOpenChat, onOpenProfile, onO
               <Avatar profile={f.profile} />
               <div className="row-main">
                 <div className="row-name">
+                  {/* Colour is not allowed to be the only carrier. Chat.jsx's
+                      header dot already does this; the list was the one missed. */}
                   <span
                     className={`presence-dot ${isOnline(f.profile.id) ? 'live' : 'off'}`}
-                    title={isOnline(f.profile.id) ? 'Active now' : 'Offline'}
+                    role="img"
+                    aria-label={isOnline(f.profile.id) ? 'Active now' : 'Offline'}
                   />
                   {alias(f.profile)}
                 </div>
@@ -424,6 +424,7 @@ function AddFriend({ me, profile, onClose, onAdded }) {
                 outline: 'none',
               }}
               placeholder="username"
+              aria-label="Friend’s username"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               autoCapitalize="none"

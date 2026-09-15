@@ -97,7 +97,7 @@ export default function ActiveSessions() {
       </details>
 
       {devices === null && !loadError && (
-        <div className="pc-empty pc-loading">Looking for your devices…</div>
+        <div className="pc-empty pc-loading" role="status">Looking for your devices…</div>
       )}
 
       {loadError && (

@@ -16,7 +16,6 @@ import CameraScreen from './screens/CameraScreen'
 import Stories from './screens/Stories'
 const Profile = lazy(() => import('./screens/Profile'))
 const Us = lazy(() => import('./screens/Us'))
-const SnapMap = lazy(() => import('./screens/SnapMap'))
 const PlayTogether = lazy(() => import('./screens/PlayTogether'))
 import { ToastProvider } from './components/Toast'
 import { useToast } from './hooks/useToast'
@@ -70,7 +69,6 @@ function Shell() {
   const [playWith, setPlayWith] = useState(null)
   const [showProfile, setShowProfile] = useState(false)
   const [showUs, setShowUs] = useState(false)
-  const [showMap, setShowMap] = useState(false)
   const [openPlay, setOpenPlay] = useState(false)
   const [gameInvite, setGameInvite] = useState(null)
   const [playVisible, setPlayVisible] = useState(false)
@@ -90,7 +88,7 @@ function Shell() {
     // Every overlay belongs here: the pager is display:none'd and inert under
     // one so this rarely matters, but a guard that lists three of the four is a
     // trap for whoever adds the fifth — which is exactly what Us is.
-    if (openChat || showProfile || showUs || showMap || editing) return
+    if (openChat || showProfile || showUs || editing) return
     const t = e.touches[0]
     touch.current = { x: t.clientX, y: t.clientY, axis: null }
   }
@@ -277,11 +275,10 @@ function Shell() {
   // time. The bookkeeping lives in lib/backStack.js because Profile's
   // sub-screens and Chat's sheets are layers too, and Back used to jump
   // straight past them to here.
-  useBackLayer(Boolean(openChat || showProfile || showUs || showMap), () => {
+  useBackLayer(Boolean(openChat || showProfile || showUs), () => {
     setOpenChat(null)
     setShowProfile(false)
     setShowUs(false)
-    setShowMap(false)
   })
   // Pushed after the one above, so Back closes the board before the chat.
   useBackLayer(Boolean(playWith), () => setPlayWith(null))
@@ -312,7 +309,10 @@ function Shell() {
 
   if (loading) return <div className="app"><div className="empty" role="status">Opening your space…</div></div>
   if (!session) return <Auth />
-  if (!profile) return <div className="app"><div className="empty">{profileError || "Loading your profile…"}{profileError && <button className="btn-dark" onClick={retryProfile}>Retry</button>}</div></div>
+  // One block, two states: while it is loading this is a status, and the moment
+  // it carries an error it is an alert. Announcing a failure as a polite status
+  // is how it goes unread.
+  if (!profile) return <div className="app"><div className="empty" role={profileError ? 'alert' : 'status'}>{profileError || "Loading your profile…"}{profileError && <button className="btn-dark" onClick={retryProfile}>Retry</button>}</div></div>
 
   // Chat / Profile / Map cover the shell rather than replacing it. They used to
   // be early returns, which unmounted the pager — and unmounting CameraScreen
@@ -334,8 +334,6 @@ function Shell() {
       // so Us hands the person across rather than rebuilding either here.
       onOpenChat={(friend) => { setShowUs(false); setOpenChat(friend) }}
     />
-  ) : showMap ? (
-    <SnapMap onBack={() => setShowMap(false)} />
   ) : openChat ? (
     // key per friend → a fresh Chat instance when switching, so no message/ref
     // state from one conversation ever bleeds into another.
@@ -394,7 +392,6 @@ function Shell() {
             active={pane === 0 && !overlay}
             onOpenChat={goToChat}
             onOpenProfile={() => setShowProfile(true)}
-            onOpenMap={() => setShowMap(true)}
             onSignals={setChatSignals}
           />
         </div>
@@ -465,7 +462,7 @@ function Shell() {
 function SessionShell() {
   const { user } = useAuth()
   return (
-    <Suspense fallback={<div className="app"><div className="empty">Loading…</div></div>}>
+    <Suspense fallback={<div className="app"><div className="empty" role="status">Loading…</div></div>}>
       <Shell key={user?.id || 'guest'} />
     </Suspense>
   )

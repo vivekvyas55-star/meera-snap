@@ -54,7 +54,7 @@ test('game chat hides cleared messages and quick replies preserve the draft', as
   m.rows=[{ id:'hidden',kind:'chat',body:'cleared secret',sender_id:'friend',cleared_by:['me'],created_at:new Date().toISOString() }]
   m.chat.mockResolvedValue(null)
   mount(); await screen.findByText('Your turn')
-  fireEvent.click(screen.getByRole('button',{name:'💬 Chat while playing'}))
+  fireEvent.click(screen.getByRole('button',{name:'Chat while playing'}))
   expect(screen.queryByText('cleared secret')).toBeNull()
   const input=screen.getByLabelText(`Message ${peerLabel()}`)
   fireEvent.change(input,{target:{value:'My unfinished note'}})

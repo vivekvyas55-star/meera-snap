@@ -31,8 +31,15 @@ function questionTime(iso) {
 
 export default function QuestionCards({ me, friend, friendName }) {
   const toast = useToast()
-  const [rows, setRows] = useState([])
-  const [asksLeft, setAsksLeft] = useState(3)
+  // undefined = the first read has not landed. `[]` and `3` are ANSWERS, and
+  // they were the initial values: when the very first listPairQuestions failed
+  // the screen said "No questions shared yet today" and "3 asks left today" —
+  // verbatim the bug CLAUDE.md records as "her question gone, and 3 asks left
+  // when there were 0". The POLL was hardened for it; the mount path still
+  // fabricated, which is the half nobody sees because it only shows on a cold
+  // failure.
+  const [rows, setRows] = useState(undefined)
+  const [asksLeft, setAsksLeft] = useState(undefined)
   const [unavailable, setUnavailable] = useState(false)
   const [open, setOpen] = useState(false)
   const [asking, setAsking] = useState(false)
@@ -75,7 +82,7 @@ export default function QuestionCards({ me, friend, friendName }) {
   // Open on arrival only when she has actually asked you something.
   useEffect(() => {
     if (touched) return
-    if (rows.some((q) => q.asker !== me && !q.answer)) setExpanded(true)
+    if (rows?.some((q) => q.asker !== me && !q.answer)) setExpanded(true)
   }, [touched, rows, me])
 
   const askingRef = useRef(false)
@@ -129,7 +136,9 @@ export default function QuestionCards({ me, friend, friendName }) {
   }
 
   if (unavailable) return null
-  const waitingOnYou = rows.filter((q) => q.asker !== me && !q.answer).length
+  const known = Array.isArray(rows)
+  const list = known ? rows : []
+  const waitingOnYou = list.filter((q) => q.asker !== me && !q.answer).length
   // asks_left is computed by pair_questions_today() for the current IST day.
   // It is the server's number; nothing here recounts the rows, because the
   // count that matters is the one ask_question() will check.
@@ -140,9 +149,11 @@ export default function QuestionCards({ me, friend, friendName }) {
   const composerOpen = open && !spent
   const activityLabel = waitingOnYou > 0
     ? `${waitingOnYou} question${waitingOnYou === 1 ? '' : 's'} waiting for your answer`
-    : rows.length > 0
-      ? `${rows.length} question${rows.length === 1 ? '' : 's'} shared today`
-      : 'No questions shared yet today'
+    : list.length > 0
+      ? `${list.length} question${list.length === 1 ? '' : 's'} shared today`
+      // Not "no questions shared yet today" — that is a claim, and until the
+      // first read lands we do not have one to make.
+      : known ? 'No questions shared yet today' : 'Question of the day'
 
   if (!expanded) {
     return (
@@ -156,8 +167,8 @@ export default function QuestionCards({ me, friend, friendName }) {
         <span className="dq-chip-text">
           {waitingOnYou > 0
             ? `${friendName} asked you ${waitingOnYou} question${waitingOnYou === 1 ? '' : 's'}`
-            : rows.length > 0
-              ? `Question of the day · ${rows.length} today`
+            : list.length > 0
+              ? `Question of the day · ${list.length} today`
               : 'Question of the day'}
         </span>
         <span className="dq-chip-more">
@@ -194,7 +205,7 @@ export default function QuestionCards({ me, friend, friendName }) {
         </button>
       </div>
 
-      {rows.length === 0 && !composerOpen && !spent && (
+      {known && list.length === 0 && !composerOpen && !spent && (
         <div className="qcards-empty">
           Ask each other up to three questions a day.
         </div>
@@ -230,7 +241,7 @@ export default function QuestionCards({ me, friend, friendName }) {
           />
           <div className="qcard-newfoot">
             <span className="qcard-count">
-              {draft.length}/300 · {asksLeft} ask{asksLeft === 1 ? '' : 's'} left today
+              {draft.length}/300{asksLeft === undefined ? '' : ` · ${asksLeft} ask${asksLeft === 1 ? '' : 's'} left today`}
             </span>
             <button className="btn-dark" type="submit" disabled={asking || !draft.trim()}>
               {asking ? 'Asking…' : 'Ask'}
@@ -242,7 +253,7 @@ export default function QuestionCards({ me, friend, friendName }) {
       {/* Anything waiting on you comes first — you should not have to scroll a
           day's cards to find the one that needs an answer. Everything else
           stays in the order it was asked. */}
-      {[...rows]
+      {[...(rows ?? [])]
         .sort((a, b) => {
           const aWaiting = a.asker !== me && !a.answer ? 0 : 1
           const bWaiting = b.asker !== me && !b.answer ? 0 : 1

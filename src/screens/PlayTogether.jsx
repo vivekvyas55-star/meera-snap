@@ -138,7 +138,7 @@ function GameChat({ me, friend }) {
 
   return <div className={`game-chat ${open ? 'open' : ''}`}>
     <button type="button" className="game-chat-toggle" onClick={() => setOpen((value) => !value)} aria-expanded={open}>
-      <span>💬 Chat while playing</span>{unread > 0 && <span className="game-chat-unread">{Math.min(unread, 9)}</span>}
+      <span><span aria-hidden="true">💬 </span>Chat while playing</span>{unread > 0 && <span className="game-chat-unread" role="img" aria-label={`${unread} unread message${unread === 1 ? '' : 's'}`}>{Math.min(unread, 9)}</span>}
     </button>
     {open && <><div className="game-chat-messages" ref={scroll} aria-live="polite">
       {messages.length === 0 ? <span className="game-chat-empty">Say something before the next move.</span> : messages.map((message) => <div key={message.id} data-message-id={message.sender_id !== me ? message.id : undefined} className={`game-chat-bubble ${message.sender_id === me ? 'mine' : ''}`}>{message.body}</div>)}
@@ -430,7 +430,7 @@ export default function PlayTogether({ onBack }) {
   // it has its own header and its own scroll, and nesting an `.app` inside a
   // `.list` would give it two of each. Back closes it before Play.
   if (open === 'solo') return <SoloPlay me={me} onBack={closeSolo} />
-  return <div className="app" style={{ display: 'flex', flexDirection: 'column', background: '#fff' }}>
+  return <div className="app screen">
     <div className="header"><button type="button" className="circle filled" onClick={onBack} aria-label="Back"><BackIcon /></button><h1>Play</h1></div>
     <div className="list profile-list">
       {invite && <Invite busy={actionLoading} invite={invite} onAccept={accept} onDismiss={dismissInvite} />}
@@ -478,7 +478,7 @@ export default function PlayTogether({ onBack }) {
           </div>
           <div className="pg-setup">
             <span className="eyebrow">Play {gameOf(pick).title} with</span>
-            {loading ? <span className="play-sub">Loading your people…</span>
+            {loading ? <span className="play-sub" role="status">Loading your people…</span>
               : loadError ? <span className="play-sub" role="alert">{loadError}</span>
               : friends.length === 0 ? <span className="play-sub play-empty">Add a friend to start a private game.</span>
               : <div className="pg-setup-row">

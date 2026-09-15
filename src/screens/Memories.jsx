@@ -22,7 +22,7 @@ export default function Memories({ me, onBack }) {
   }, [me]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <div className="app" style={{ display: 'flex', flexDirection: 'column', background: '#fff' }}>
+    <div className="app screen">
       <div className="header">
         <button className="circle filled" onClick={onBack} aria-label="Back">
           <BackIcon />

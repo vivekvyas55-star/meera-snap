@@ -123,7 +123,7 @@ export default function Stories({ active, onCapture, onSignals }) {
       <p className="screen-subtitle story-subtitle">A glimpse of each other’s day.</p>
       <div className="list" aria-busy={loading}>
         {loading && <div className="empty" role="status">Loading stories…</div>}
-        {error && <div className="error">{error}<button onClick={load}>Retry</button></div>}
+        {error && <div className="error" role="alert">{error}<button onClick={load}>Retry</button></div>}
         {!loading && groups.length === 0 && !error && (
           <div className="empty">
             <Blob mood="happy" tone="coral" size={104} accent="swoop" />
@@ -438,7 +438,7 @@ function StoryViewer({ group, author, me, onClose, onNextAuthor }) {
                 <div className="row-main">
                   <div className="row-name">
                     {v.profile ? alias(v.profile) : 'Someone'}
-                    {v.screenshot_at && <span title="Screenshotted"> 📸</span>}
+                    {v.screenshot_at && <span role="img" aria-label="Screenshotted"> 📸</span>}
                   </div>
                   <div className="row-sub">@{v.profile?.username}</div>
                 </div>

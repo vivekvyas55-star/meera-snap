@@ -403,7 +403,10 @@ function SendSheet({ friends, sending, onCancel, onSend }) {
         <h2>Send to</h2>
         {friends.length === 0 && <div className="empty">Add a friend first.</div>}
         {friends.map((f) => (
-          <button className="row" key={f.profile.id} onClick={() => toggle(f.profile.id)}>
+          // Icons.jsx makes every glyph aria-hidden, so the tick says nothing and
+          // the fill is only a colour. Chat.jsx's ForwardSheet states the state
+          // properly with aria-pressed; this row was the one that did not.
+          <button className="row" key={f.profile.id} aria-pressed={selected.includes(f.profile.id)} onClick={() => toggle(f.profile.id)}>
             <Avatar profile={f.profile} />
             <div className="row-main">
               <div className="row-name">{alias(f.profile)}</div>
