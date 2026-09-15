@@ -411,30 +411,23 @@ export async function sendSticker(me, otherId, emoji, replyTo = null, clientId =
   return data
 }
 
-export async function markOpened(messageId) {
-  const { error } = await supabase
-    .from('messages')
-    .update({ opened_at: new Date().toISOString() })
-    .eq('id', messageId)
-    .is('opened_at', null)
-  if (error) throw error
-}
+// `markOpened` and `markReplayed` used to live here, writing `opened_at` and
+// `replayed_at` straight through PostgREST. Both had ZERO callers outside the
+// test harness — `opened_at` is written by mark_messages_seen and
+// record_snap_open, both SECURITY DEFINER — and the column grants that served
+// them were the whole of finding H1: either party could PATCH `opened_at` to a
+// past date on every unopened row in a conversation, which hides it from both
+// phones immediately and gets it hard-deleted by the next cleanup pass.
+// Removed along with the grants in 202609150050. Do not reintroduce a direct
+// write here; the definer RPCs are the only sanctioned path.
 
-export async function markReplayed(messageId) {
-  const { error } = await supabase
-    .from('messages')
-    .update({ replayed_at: new Date().toISOString() })
-    .eq('id', messageId)
-    .is('replayed_at', null)
-  if (error) throw error
-}
-
+// The screenshot mark is the one of the four a client legitimately sets, so it
+// keeps a door — but an RPC rather than a column grant, because the rule it
+// needs ("only the RECIPIENT, and only once") cannot be expressed as a grant.
+// Deliberately NOT swallowed here: the caller decides. See the note in
+// SnapViewer about what a silently-failed write claims to the sender.
 export async function markScreenshot(messageId) {
-  const { error } = await supabase
-    .from('messages')
-    .update({ screenshot_at: new Date().toISOString() })
-    .eq('id', messageId)
-    .is('screenshot_at', null)
+  const { error } = await supabase.rpc('mark_screenshot', { msg: messageId })
   if (error) throw error
 }
 

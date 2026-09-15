@@ -648,10 +648,10 @@ await clientWrite('friend request, accept, decline',[{as:A},
 await clientWrite('sendChat and logCall',[{as:A},
  {sql:`insert into messages(user_a,user_b,sender_id,kind,body,client_id) values($1,$2,$1,'chat','hello',gen_random_uuid())`,args:[A,B],rows:1},
  {sql:`insert into messages(user_a,user_b,sender_id,kind,body,view_seconds,delivered_at) values($1,$2,$1,'call','voice|ended',95,now())`,args:[A,B],rows:1}])
-await clientWrite('markOpened / markReplayed / markScreenshot',[{as:B},
- {sql:`update messages set opened_at=now() where user_a=$1 and user_b=$2 and sender_id=$1 and opened_at is null`,args:[A,B]},
- {sql:`update messages set replayed_at=now() where user_a=$1 and user_b=$2 and sender_id=$1`,args:[A,B]},
- {sql:`update messages set screenshot_at=now() where user_a=$1 and user_b=$2 and sender_id=$1`,args:[A,B]}])
+// markScreenshot is an RPC now, not a column write (202609150050). The three
+// raw column writes this used to exercise are asserted REFUSED below.
+await clientWrite('markScreenshot via mark_screenshot()',[{as:B},
+ {sql:`select public.mark_screenshot(id) from messages where user_a=$1 and user_b=$2 and sender_id=$1 limit 1`,args:[A,B]}])
 await clientWrite('unsend',[{as:A},
  {sql:`update messages set unsent_at=now() where sender_id=$1 and kind='chat'`,args:[A]}])
 await clientWrite('setMyLocation / stopSharingLocation',[{as:A},
@@ -717,6 +717,57 @@ await asUser(A,async()=>{
 console.log('PASS a story expiry cannot be forged, and saved_by is not client-writable')
 console.log('PASS push endpoints, display names and blocks cannot be written around')
 console.log('PASS every client write succeeds for a legitimate user')
+
+// H1 (202609150050). `opened_at` was directly writable by either party, and
+// guard_message_update only blocked CHANGING a non-null value — so null -> a
+// PAST timestamp was allowed. message_visible then hides the row from BOTH
+// phones and purge_expired hard-deletes it within 15 minutes. One PATCH
+// destroyed a conversation for two people, forging read receipts on the way.
+//
+// Reading the policy could never have caught this: the policy was fine. Only
+// performing the write finds it, which is why these are executed as a real
+// authenticated user rather than asserted about.
+// Autocommit, not a transaction: a refused statement aborts an open one, and
+// asUser's `reset role` then fails on the poisoned transaction rather than on
+// the thing under test.
+const [h1Msg] = await asUser(A,()=>query(
+  `insert into messages(user_a,user_b,sender_id,kind,body,client_id)
+   values($1,$2,$1,'chat','h1 probe',gen_random_uuid()) returning id`,[A,B]))
+for (const col of ['opened_at','replayed_at','cleared_at','screenshot_at']) {
+  await asUser(B,()=>assert.rejects(
+    query(`update messages set ${col}=now() - interval '2 days' where id=$1`,[h1Msg.id]),
+    /permission denied/,
+    `${col} is still directly writable — H1 is open`))
+}
+// mark_screenshot keeps the one legitimate door, with the rule a grant cannot
+// express: the RECIPIENT only, and once — screenshot_at is a claim rendered to
+// the other person, so it must not be movable after the fact.
+await asUser(A,()=>query('select public.mark_screenshot($1)',[h1Msg.id]))
+assert.equal((await query('select screenshot_at from messages where id=$1',[h1Msg.id]))[0].screenshot_at,null,
+  'the SENDER was able to mark their own message screenshotted')
+await asUser(B,()=>query('select public.mark_screenshot($1)',[h1Msg.id]))
+const h1First=(await query('select screenshot_at from messages where id=$1',[h1Msg.id]))[0].screenshot_at
+assert.ok(h1First,'the recipient could not mark a screenshot through the RPC')
+await asUser(B,()=>query('select public.mark_screenshot($1)',[h1Msg.id]))
+assert.deepEqual((await query('select screenshot_at from messages where id=$1',[h1Msg.id]))[0].screenshot_at,h1First,
+  'screenshot_at was re-writable — the claim shown to the other person can be moved')
+// M1: 202609090022 named react_to_message as a hole in its own comment and then
+// hardened only toggle_saved. block_user() deletes the friendship, but this RPC
+// never looked at one.
+await asUser(B,()=>query('select public.block_user($1)',[A]))
+await asUser(A,()=>query(`select public.react_to_message($1,'x')`,[h1Msg.id]))
+assert.deepEqual((await query('select reactions from messages where id=$1',[h1Msg.id]))[0].reactions,{},
+  'a blocked user could still react into the victim\'s thread')
+// Undo it fully. block_user() also DELETES the friendship — deliberately, since
+// stories, presence, calls and the push relay all gate on one — so unblocking
+// alone leaves A with no friends and silently zeroes the egress projection
+// several tests below. Restoring the row is part of the cleanup, not a detail.
+await query('delete from public.blocks where blocker=$1 and blocked=$2',[B,A])
+await query(`insert into public.friendships(user_a,user_b,requested_by,status)
+             values($1,$2,$1,'accepted') on conflict (user_a,user_b)
+             do update set status='accepted'`,[A,B])
+await query('delete from messages where id=$1',[h1Msg.id])
+console.log('PASS opened_at cannot be backdated to destroy a conversation, and a block stops reactions')
 
 // Egress accounting. The projection is the only part worth testing — the raw
 // totals are a sum, but the story multiplier is the thing that was making the
