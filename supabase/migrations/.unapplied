@@ -27,7 +27,6 @@
 # Applying it: run the migration in the SQL editor, then
 # supabase/operations/schedule_together_purge.sql standalone (cron statements
 # have aborted batched transactions on some projects), then delete these lines.
-202609140034_timeline_events
 #
 # Scheduled messages. Shelved on arrival, not because it is unfinished but
 # because applying it is a decision about retention: it is the one table in
