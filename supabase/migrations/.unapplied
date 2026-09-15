@@ -9,7 +9,6 @@
 # folder, and that is the only thing exercising them before they go live.
 #
 # Remove the line in the same change that applies the migration.
-202609090026_intimate_games
 
 # 202609140034 puts two AFTER triggers on `messages` — the hottest write path in
 # the app — and starts recording a durable, personal record of a pair that
