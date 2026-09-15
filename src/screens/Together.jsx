@@ -2,26 +2,29 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Avatar from '../components/Avatar'
 import Blob from '../components/Blob'
 import Confirm from '../components/Confirm'
+import PeerName from '../components/PeerName'
 import Portal from '../components/Portal'
 import PrivateBadge from '../components/PrivateBadge'
 import VoicePlayer from '../components/VoicePlayer'
 import {
-  ArrowIcon, BackIcon, CalendarIcon, CameraIcon, FlameIcon, HeartIcon,
+  ArrowIcon, BackIcon, CalendarIcon, CameraIcon, FlameIcon, GamepadIcon, HeartIcon,
   ImageIcon, MicIcon, NoteIcon, PhoneIcon, SaveIcon, TrashIcon, UsersIcon,
 } from '../components/Icons'
 import { useAudioRecorder } from '../hooks/useAudioRecorder'
 import { useBackLayer } from '../hooks/useBackLayer'
 import { useToast } from '../hooks/useToast'
 import { istToday, listFriendsWithProfiles, signedUrl } from '../lib/db'
+import { loadGameRecord } from '../lib/gameRecord'
 import {
   addNote, addPhoto, addVoice, getTogetherStatus, listOnThisDay,
   listScrapbook, listTimeline, purgeMyScrapbook, removeScrapbookItem,
   setTogetherOptIn,
 } from '../lib/together'
 import {
-  NOTE_MAX, canDelete, filterTimeline, fullPath, gridPath, groupTimelineByYear,
-  isFutureDate, optInCopy, optInState, optOutCopy, scrapbookCounts,
-  scrapbookDateLabel, scrapbookPurgeCopy, timelineFilters, yearsAgoLabel,
+  NOTE_MAX, canDelete, filterTimeline, fullPath, gameBreakdownRows,
+  gameRecordTotals, gridPath, groupTimelineByYear, isFutureDate, longestRun,
+  optInCopy, optInState, optOutCopy, scrapbookCounts, scrapbookDateLabel,
+  scrapbookPurgeCopy, timelineFilters, yearsAgoLabel,
 } from '../lib/togetherState'
 import '../styles/together.css'
 
@@ -252,6 +255,92 @@ function OnThisDayPane({ capsules, loading, resolve, onOpen, onRetry }) {
   )
 }
 
+// The pair's lifetime game record (202609150060). The series score on a room
+// row is transient on purpose — it lasts one evening, which is what makes it
+// playful — and the room it lives on expires. This is the durable half: one
+// together_events row per finished round, written by the statement that decided
+// the result, and everything on this pane derived from those rows on read.
+//
+// THE SHARED NUMBER IS THE HEADLINE. A permanent scoreline is a different
+// object from a series score, so the split sits under "games played together"
+// rather than over it, and there is no ranking, no badge and no language that
+// frames the smaller half as something to make up. tests/game-record.test.jsx
+// fails the build if that vocabulary reappears.
+//
+// The partner's name is the rotating ALIAS, through <PeerName> — a leaf, so
+// this screen does not subscribe itself to the alias clock.
+function GameRecordPane({ friend, state, record, breakdown, loading, onRetry }) {
+  const totals = gameRecordTotals(record)
+  const rows = gameBreakdownRows(breakdown)
+  const run = longestRun(record)
+  const them = <PeerName profile={friend} fallback="them" />
+  return (
+    <section className="tg-pane" aria-label="Games">
+      <PrivateBadge />
+      {state === 'failed' ? (
+        <div className="error" role="alert">
+          <span>We couldn’t read your game record. That is not the same as there being none.</span>
+          <button onClick={onRetry}>Retry</button>
+        </div>
+      ) : null}
+      {loading && state == null ? <p className="field-hint">Counting your games…</p> : null}
+
+      {totals && totals.games > 0 ? (
+        <>
+          <div className="tg-games">
+            <p className="tg-games-eyebrow">Games played together</p>
+            <p className="tg-games-count">{totals.games}</p>
+            <ul className="tg-games-split">
+              <li><em>{totals.mine}</em> <span>you</span></li>
+              <li><em>{totals.theirs}</em> <span>{them}</span></li>
+              <li><em>{totals.drawn}</em> <span>drawn</span></li>
+            </ul>
+          </div>
+
+          {rows.length ? (
+            <ul className="tg-games-list">
+              {rows.map((row) => (
+                <li key={row.game} className="tg-games-row">
+                  <span className="tg-games-name">{row.title}</span>
+                  <span className="tg-chip">{row.games} played</span>
+                  <small>{row.mine} you · {row.theirs} {them} · {row.drawn} drawn</small>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+
+          {run ? (
+            <p className="tg-games-run">
+              Longest run of wins: {run.count} in a row, {run.mine ? <span>yours</span> : them}
+            </p>
+          ) : null}
+        </>
+      ) : null}
+
+      {state === 'ok' && totals && totals.games === 0 ? (
+        <div className="empty">
+          <div className="empty-symbol" aria-hidden="true"><GamepadIcon /></div>
+          <h2>No finished games yet.</h2>
+          <p>Finish a game in Play and it is counted here, for both of you.</p>
+        </div>
+      ) : null}
+
+      {/* The honest cost of the collection gate, said rather than discovered.
+          Nothing is recorded until you have both turned Together on, and there
+          is no backfill: the rooms those games were played in expire and are
+          deleted, so there is nothing left to count them from. Guessing a
+          number on a surface two people share is how a memory becomes a small
+          lie. */}
+      {state === 'ok' ? (
+        <p className="field-hint tg-games-note">
+          Counted from the day you both turned Together on. Rooms are deleted when they
+          expire, so games finished before that are not here and cannot be looked up.
+        </p>
+      ) : null}
+    </section>
+  )
+}
+
 function Composer({ friendName, busy, onNote, onPhoto, onVoice }) {
   const [mode, setMode] = useState('note')
   const [text, setText] = useState('')
@@ -452,6 +541,12 @@ export default function Together({ me, onBack }) {
   const [timeline, setTimeline] = useState(undefined)
   const [capsules, setCapsules] = useState(undefined)
   const [items, setItems] = useState(undefined)
+  // The game record answers in four states of its own (lib/gameRecord.js), and
+  // the difference between the last two is the whole reason it is not an array:
+  // 'failed' is a read that did not come back, 'off' is a database that has no
+  // game record at all — and a section that hides itself on a flaky network is
+  // itself a failure rendered as an answer.
+  const [games, setGames] = useState(undefined)
   const [filter, setFilter] = useState('all')
   const [loading, setLoading] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -493,19 +588,26 @@ export default function Together({ me, onBack }) {
       // Each read settles on its own. One RPC failing must not turn the other
       // two into "nothing here" — allSettled rather than all, and a rejection
       // becomes null, which every pane renders as "we could not read this".
-      const [book, line, caps] = await Promise.allSettled([
+      const [book, line, caps, record] = await Promise.allSettled([
         listScrapbook(me, otherId),
         next.active ? listTimeline(otherId) : Promise.resolve([]),
         next.active ? listOnThisDay(otherId) : Promise.resolve([]),
+        // loadGameRecord() resolves its own failure rather than rejecting, so
+        // the settled wrapper here only catches something thrown before it.
+        next.active ? loadGameRecord(otherId) : Promise.resolve({ state: 'closed', record: null, breakdown: [] }),
       ])
       setItems(book.status === 'fulfilled' ? book.value : null)
       setTimeline(line.status === 'fulfilled' ? line.value : null)
       setCapsules(caps.status === 'fulfilled' ? caps.value : null)
+      setGames(record.status === 'fulfilled'
+        ? record.value
+        : { state: 'failed', record: null, breakdown: null })
     } catch (err) {
       // The status itself failed, so nothing below it was asked. Saying so
       // beats three panes each claiming to be empty.
       setError(err.message)
       setItems(null); setTimeline(null); setCapsules(null)
+      setGames({ state: 'failed', record: null, breakdown: null })
     } finally {
       setLoading(false)
     }
@@ -514,7 +616,11 @@ export default function Together({ me, onBack }) {
   useEffect(() => {
     if (!friend) return
     setTimeline(undefined); setCapsules(undefined); setItems(undefined)
-    setStatus(null); setFilter('all')
+    setGames(undefined)
+    // Back to the first tab as well: the Games tab is not drawn for a database
+    // that has no game record, and leaving the selection on it would open the
+    // next friendship on a pane that is not there.
+    setStatus(null); setFilter('all'); setTab('timeline')
     load(friend.id)
   }, [friend, load])
 
@@ -659,7 +765,20 @@ export default function Together({ me, onBack }) {
         {error ? <div className="error" role="alert"><span>{error}</span><button onClick={() => load(friend.id)}>Retry</button></div> : null}
 
         <div className="tg-tabs" role="tablist" aria-label="Together">
-          {[['timeline', 'Timeline'], ['scrapbook', 'Scrapbook'], ['onthisday', 'On this day']].map(([value, label]) => (
+          {[
+            ['timeline', 'Timeline'],
+            ['scrapbook', 'Scrapbook'],
+            ['onthisday', 'On this day'],
+            // Drawn only once the record has answered, and never for a database
+            // that does not have 202609150060 — a tab onto a section that
+            // cannot exist is worse than no tab. A read that FAILED still
+            // draws it, because the pane's job is then to say so.
+            //
+            // It is also not drawn before both of them have turned Together on:
+            // the two tabs above already carry that sentence, and a third
+            // saying the same thing is noise rather than information.
+            ...(state === 'on' && games && games.state !== 'off' ? [['games', 'Games']] : []),
+          ].map(([value, label]) => (
             <button
               key={value}
               type="button"
@@ -687,6 +806,16 @@ export default function Together({ me, onBack }) {
             />
           )
           : null}
+        {state === 'on' && tab === 'games' && games && games.state !== 'off' ? (
+          <GameRecordPane
+            friend={friend}
+            state={games.state}
+            record={games.record}
+            breakdown={games.breakdown}
+            loading={loading}
+            onRetry={() => load(friend.id)}
+          />
+        ) : null}
         {/* Reading the scrapbook stays open whatever the toggle says: if
             opting out hid the rows, either person could hold the other's
             memories behind a switch. Only WRITING is gated, which is what

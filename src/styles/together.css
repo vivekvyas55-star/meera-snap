@@ -97,8 +97,13 @@
 /* --------------------------------------------------------------------------
    Tabs
    -------------------------------------------------------------------------- */
+/* Four tabs do not fit on one line at 320px, and a row that overflows puts the
+   last one off the edge of the phone with nothing to say it is there. They wrap
+   instead: `flex: 1 1 auto` lets three sit on a line and the fourth drop
+   under, which is legible at every width without a second layout. */
 .tg-tabs {
   display: flex;
+  flex-wrap: wrap;
   gap: var(--sp-1);
   background: var(--card);
   border-radius: var(--r-pill);
@@ -106,7 +111,8 @@
   margin-bottom: var(--sp-4);
 }
 .tg-tab {
-  flex: 1;
+  flex: 1 1 auto;
+  padding: 0 var(--sp-3);
   min-height: 38px;
   border: none;
   background: transparent;
@@ -370,3 +376,81 @@
 @media (prefers-reduced-motion: no-preference) {
   .tg-capsule, .tg-hero { transition: none; }
 }
+
+/* --------------------------------------------------------------------------
+   The game record. Games played is the headline, the split is beneath it.
+
+   Deliberately a NEUTRAL card rather than a vibrant fill, for two reasons.
+   The screen already opens on a lavender .tg-hero and a second one directly
+   under it reads as a repeat rather than an emphasis — and the fixed-light
+   contract lives in index.css, which this change does not own, so a fill here
+   could not be registered in the same breath and would have gone near-white on
+   near-white after dark. The weight comes from the display number instead,
+   which is where the ABC reference puts it anyway.
+   -------------------------------------------------------------------------- */
+.tg-games {
+  background: var(--card);
+  border-radius: var(--r-card);
+  padding: var(--sp-5);
+  margin-bottom: var(--sp-3);
+  color: var(--ink);
+}
+.tg-games-eyebrow {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--fs-meta);
+  font-weight: 550;
+}
+.tg-games-count {
+  margin: 0;
+  font-size: var(--fs-display);
+  font-weight: 300;
+  letter-spacing: -0.02em;
+  line-height: 1.05;
+}
+/* The split, one step down in every dimension: smaller, quieter, and three
+   equal columns so no half of it is drawn as the larger one. */
+.tg-games-split {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2) var(--sp-4);
+  margin: var(--sp-3) 0 0;
+  padding: 0;
+  list-style: none;
+}
+.tg-games-split li {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: var(--fs-meta);
+  color: var(--muted);
+}
+.tg-games-split em {
+  font-style: normal;
+  font-weight: 550;
+  font-size: var(--fs-body);
+  color: var(--ink);
+}
+
+.tg-games-list { margin: 0 0 var(--sp-3); padding: 0; list-style: none; }
+.tg-games-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  background: var(--card);
+  border-radius: var(--r-row);
+  padding: var(--sp-3) var(--sp-4);
+  margin-bottom: var(--sp-2);
+}
+.tg-games-name { font-weight: 550; font-size: var(--fs-body); flex: 1; min-width: 0; }
+.tg-games-row .tg-chip { background: var(--surface); }
+.tg-games-row small { flex-basis: 100%; color: var(--muted); font-size: var(--fs-meta); }
+
+.tg-games-run {
+  margin: 0 0 var(--sp-3);
+  font-size: var(--fs-meta);
+  color: var(--muted);
+}
+.tg-games-run span { color: var(--ink); font-weight: 550; }
+.tg-games-note { margin-top: var(--sp-3); }

@@ -2438,6 +2438,50 @@ being counted. A separate history table would mean a second write that can fail
 on its own. `rematch_game` deliberately does not touch the counters — carrying
 the score across rounds is the entire point of keeping one.
 
+**...and the score dies with the room, which is why the RECORD is materialised**
+(`202609150060_game_records.sql`, **shelved** — it is blocked on
+`202609140034_timeline_events`, which is itself on the shelf; apply 0034 first,
+in the same sitting, and remove both `.unapplied` lines together). A room
+expires, `purge_expired` deletes it, and `game_room()` even resets the board of
+an expired one — so the series score is a fact about one evening that nothing
+preserved. That is 202609140034's rule exactly: **materialise a fact whose
+evidence is deleted; derive a fact whose source outlives it.**
+
+- A `game_result` **`together_events`** row is written inside `play_game_move`
+  and `play_game_path`, next to the counter increment, guarded by the same
+  `result was null on entry`. A retried move returns long before that line, so
+  one finished round is one row — and the recording is wrapped in
+  `begin…exception when others then null`, like every trigger in 0034: a lost
+  record costs a number on a card, a failed move costs the game.
+- **The dedupe key is `<invite>:<round>`**, which is what survives
+  `rematch_game`: the next round is the SAME room with `round` advanced and
+  never reset, `revision` is monotonic for the room's life, and an expired room
+  is deleted so no uuid is ever reused. `revision` would have been the wrong
+  key — it moves with every move, and the key has to be stable for the round.
+  Mutation-checked: a dedupe that varies per call produces two rows for one
+  finished round and `tests/database.mjs` fails.
+- It carries which game (`subject`, the CODE — the client names it from
+  `lib/threadEvent.js`'s `GAME_TITLES`), who won (`actor`, NULL for a draw) and
+  the round (`magnitude`, 1-based). **No board.**
+- **Everything above it is derived** — `together_game_record(other)` (games, the
+  split, the longest run of wins by one person, first and last) and
+  `together_game_breakdown(other)` (one row per game actually played). No
+  stored aggregate, for the reason `credit_ledger` has no `credits` column.
+- **Games are kept OFF `together_timeline()`.** A pair who play most evenings
+  would push every milestone out of its 120-row window inside a month, and
+  forty cards reading "A moment together" is not a timeline.
+- **Collection is gated on the opt-in like every other event**, so nothing is
+  recorded for a pair who have not both turned Together on, and an opt-out
+  purges these rows with the rest — they are observations, nobody authored
+  them. There is **no backfill and `together_seed_events()` is not taught about
+  games**: the rooms are gone, and a count guessed from what is left is a number
+  two people would believe. The Games pane says so in words.
+- **Games played together is the headline; the split is secondary.** A
+  permanent, prominent "47–12" is a different object from a series score that
+  lasts one evening. No ranking, no trophy, no badge, no "you're behind" — and
+  `tests/game-record.test.jsx` holds a copy blocklist for that vocabulary, in
+  the manner of the solo screen and the decoy.
+
 **Three games, one room grammar** (`202609090024_more_games.sql`). Tic-Tac-Toe,
 Connect Four and Checkers share the invite, presence, rematch, scoreboard and
 chat flow untouched — the client branches in exactly two places, a `BOARDS`
