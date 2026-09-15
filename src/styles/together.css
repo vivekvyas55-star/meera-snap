@@ -373,7 +373,12 @@
   line-height: 1.45;
 }
 
-@media (prefers-reduced-motion: no-preference) {
+/* INVERTED once: this was `no-preference`, which disabled the transitions for
+   everyone who had NOT asked for reduced motion and kept them for everyone who
+   had — the exact opposite of the intent, in both directions at once. The
+   global rule in index.css already collapses durations to 0.01ms; this states
+   it explicitly for the two transitioned properties here. */
+@media (prefers-reduced-motion: reduce) {
   .tg-capsule, .tg-hero { transition: none; }
 }
 
