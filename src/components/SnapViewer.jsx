@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { useBackLayer } from '../hooks/useBackLayer'
-import { recordSnapOpen, markScreenshot, signedUrl, SNAP_MAX_OPENS } from '../lib/db'
+import { canExportToDevice, recordSnapOpen, markScreenshot, signedUrl, SNAP_MAX_OPENS } from '../lib/db'
 import { useScreenshotHeuristic } from '../hooks/useScreenshotHeuristic'
-import { CloseIcon } from './Icons'
+import { CheckIcon, CloseIcon, LockIcon, ReplayIcon, SaveIcon } from './Icons'
 import Portal from './Portal'
 
 // Fullscreen snap viewer. A photo shows for its timer; a video plays once.
@@ -12,11 +12,12 @@ export default function SnapViewer({ message, me, onClose, onScreenshot }) {
   // Back closes the snap, not the conversation behind it.
   useBackLayer(true, onClose)
   const isMine = message.sender_id === me
-  // A disappearing snap can be kept in-chat by either person, which is a
-  // visible shared decision. Device export is intentionally narrower: a
-  // recipient cannot quietly turn an unsaved disappearing snap into a gallery
-  // file without the sender's mutual-save signal.
-  const canSaveToDevice = isMine || (message.saved_by ?? []).includes(me)
+  // Export eligibility is NOT decided here. It has exactly one definition, in
+  // db.js, because the version that lived inline in this file was wrong for
+  // months: it asked whether `saved_by` contained the viewer, and `saved_by` is
+  // written by `toggle_saved()`, which the recipient may call. The recipient
+  // tapped "Save in chat" and handed themselves the download.
+  const canSaveToDevice = canExportToDevice(message, me)
   const [error, setError] = useState(null)
   const [counting, setCounting] = useState(false)
   const [url, setUrl] = useState(null)
@@ -151,10 +152,18 @@ export default function SnapViewer({ message, me, onClose, onScreenshot }) {
           <div style={{ display: 'flex', gap: 10 }}>
             {canSaveToDevice ? (
               <button className="pill" onClick={save} disabled={saved}>
-                {saved ? '✓ Saved' : '⤓ Save'}
+                {saved ? <CheckIcon width={17} height={17} /> : <SaveIcon width={17} height={17} />}
+                {saved ? 'Saved' : 'Save'}
               </button>
             ) : (
-              <span className="viewer-privacy-note">Save in chat to keep</span>
+              // Say why, once, and stop. No "ask them to turn it on", no route
+              // around it: a line explaining how to get the file anyway is an
+              // instruction to work around a decision someone else made about
+              // their own photo.
+              <span className="viewer-privacy-note viewer-consent-note">
+                <LockIcon width={14} height={14} aria-hidden="true" />
+                {isVideo ? "The sender hasn't allowed saving this video" : "The sender hasn't allowed saving this snap"}
+              </span>
             )}
             {!isVideo && !isMine && reopensLeft > 0 && ready && (
               <button
@@ -170,7 +179,7 @@ export default function SnapViewer({ message, me, onClose, onScreenshot }) {
                   finally { setCounting(false) }
                 }}
               >
-                ↻ Replay
+                <ReplayIcon width={17} height={17} /> Replay
               </button>
             )}
           </div>

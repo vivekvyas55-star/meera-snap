@@ -228,7 +228,10 @@ rolling guess-lockout window, snap score scoped to self+friends — supersedes
 than one 200-row page per friend), `memories_thumbs.sql` (`memories.thumb_path`
 — the grid loaded full-size originals into ~120px tiles), `push.sql`
 (`push_subscriptions` for Web Push), `together.sql` (birthdays, status notes,
-question of the day). **Superseded
+question of the day), `202609140033_snap_save_consent.sql`
+(`messages.allow_save` + `snap_save_prefs` + `save_consent_log` — the recipient
+may export a snap only if the sender said so; **written, not yet applied**, and
+the frontend degrades toward less permission without it). **Superseded
 (historical, do not trust as
 current):** `snap_reopen.sql` (said 3 reopens/4 views; live `SNAP_MAX_OPENS`=6 =
 1+5) and `chat_recall.sql` (two-stage delete, replaced by the `view_leaves`
@@ -1917,6 +1920,96 @@ implements it — but `Chat.jsx`'s IntersectionObserver only reports
 `(kind='snap' and sender_id=auth.uid())` branch is unreachable. Your own snap
 status rows persist the full 31 days. Recorded here rather than quietly fixed
 because the fix is one word in a filter and the behaviour change is real.
+
+**Saving a snap to the camera roll needs the SENDER's permission**
+(`202609140033_snap_save_consent.sql`, `messages.allow_save`, default **false**).
+
+The gate this replaced granted itself. `SnapViewer` offered the download when
+`(message.saved_by ?? []).includes(me)`, above a comment claiming "a recipient
+cannot quietly turn an unsaved disappearing snap into a gallery file without the
+sender's mutual-save signal" — but `saved_by` is written by `toggle_saved()`,
+which **either** party may call. The recipient tapped "Save in chat", their own
+uid landed in the array, and the viewer handed them the file. There was no
+sender signal in that condition at all. It is the privacy-claim-the-code-does-
+not-back failure, in the same file as a comment asserting the opposite.
+
+- **`canExportToDevice(message, me)` in `db.js` is the ONE definition**, and the
+  only thing any surface may call. It allows your own media, a snap the sender
+  set `allow_save` on, or one **both** of you have saved (`saved_by` containing
+  the sender *and* the viewer — the sender's own entry is a signal only they can
+  write, per `guard_message_update`). It is `allow_save === true`, not truthy:
+  a row from before the migration carries no such column, and **consent is an
+  act — the absence of the act is a no, not an unknown to resolve generously.**
+- **The sender is the only writer, by every route.** No UPDATE grant on the
+  column (the baseline's table-wide revoke means a new column inherits none, and
+  the migration restates the revoke anyway), plus a clause in
+  `guard_message_update` that holds even if a later migration re-widens the
+  grant — which has happened twice here. `set_snap_save_consent(msg, allow)` is
+  SECURITY DEFINER, sender-only, snap-only. **The RPC is a door; the grant is
+  the wall**, and 202609090022 is the precedent: it hardened `toggle_saved()`
+  and left `update (saved_by)` granted, so a PATCH straight to PostgREST still
+  worked.
+- **Per-contact defaults are `snap_save_prefs`, pair-keyed with two SEPARATE
+  halves** (`a_allows` / `b_allows`), each owned by one person, and the default
+  is in force only when **both** are true — the `together_status()` rule. A
+  single shared per-pair flag would be a flag the recipient could flip, i.e. the
+  self-granted-consent bug rebuilt one level up. There is no UPDATE grant at
+  all; `set_snap_save_default(other, allow)` derives the column from
+  `auth.uid()` rather than taking it as an argument.
+- **The pref only SEEDS `messages.allow_save` at send; the row is the
+  authority.** That is what stops a default switched on next week retroactively
+  unlocking snaps sent last week, and it is why there is deliberately **no
+  `v_effective_snap_consent` view** — a second definition of a fact already on
+  the row, and one that silently runs with the owner's privileges unless created
+  `with (security_invoker = true)`.
+- **Blocking can always REVOKE, never grant.** A block must not strand someone
+  inside a permission they gave before it. And a standing default does not
+  outlive the friendship: a trigger drops the `snap_save_prefs` row when the
+  `friendships` row is deleted — which `removeFriend` and `block_user()` both
+  do — so re-adding each other cannot silently restore consent granted to a
+  relationship that has since ended. Per-message `allow_save` is left alone;
+  those snaps went out under a permission that was real at the time.
+- `insertMessage` drops `allow_save` on a missing-column error, exactly as it
+  does `thumb_path`, so the bundle may ship before the migration is applied.
+  The degradation always goes toward **less** permission — the row lands on the
+  column default — because a broken promise in that direction is survivable and
+  the reverse is not. `resolveAllowSave` likewise turns a failed pref lookup
+  into `false` rather than failing the send; it is the one place in this
+  feature a failure becomes a value, because a NOT NULL boolean has no third
+  state, and it is commented as such.
+- **Say what it is, and nothing more.** Once a recipient can view a snap they
+  have the bytes — screenshot, screen recording, the signed URL out of devtools.
+  This makes the sender's answer authoritative and unforgeable by the client; it
+  cannot stop a determined recipient keeping a copy. Same standing as
+  ephemerality: **a UI contract, not a security property.** The compose copy
+  says "it cannot stop a screenshot" at the moment permission is granted, and
+  the viewer's refusal line says only *that* the sender did not allow it — no
+  "ask them", no route around it. A line explaining how to get the file anyway
+  is an instruction to work around a decision someone else made about their own
+  photo, and the old copy ("Save in chat to keep") was exactly that.
+- **`allow_save` is NOT `saved_by`.** Saving pins a message against the
+  ephemeral purge (`purge_expired` and the 3-visit clear both require
+  `saved_by = '{}'`); consenting to an export changes nothing about how long the
+  message lives. Conflating them would turn a permission grant into a
+  permanent message.
+- **The audit log (`save_consent_log`) is operator-only** — RLS on, no policy,
+  grants revoked, like `ops_metrics` and `bot_quotes`. What is anonymised is the
+  **content**: never a body, caption, `media_path` or signed URL. The actor and
+  the message id are in the clear, because the only question the log exists to
+  answer is "did the sender actually consent to this one?" and a hashed actor
+  cannot answer it — while the message row it points at already names both
+  parties, and only an operator can read either. Only **transitions** are
+  logged; re-tapping the same answer is not an event. Rows cascade-delete with
+  the message, so the log lives exactly as long as the thing it describes.
+- Attaching in Chat no longer sends on the file input's `change` event — it
+  opens `AttachSheet`, because the one decision that cannot be made after the
+  fact had nowhere to be made. The camera's control is **three-state**
+  (Default / On / Off, cycling like the timer pill beside it): recipients are
+  not chosen until "Send to", so a two-state switch could not express "I have
+  not overridden what these two already agreed", and defaulting to Off would
+  discard that agreement on every snap. Both reset per capture — carrying an
+  answer over is a decision about one picture silently becoming a decision
+  about a different one.
 
 Stories (`schema.sql` stories table): **48h / 2-day** expiry (was 24h). A
 purge in `features.sql`/`hardening.sql` deletes expired rows + their media.

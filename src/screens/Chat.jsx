@@ -15,6 +15,8 @@ import {
   removeFriend,
   sendChat,
   sendSnapMedia,
+  setSnapSaveConsent,
+  getSnapSaveDefault,
   sendSticker,
   sendVoiceNote,
   setAnniversaryDate,
@@ -47,6 +49,7 @@ import FriendSignals from '../components/FriendSignals'
 import HeartBurst from '../components/HeartBurst'
 import Confirm from '../components/Confirm'
 import { ArrowIcon, BackIcon, CalendarIcon, ChatIcon, CheckIcon, ChevronIcon, CloseIcon, FlameIcon, ForwardIcon, GridIcon, HeartIcon, ImageIcon, LockIcon, MicIcon, GameIcon, PhoneIcon, PlayIcon, PlusIcon, ReplyIcon, SaveIcon, SmileyIcon, VideoIcon } from '../components/Icons'
+import { ConsentSwitch, SnapSaveDefaultCard } from '../components/SnapSaveConsent'
 import { useAudioRecorder } from '../hooks/useAudioRecorder'
 import {
   ScheduleButton,
@@ -141,6 +144,7 @@ export default function Chat({ friend, onBack, onOpenPlay }) {
   const seenAtBottom = useRef(new Set()) // ids already on screen at the bottom
   const [forwardMsg, setForwardMsg] = useState(null) // chat being forwarded
   const [unsendMsg, setUnsendMsg] = useState(null) // pending unsend confirmation
+  const [attachFile, setAttachFile] = useState(null) // picked media awaiting its send decision
   const [anniv, setAnniv] = useState(null) // "together since" date for this pair
   const [stickers, setStickers] = useState(false)
   const [friendSheet, setFriendSheet] = useState(false)
@@ -483,7 +487,11 @@ export default function Chat({ friend, onBack, onOpenPlay }) {
     el.style.height = `${Math.min(el.scrollHeight, 118)}px`
   }, [draft])
 
-  const onPickMedia = async (e) => {
+  // Picking a file no longer sends it. There is one decision to make about a
+  // snap that cannot be made after the fact — whether the person receiving it
+  // may keep a copy — so the picker hands off to a compose step rather than
+  // firing the send on a file-input change event.
+  const onPickMedia = (e) => {
     const file = e.target.files?.[0]
     e.target.value = '' // allow re-picking the same file later
     if (!file) return
@@ -492,10 +500,15 @@ export default function Chat({ friend, onBack, onOpenPlay }) {
       toast('That file is too large (50MB max).')
       return
     }
+    setAttachFile(file)
+  }
+
+  const sendAttachment = async (file, allowSave) => {
     setAttaching(true)
     try {
-      await sendSnapMedia(me, friend.id, { file, replyTo: replyingTo?.id ?? null })
+      await sendSnapMedia(me, friend.id, { file, allowSave, replyTo: replyingTo?.id ?? null })
       setReplyingTo(null)
+      setAttachFile(null)
       toast(file.type.startsWith('video') ? 'Video snap sent' : 'Photo snap sent')
       load()
     } catch (err) {
@@ -891,6 +904,17 @@ export default function Chat({ friend, onBack, onOpenPlay }) {
             setMenuMsg(null)
             load()
           }}
+          onConsent={async () => {
+            const next = !(menuMsg.allow_save === true)
+            try {
+              await setSnapSaveConsent(menuMsg.id, next)
+              toast(next ? `${friendName} can save this snap` : `${friendName} can no longer save this snap`)
+            } catch (err) {
+              toast(err.message)
+            }
+            setMenuMsg(null)
+            load()
+          }}
           onUnsend={() => { setUnsendMsg(menuMsg); setMenuMsg(null) }}
           onReply={() => {
             setReplyingTo(menuMsg)
@@ -944,6 +968,18 @@ export default function Chat({ friend, onBack, onOpenPlay }) {
             }
             refreshSched()
           }}
+        />
+      )}
+
+      {attachFile && (
+        <AttachSheet
+          me={me}
+          file={attachFile}
+          friendId={friend.id}
+          friendName={friendName}
+          sending={attaching}
+          onCancel={() => setAttachFile(null)}
+          onSend={sendAttachment}
         />
       )}
     </div>
@@ -1032,6 +1068,8 @@ function FriendSheet({ friend, friendName, me, onClose, onRemoved, onOpenJustUs,
                 one of these now (lib/rowSignal.js); this is where the rest of
                 them stayed reachable. */}
             <FriendSignals friend={friend} friendName={friendName} me={me} />
+
+            <SnapSaveDefaultCard me={me} friendId={friend.id} friendName={friendName} />
 
             <button className="fp-row" onClick={() => setKept(true)}>
               <span className="fp-row-icon"><GridIcon width={19} height={19} /></span>
@@ -1162,8 +1200,86 @@ function ForwardSheet({ me, message, onClose }) {
   )
 }
 
-function MessageMenu({ message, me, onClose, onReact, onSave, onUnsend, onReply, onForward }) {
+// The one decision about a snap that cannot be made after the fact: may the
+// person receiving it keep a copy? Attaching used to send on the file-input
+// change event, which left the sender nowhere to answer it.
+//
+// The switch is prefilled from what this pair has already agreed (BOTH halves of
+// snap_save_prefs), so someone who set a standing default is not asked the same
+// question every time — but the answer is still per snap, and whatever is on
+// screen when Send is tapped is what the snap carries.
+function AttachSheet({ me, file, friendId, friendName, sending, onCancel, onSend }) {
+  const isVideo = Boolean(file.type?.startsWith('video'))
+  const [allow, setAllow] = useState(null) // null until the pair default is known
+  const [failed, setFailed] = useState(false)
+  const [preview, setPreview] = useState(null)
+
+  useEffect(() => {
+    let alive = true
+    getSnapSaveDefault(me, friendId)
+      .then((p) => alive && setAllow(p.active))
+      // A failed lookup is not an answer, so it is not shown as one: the switch
+      // lands on off (the restrictive side) AND says why, rather than quietly
+      // presenting "off" as this pair's settled agreement.
+      .catch(() => { if (alive) { setAllow(false); setFailed(true) } })
+    return () => { alive = false }
+  }, [me, friendId])
+
+  // Local bytes, so the preview costs no egress. Revoked on unmount: a leaked
+  // object URL pins the whole file in memory for the life of the document.
+  useEffect(() => {
+    if (isVideo) return
+    const url = URL.createObjectURL(file)
+    setPreview(url)
+    return () => URL.revokeObjectURL(url)
+  }, [file, isVideo])
+
+  return (
+    <Portal>
+      <Sheet onClose={sending ? () => {} : onCancel} label="Send photo or video">
+        <h2 style={{ margin: '0 0 12px', fontWeight: 300, fontSize: 20 }}>
+          Send {isVideo ? 'video' : 'photo'} to {friendName}
+        </h2>
+        {preview && <img className="attach-preview" src={preview} alt="" />}
+
+        <div className="consent-card">
+          <div className="consent-card-head">
+            {allow ? <SaveIcon width={19} height={19} /> : <LockIcon width={19} height={19} />}
+            <span className="consent-card-title">{friendName} can save this</span>
+            <ConsentSwitch
+              checked={Boolean(allow)}
+              disabled={sending || allow === null}
+              onChange={setAllow}
+              label={`Let ${friendName} save this ${isVideo ? 'video' : 'snap'}`}
+            />
+          </div>
+          <p className="consent-card-note">
+            {failed
+              ? `Couldn't check what you and ${friendName} have agreed, so saving is off for this one.`
+              : 'Off means no save button for them. It cannot stop a screenshot.'}
+          </p>
+        </div>
+
+        <div className="confirm-actions">
+          <button className="pill-btn" onClick={onCancel} disabled={sending}>Cancel</button>
+          <button
+            className="btn-dark"
+            disabled={sending || allow === null}
+            onClick={() => onSend(file, Boolean(allow))}
+          >
+            {sending ? 'Sending…' : 'Send'}
+          </button>
+        </div>
+      </Sheet>
+    </Portal>
+  )
+}
+
+function MessageMenu({ message, me, onClose, onReact, onSave, onUnsend, onReply, onForward, onConsent }) {
   const mine = message.sender_id === me
+  // Only the sender, only a snap, and only one that still has media to keep.
+  const canSetConsent = mine && message.kind === 'snap' && !message.unsent_at
+  const allowsSave = message.allow_save === true
   const myReaction = (message.reactions ?? {})[me]
   const saved = (message.saved_by ?? []).includes(me)
   return (
@@ -1193,6 +1309,12 @@ function MessageMenu({ message, me, onClose, onReact, onSave, onUnsend, onReply,
           <button className="menu-action" onClick={onSave}>
             <SaveIcon width={18} height={18} /> {saved ? 'Unsave' : 'Save in chat'}
           </button>
+          {canSetConsent && (
+            <button className="menu-action" onClick={onConsent}>
+              {allowsSave ? <LockIcon width={18} height={18} /> : <SaveIcon width={18} height={18} />}
+              {allowsSave ? 'Stop them saving this' : 'Let them save this'}
+            </button>
+          )}
           {mine && (
             <button className="menu-action danger" onClick={onUnsend}>
               <CloseIcon width={18} height={18} /> Unsend

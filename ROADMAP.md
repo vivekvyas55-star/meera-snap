@@ -92,6 +92,13 @@ Status as of **9 Sep 2026**. `CLAUDE.md` says how things work; this says what is
 **Privacy**
 - [ ] Mute and report (blocking is done).
 - [ ] Per-snap controls before sending: audience, expiry, replay limit, save policy.
+- [ ] Per-snap controls before sending: audience, expiry, replay limit. **Save
+      policy is built but NOT live** — `202609140033_snap_save_consent.sql` is
+      written and tested and has not been applied, so the sender's permission
+      does not exist in production yet. Until it is applied, the recipient's
+      export gate is the one the migration replaces, which the recipient could
+      open for themselves by saving the snap in chat.
+- [ ] WebAuthn / biometric unlock.
 - [ ] Lock screen still exposed to assistive tech.
 - [ ] **End-to-end encryption** — see below.
 

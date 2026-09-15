@@ -9,11 +9,31 @@ import Sheet from '../components/Sheet'
 import SnapEditor from '../components/SnapEditor'
 import CameraError from '../components/CameraError'
 import { useAlias } from '../hooks/useAliasClock'
-import { ArrowIcon, CheckIcon, CloseIcon, FlipIcon, SaveIcon, StoriesIcon } from '../components/Icons'
+import { ArrowIcon, CheckIcon, CloseIcon, FlipIcon, LockIcon, SaveIcon, StoriesIcon } from '../components/Icons'
 
 // View-time options (seconds), plus "no limit". Default is a comfortable 45s.
 const TIMERS = [10, 30, 45, 60, null]
 const DEFAULT_TIMER_IDX = 2 // 45s
+
+// Whether the recipient may put this snap in their camera roll. THREE states,
+// not two, because the recipients are not known yet on this screen — "Send to"
+// comes after. `null` means "whatever each of us has already agreed with that
+// friend", resolved per recipient at send time in db.js; true/false are the
+// sender overriding that for this one photo, for everyone they send it to.
+//
+// It cycles on tap, like the timer pill beside it, rather than being a switch:
+// a two-state switch cannot express "I have not overridden anything", and
+// defaulting silently to Off would quietly discard a standing agreement the two
+// people had already made.
+const SAVE_STATES = [null, true, false]
+const SAVE_LABELS = { null: 'Default', true: 'On', false: 'Off' }
+const SAVE_SUBS = {
+  null: 'Follows what you and each friend have allowed',
+  // The honest half. A permission Meera can enforce is a button; it is not a
+  // guarantee, and the sender is told so at the moment they grant it.
+  true: 'They get a save button — it cannot stop a screenshot',
+  false: 'No save button for them',
+}
 
 // Colour filters — a CSS filter string applied to the live preview AND baked
 // into the outgoing blob (via canvas) so the sent snap matches what you saw.
@@ -53,6 +73,7 @@ export default function CameraScreen({ active, onSent, onEditing }) {
   const [timerIdx, setTimerIdx] = useState(DEFAULT_TIMER_IDX) // default 45s
   const [sending, setSending] = useState(false)
   const [savedMemory, setSavedMemory] = useState(false)
+  const [saveIdx, setSaveIdx] = useState(0) // index into SAVE_STATES; 0 = Default
   const [picking, setPicking] = useState(false)
   const [friends, setFriends] = useState([])
   const editorRef = useRef(null)
@@ -154,6 +175,8 @@ export default function CameraScreen({ active, onSent, onEditing }) {
   }, [shot, onEditing])
 
   const viewSeconds = TIMERS[timerIdx]
+  const allowSave = SAVE_STATES[saveIdx]
+  const saveLabel = SAVE_LABELS[String(allowSave)]
 
   const takeShot = async () => {
     const blob = await capture()
@@ -166,6 +189,10 @@ export default function CameraScreen({ active, onSent, onEditing }) {
     batchRef.current = null
     setBatchStarted(false)
     setSavedMemory(false)
+    // Consent is per snap. Carrying the last photo's answer onto this one is
+    // how a decision made about one picture silently becomes a decision about
+    // a different picture.
+    setSaveIdx(0)
     setShot({ blob, url: URL.createObjectURL(blob) })
   }
 
@@ -173,6 +200,7 @@ export default function CameraScreen({ active, onSent, onEditing }) {
     setShot(null)
     setCaption('')
     setSavedMemory(false)
+    setSaveIdx(0)
     start() // reuses the still-live stream — no permission prompt
   }
 
@@ -193,7 +221,7 @@ export default function CameraScreen({ active, onSent, onEditing }) {
     if (friendIds.length === 0) return
     setSending(true)
     try {
-      if (!batchRef.current) batchRef.current = { blob: await composeBlob(), viewSeconds, caption }
+      if (!batchRef.current) batchRef.current = { blob: await composeBlob(), viewSeconds, caption, allowSave }
       setBatchStarted(true)
       for (const id of friendIds) {
         let delivery = deliveries.current.get(id)
@@ -296,6 +324,25 @@ export default function CameraScreen({ active, onSent, onEditing }) {
               style={{ fontSize: 15, fontWeight: 500 }}
             >
               {timerLabel}
+            </button>
+          </div>
+
+          {/* Sender intent, stated to the sender. It sits above the filters so
+              it is read before "Send to", not discovered after. */}
+          <div className="cam-consent">
+            <button
+              type="button"
+              className={`cam-consent-btn${allowSave === true ? ' on' : ''}`}
+              disabled={sending || batchStarted}
+              aria-label={`Recipient can save this snap: ${saveLabel}. Tap to change.`}
+              onClick={() => setSaveIdx((i) => (i + 1) % SAVE_STATES.length)}
+            >
+              {allowSave === true ? <SaveIcon width={19} height={19} /> : <LockIcon width={19} height={19} />}
+              <span className="cam-consent-text">
+                <span className="cam-consent-title">Recipient can save this snap</span>
+                <span className="cam-consent-sub">{SAVE_SUBS[String(allowSave)]}</span>
+              </span>
+              <span className="cam-consent-state">{saveLabel}</span>
             </button>
           </div>
 
