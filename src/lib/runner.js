@@ -9,6 +9,14 @@ export const GRAVITY = 0.62
 export const JUMP_V = -10.6
 export const START_SPEED = 4.2
 export const MAX_SPEED = 9.5
+// Where the runner stands, and how big it is. These were literals inside
+// step()'s collision test; they are exported because lib/missions.js has to
+// know where "past the runner" is to count an obstacle as cleared, and a
+// second copy of the number in that file is a drift waiting to happen. Reading
+// them is all missions does — the physics stay here.
+export const RUNNER_X = 30
+export const RUNNER_W = 20
+export const RUNNER_H = 22
 const PX_PER_POINT = 24
 
 export function createRun() {
@@ -61,9 +69,9 @@ export function step(run, dt, width, rand = Math.random) {
   }
 
   // Inset so a near miss reads as a near miss rather than a phantom hit.
-  const x = 30
-  const w = 20
-  const h = 22
+  const x = RUNNER_X
+  const w = RUNNER_W
+  const h = RUNNER_H
   const top = GROUND_Y - h + run.y
   for (const o of run.obstacles) {
     if (x + w - 4 > o.x && x + 4 < o.x + o.w && top + h - 3 > GROUND_Y - o.h) {

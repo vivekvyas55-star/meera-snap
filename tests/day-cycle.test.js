@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { IST_EPOCH, istDayNumber, phaseFor, rotationIndex, seededRandom, shuffle } from '../src/lib/dayCycle'
+import { IST_EPOCH, istDayNumber, phaseFor, pickForDay, rotationIndex, seededRandom, shuffle } from '../src/lib/dayCycle'
 
 // The epoch is the whole point of this module: two conventions already exist
 // in the SQL and disagree, and a third in the client would be worse than
@@ -94,4 +94,60 @@ test('shuffle is out of place, keeps every item, and is deterministic under a se
   expect(src).toEqual([1, 2, 3, 4, 5, 6, 7, 8])
   expect([...out].sort((x, y) => x - y)).toEqual(src)
   expect(shuffle(src, seededRandom(3))).toEqual(out)
+})
+
+// ==========================================================================
+// The epoch choice, defended.
+//
+// Two conventions already live in the SQL and disagree by 19723 days, which is
+// 13 mod 30 — todays_prompt() counts from 1970-01-01, pair_prompt() and the
+// bot rotation from 2024-01-01. The client standardises on 2024-01-01 because
+// that is what the NEWEST rotation in the database uses and what this file's
+// rotation rule was copied from; a third convention in the client would make
+// it three.
+//
+// The one real cost of a 2024 epoch is that earlier dates are NEGATIVE, and
+// JS keeps the sign on `%`, so `(-3) % 7` is -3 and indexes nothing. No date
+// before 2024 can reach these functions in practice, but "cannot happen" is
+// not a guard, so rotationIndex has one and this pins it.
+// ==========================================================================
+test('a date before the epoch is negative, and the rotation still indexes', () => {
+  expect(istDayNumber('2020-06-15')).toBeLessThan(0)
+  expect(rotationIndex(-3, 0, 7)).toBe(4)
+  expect(rotationIndex(-70, 0, 7)).toBe(0)
+  expect(rotationIndex(-1, 0, 7)).toBe(6)
+  for (let d = -400; d < 400; d++) {
+    for (const phase of [0, 7, 2166136261]) {
+      const i = rotationIndex(d, phase, 9)
+      expect(Number.isInteger(i)).toBe(true)
+      expect(i).toBeGreaterThanOrEqual(0)
+      expect(i).toBeLessThan(9)
+    }
+  }
+  // And the whole way through a pre-epoch stretch it is still a cycle.
+  const day = istDayNumber('2020-06-15')
+  const seen = new Set()
+  for (let d = 0; d < 9; d++) seen.add(rotationIndex(day + d, 0, 9))
+  expect(seen.size).toBe(9)
+})
+
+test('pickForDay hands back the item, or nothing at all', () => {
+  const pool = [{ id: 'a' }, { id: 'b' }, { id: 'c' }]
+  expect(pickForDay(pool, '2024-01-01', null).id).toBe('a')
+  expect(pickForDay(pool, '2024-01-02', null).id).toBe('b')
+  expect(pickForDay(pool, '2024-01-04', null).id).toBe('a')
+  // An unknown day or an empty pool is never the first item.
+  for (const bad of [null, undefined, '', 'today', '2026-9-15', '2026-02-30']) {
+    expect(pickForDay(pool, bad, null)).toBeNull()
+  }
+  expect(pickForDay([], '2024-01-01', null)).toBeNull()
+  expect(pickForDay(null, '2024-01-01', null)).toBeNull()
+})
+
+test('growing a pool lengthens the cycle without a schedule anywhere', () => {
+  const pool = [{ id: 'a' }, { id: 'b' }]
+  expect(pickForDay(pool, '2024-01-01', 'x').id).toBe(pickForDay(pool, '2024-01-03', 'x').id)
+  const grown = [...pool, { id: 'c' }]
+  expect(pickForDay(grown, '2024-01-01', 'x').id).not.toBe(pickForDay(grown, '2024-01-03', 'x').id)
+  expect(pickForDay(grown, '2024-01-01', 'x').id).toBe(pickForDay(grown, '2024-01-04', 'x').id)
 })

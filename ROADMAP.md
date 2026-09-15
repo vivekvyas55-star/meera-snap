@@ -54,6 +54,15 @@ Status as of **9 Sep 2026**. `CLAUDE.md` says how things work; this says what is
 ---
 
 ## In flight
+- [ ] "Your little break" — the ONE solo screen (built, NOT deployed). Four solo
+      games reconciled onto one surface: the runner and its secret missions, the
+      daily Mystery Box, Emoji Detective, Memory Flip, the tiny escape room, the
+      mood garden, personal bests and one calming prompt. Play keeps a single
+      card into it. Device-local only, one day-number module (`lib/dayCycle.js`,
+      epoch 2024-01-01) and one store (`lib/soloProgress.js`), rotates rather
+      than draws, and no streak or loss framing anywhere. Mood Garden and Tiny
+      Escape were in the repo but imported by nothing and tree-shaken out of the
+      bundle until this; verify both are in the served chunk after deploying.
 - [ ] Biometric unlock — BUILT, not deployed and never tested against a real
       authenticator (there is no way to answer a Face ID prompt headlessly).
       An ADDITIONAL route past the pad: the passcode stays mandatory, the

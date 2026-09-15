@@ -203,3 +203,261 @@
   min-height: 18px;
   font-size: var(--fs-meta); color: var(--muted); text-align: center;
 }
+
+/* ==========================================================================
+   "Your little break" — the solo SCREEN itself (screens/SoloPlay.jsx), its
+   mystery box, its personal bests and the runner's mission line. The two
+   daily-puzzle cards above (.ed-*, .mf-*) are rendered inside it.
+
+   ABC language throughout: vibrant full-card fills, oversized light-weight
+   display headings, pill chips for metadata, one dark near-black circular
+   button for the primary action. Every colour, space, size and radius names a
+   token from index.css — a literal hex here is a rule dark mode cannot follow.
+
+   The vibrant hues do NOT move between schemes, so a card painted with one
+   lives in a permanently light world and its subtree has to re-declare the
+   themed tokens. index.css keeps the canonical list of those selectors and
+   .solo-continue / .solo-box / .solo-calm are ON it; the fills are set here
+   from a class rather than from an inline style in JSX, which is the other
+   half of the same rule (an inline fill never enters that context — it is how
+   .fp-stat ended up near-white on lavender at night).
+
+   Every width below is a phone width. The screen is laid out in one column and
+   the bests grid wraps, so 320px is the design target rather than the edge
+   case.
+   ========================================================================== */
+
+.solo-screen {
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+}
+
+.solo-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.solo-card {
+  position: relative;
+  border-radius: var(--r-card);
+  padding: var(--sp-5);
+  background: var(--card);
+  color: var(--ink);
+}
+
+.solo-card .eyebrow {
+  display: block;
+  margin-bottom: var(--sp-2);
+}
+
+/* The reference's display heading: big, light, tight. */
+.solo-h {
+  margin: 0 0 var(--sp-3);
+  font-size: var(--fs-h2);
+  font-weight: 300;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+
+.solo-sub {
+  margin: var(--sp-2) 0 0;
+  font-size: var(--fs-meta);
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.solo-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-2);
+}
+
+/* --------------------------------------------------------------------------
+   1 — Continue your game
+   -------------------------------------------------------------------------- */
+.solo-continue {
+  background: var(--lavender);
+  /* Room for the circular action, which sits in the corner rather than taking
+     a row of its own — at 320px a full-width button under three lines of copy
+     pushes everything else off the first screen. */
+  padding-right: 76px;
+}
+
+.solo-go {
+  position: absolute;
+  right: var(--sp-4);
+  bottom: var(--sp-4);
+}
+
+/* --------------------------------------------------------------------------
+   2 — Today's Mystery Box
+   -------------------------------------------------------------------------- */
+.solo-box { background: var(--lime); }
+
+.solo-riddle {
+  margin: var(--sp-3) 0 0;
+  font-size: var(--fs-body);
+  line-height: 1.5;
+}
+
+/* A scramble is letters, not a sentence: spaced out so they read as pieces to
+   rearrange. `word-break` matters at 320px, where a nine-letter scramble is
+   wider than the card. */
+.solo-riddle.is-letters {
+  font-size: var(--fs-h2);
+  font-weight: 300;
+  letter-spacing: 0.06em;
+  word-break: break-word;
+}
+
+.solo-guess {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  margin-top: var(--sp-3);
+}
+
+.solo-guess input {
+  flex: 1 1 140px;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 var(--sp-3);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-row);
+  background: var(--surface);
+  color: var(--ink);
+  /* 16px minimum, or iOS zooms the whole screen on focus. */
+  font-size: 16px;
+}
+
+.solo-guess .btn-dark { min-height: 44px; }
+
+.solo-box-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  margin-top: var(--sp-3);
+}
+
+.solo-box-actions .pill-btn { margin-top: 0; }
+
+.solo-hint { font-style: italic; }
+
+.solo-solved {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  margin-top: var(--sp-3);
+}
+
+.solo-solved strong { font-size: var(--fs-body); font-weight: 500; }
+.solo-solved .solo-sub { margin-top: 0; }
+
+.solo-unsaved { opacity: 0.85; }
+
+/* --------------------------------------------------------------------------
+   4 — Personal bests. Tiles, not a table: five small numbers that wrap to two
+   rows on a narrow phone and three on a wide one.
+   -------------------------------------------------------------------------- */
+.solo-bests {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  margin-top: var(--sp-1);
+}
+
+.solo-best {
+  flex: 1 1 88px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--sp-3);
+  border-radius: var(--r-row);
+  background: var(--wash);
+}
+
+.solo-best-num {
+  font-size: 28px;
+  font-weight: 300;
+  letter-spacing: -0.03em;
+  line-height: 1;
+}
+
+.solo-best-label {
+  font-size: var(--fs-eyebrow);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--muted);
+}
+
+/* --------------------------------------------------------------------------
+   5 — One calming prompt
+   -------------------------------------------------------------------------- */
+.solo-calm { background: var(--coral); }
+
+.solo-calm-line {
+  margin: 0;
+  font-size: var(--fs-h2);
+  font-weight: 300;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+}
+
+/* One slow breath. It loops, which makes it the one thing on this screen that
+   `prefers-reduced-motion` has to actually stop — the global rule in index.css
+   forces `animation-iteration-count: 1` and collapses the duration, so it
+   settles at its end state instead of pulsing forever. */
+.solo-breathe {
+  display: block;
+  width: 10px;
+  height: 10px;
+  margin-top: var(--sp-4);
+  border-radius: 50%;
+  background: var(--ink);
+  opacity: 0.5;
+  animation: solo-breathe 9s ease-in-out infinite;
+}
+
+@keyframes solo-breathe {
+  0%, 100% { transform: scale(1); opacity: 0.35; }
+  45% { transform: scale(2.6); opacity: 0.6; }
+}
+
+/* --------------------------------------------------------------------------
+   The runner's mission line. Lives under the HUD, above the canvas, so it is
+   readable without covering any of the track.
+   -------------------------------------------------------------------------- */
+.dino-mission {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-2);
+}
+
+.dino-mission .chip { background: var(--wash); }
+.dino-mission.is-done .chip { background: var(--lime); color: #16161a; }
+
+.dino-mission-text {
+  font-size: var(--fs-meta);
+  color: var(--muted);
+}
+
+.solo-run-note { margin-top: var(--sp-3); }
+
+/* --------------------------------------------------------------------------
+   3 — More to play. Two doors into the games that draw a whole card of their
+   own; the group carries the eyebrow so the doors stay plain rows.
+   -------------------------------------------------------------------------- */
+.solo-more {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.solo-more .eyebrow { display: block; }
+.solo-door { width: 100%; }

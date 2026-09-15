@@ -277,7 +277,10 @@
    Anything painted --lavender / --lime / --coral that contains a word belongs
    here. (Still outstanding when this was written: the vibrant pieces in
    styles/games.css — .c4-cell.mark-*, .ck-o — which are discs today and would
-   need adding the moment they carry a glyph.)
+   need adding the moment they carry a glyph.) The three solo cards
+   (.solo-continue lavender, .solo-box lime, .solo-calm coral) are listed for
+   the same reason, and styles/solo.css paints them from a class rather than an
+   inline style so that listing them is enough.
    -------------------------------------------------------------------------- */
 .dq,
 .dq-chip.waiting,
@@ -324,9 +327,16 @@
 .ig-chip,
 .sched-bar,
 .sched-disclose,
-/* styles/solo.css — both painted from JS, same inline-fill case. */
+/* styles/solo.css — .ed-card / .mf-done are painted from JS, the same
+   inline-fill case. The three cards of "Your little break" are painted from a
+   CLASS instead, which is the other half of the same rule: listing the
+   selector is then enough, and nothing in JSX can put a fill somewhere this
+   list cannot see it. */
 .ed-card,
 .mf-done,
+.solo-continue,
+.solo-box,
+.solo-calm,
 /* styles/garden.css + escape.css — painted from JS. */
 .mg-today,
 .mg-unlock.is-on,
