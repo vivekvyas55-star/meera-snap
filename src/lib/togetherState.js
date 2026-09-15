@@ -1,6 +1,11 @@
 // Pure logic for the Together layer. No supabase import on purpose: every rule
 // here is testable without a network, a session or an env file, and the screen
 // is left with rendering.
+//
+// threadEvent.js is a leaf with no imports of its own, and it is the one place
+// the three games are named — reaching for it here is what keeps the game
+// record and the thread event calling the same game by the same word.
+import { GAME_TITLES } from './threadEvent'
 
 // PlayTogether already says exactly this, as an .eyebrow, over a private pair
 // surface. One phrase, one place it is written down — two surfaces describing
@@ -293,4 +298,64 @@ export function scrapbookDateLabel(day) {
   // reading it in the browser's zone is how "28 May" becomes "27 May" west of
   // UTC.
   return `${parsed.getUTCDate()} ${MONTH_SHORT[parsed.getUTCMonth()]} ${parsed.getUTCFullYear()}`
+}
+
+// ---------------------------------------------------------------------------
+// The game record
+// ---------------------------------------------------------------------------
+// GAMES PLAYED IS THE HEADLINE; THE SPLIT IS SECONDARY, and that is a product
+// decision rather than a layout one. A permanent, prominent "47-12" is a
+// different object from the series score on a room, which is playful precisely
+// because it lasts one evening and then goes. The shared number is the one two
+// people can both be pleased about, so it is the number the card is built
+// around — and nothing here ranks, awards, or frames the smaller half as a
+// deficit. tests/game-record.test.jsx holds a copy blocklist for that
+// vocabulary, in the manner of the solo screen and the decoy.
+//
+// The counts arrive already relative to the caller — the RPC pins them to
+// auth.uid() — so nothing below needs to know who "me" is.
+export function gameRecordTotals(record) {
+  if (!record) return null
+  const whole = (value) => {
+    const n = Number(value)
+    return Number.isFinite(n) && n > 0 ? Math.trunc(n) : 0
+  }
+  return {
+    games: whole(record.games),
+    mine: whole(record.my_wins),
+    theirs: whole(record.their_wins),
+    drawn: whole(record.draws),
+  }
+}
+
+// The one place the three games are named is lib/threadEvent.js, which
+// lib/games.js also reads. A code this bundle has never heard of — a fourth
+// game added after it shipped — reads as "a game" rather than as a raw code or
+// an empty gap, exactly as a thread event does.
+export function gameTitle(code) {
+  return GAME_TITLES[code] ?? 'A game'
+}
+
+// Only games actually played. A row of zeros is a sentence about a game the two
+// of them have never opened; the RPC does not return one, and this is the same
+// rule applied again on the client for a payload from anywhere else.
+export function gameBreakdownRows(rows) {
+  if (!Array.isArray(rows)) return []
+  return rows
+    .map((row) => ({
+      game: row?.game ?? '',
+      title: gameTitle(row?.game),
+      ...gameRecordTotals(row),
+    }))
+    .filter((row) => row.games > 0)
+}
+
+// A run of one is not a run, it is a game. Below two this returns null and the
+// line is not drawn at all — and a missing `run_mine` means the database could
+// not say whose run it was, which is not a reason to guess.
+export function longestRun(record) {
+  const best = Number(record?.run_best)
+  if (!Number.isFinite(best) || best < 2) return null
+  if (record.run_mine !== true && record.run_mine !== false) return null
+  return { count: Math.trunc(best), mine: record.run_mine === true }
 }

@@ -604,6 +604,128 @@ assert.equal((await query('select * from game_invites where id=$1',[game.id])).l
 console.log('PASS game authorization, acceptance retries, legal turns, stale moves, saved board, win, end and expiry cleanup')
 
 // ---------------------------------------------------------------------------
+// A pair's game record survives the room (202609150060).
+//
+// The series score lives on the room row and dies with it — game_invites
+// expires, purge_expired takes it, and an expired room even has its board
+// reset. So the RESULT is materialised into together_events by the same code
+// path that increments the counters, and everything above it is derived. This
+// block runs immediately after the room above was ended, expired and purged,
+// which is the only moment that can prove the record outlived it.
+// ---------------------------------------------------------------------------
+assert.equal((await query('select * from game_invites where id=$1',[game.id])).length,0)
+const records=await query("select * from together_events where kind='game_result' order by happened_at")
+// Three wins for A and one draw: ttt round 0, connect four round 0, checkers
+// round 0, then the fifty-ply draw in checkers round 1.
+assert.equal(records.length,4)
+// The dedupe key is the invitation id and the ROUND — which is what survives
+// rematch_game, since the next round is the same room with `round` advanced.
+assert.equal(records[0].dedupe,`${game.id}:0`)
+assert.deepEqual(records.map(r=>r.subject),['ttt','c4','checkers','checkers'])
+// No board. The questions this answers are how many, who, which game and when.
+assert.equal(records.every(r=>r.magnitude>0 && r.on_date!==null),true)
+assert.deepEqual(records.map(r=>r.actor),[A,A,A,null])
+// Games are recorded but deliberately kept OFF the timeline: a pair who play
+// most evenings would push every milestone out of its 120-row window, and the
+// timeline is a list of firsts and highs.
+await asUser(A,async()=>{
+ assert.equal((await query('select kind from together_timeline($1)',[B])).some(r=>r.kind==='game_result'),false)
+})
+// The lifetime record, derived on read. Nothing stores a total: a second
+// number for the same fact is one that can drift from the rows under it.
+await asUser(A,async()=>{
+ const rec=(await query('select * from together_game_record($1)',[B]))[0]
+ assert.deepEqual(
+   {g:rec.games,m:rec.my_wins,t:rec.their_wins,d:rec.draws,run:rec.run_best,mine:rec.run_mine},
+   {g:4,m:3,t:0,d:1,run:3,mine:true})
+ // Per game, and only games actually played — a row of zeros is a sentence
+ // about a game the two of them have never opened.
+ const split=await query('select * from together_game_breakdown($1)',[B])
+ assert.deepEqual(split.map(r=>[r.game,r.games,r.my_wins,r.draws]),
+   [['checkers',2,1,1],['c4',1,1,0],['ttt',1,1,0]])
+})
+// The same rows from the other side: the split is relative to the caller, and
+// the run is still theirs rather than mine.
+await asUser(B,async()=>{
+ const rec=(await query('select * from together_game_record($1)',[A]))[0]
+ assert.deepEqual({m:rec.my_wins,t:rec.their_wins,mine:rec.run_mine},{m:0,t:3,mine:false})
+})
+// Not discoverable: a third person gets no rows at all, which is a different
+// answer from a row of zeros.
+await asUser(C,async()=>assert.equal((await query('select * from together_game_record($1)',[A])).length,0))
+
+// IDEMPOTENCE. A retried final move must not count a round twice — the same
+// guarantee the counters have, and for the same reason: reaching the recording
+// means `result` was null on entry.
+let rematchable
+await asUser(A,async()=>{rematchable=(await query("select * from create_game_invite($1,'ttt','record-room')",[B]))[0]})
+await asUser(B,()=>query("select resolve_game_invite($1,'accepted')",[rematchable.id]))
+await db.query("update game_invites set board=array['X','X','','O','O','','','','']::text[], revision=4, round_start_revision=0 where id=$1",[rematchable.id])
+await asUser(A,async()=>{
+ const won=(await query('select * from play_game_move($1,2,4)',[rematchable.id]))[0]
+ assert.equal(won.result,'X'); assert.equal(won.sender_wins,1)
+ // The retry path: same square, revision already advanced by one. It returns
+ // the row without re-running the update, so neither the counter nor the record
+ // can move a second time.
+ const again=(await query('select * from play_game_move($1,2,4)',[rematchable.id]))[0]
+ assert.equal(again.sender_wins,1)
+ await assert.rejects(query('select play_game_move($1,2,5)',[rematchable.id]),/legal move/)
+})
+assert.equal((await query("select count(*)::int n from together_events where kind='game_result' and dedupe=$1",[`${rematchable.id}:0`]))[0].n,1)
+// ...and the unique index is the second lock on it, so even a hand-run of the
+// recorder against the finished room writes nothing new.
+await db.query('select public.together_record_game_result(g) from game_invites g where g.id=$1',[rematchable.id])
+assert.equal((await query("select count(*)::int n from together_events where kind='game_result' and dedupe=$1",[`${rematchable.id}:0`]))[0].n,1)
+// A rematch is the NEXT ROUND in the same room with `round` advanced, so it is
+// a different key rather than a collision — which is the whole reason the key
+// is (invite, round) and not the invite alone.
+await asUser(B,()=>query('select rematch_game($1)',[rematchable.id]))
+await db.query("update game_invites set board=array['O','O','','X','X','','','','']::text[], revision=9, round_start_revision=5 where id=$1",[rematchable.id])
+await asUser(B,async()=>{
+ const hers=(await query('select * from play_game_move($1,2,9)',[rematchable.id]))[0]
+ assert.equal(hers.result,'O'); assert.equal(hers.recipient_wins,1)
+})
+const bothRounds=await query("select dedupe,actor,magnitude from together_events where kind='game_result' and dedupe like $1 order by magnitude",[`${rematchable.id}:%`])
+assert.deepEqual(bothRounds.map(r=>[r.dedupe,r.actor,r.magnitude]),
+  [[`${rematchable.id}:0`,A,1],[`${rematchable.id}:1`,B,2]])
+// The derived split agrees with the counters the same statement wrote.
+const counters=(await query('select sender_wins,recipient_wins,draws from game_invites where id=$1',[rematchable.id]))[0]
+assert.deepEqual([counters.sender_wins,counters.recipient_wins,counters.draws],[1,1,0])
+
+// A PLAYER CANNOT FORGE A RESULT. together_events grants SELECT only, the
+// recorder is granted to nobody, and the counters are on a table the client can
+// only read — so there is no route to a record of a game that was not played.
+await asUser(A,async()=>{
+ await assert.rejects(query("insert into together_events(user_a,user_b,kind,dedupe,on_date) values($1,$2,'game_result','forged',current_date)",[A,B]),/permission denied/)
+ await assert.rejects(query('select public.together_record_game_result(g) from game_invites g where g.id=$1',[rematchable.id]),/permission denied/)
+ await assert.rejects(query('update game_invites set sender_wins=99 where id=$1',[rematchable.id]),/permission denied/)
+})
+
+// COLLECTION IS GATED, NOT DISPLAY. A pair who have not both opted in record
+// nothing — if the events accrued regardless and the opt-in merely hid them, an
+// opt-out would delete a pile that started refilling on the next move.
+await db.exec('begin')
+const gatedBefore=(await query("select count(*)::int n from together_events where kind='game_result'"))[0].n
+await asUser(A,()=>query('select set_together_optin($1,false)',[B]))
+await db.query("update game_invites set board=array['X','X','','O','O','','','','']::text[], revision=10, round_start_revision=10, round=2, result=null where id=$1",[rematchable.id])
+await asUser(A,async()=>{
+ const won=(await query('select * from play_game_move($1,2,10)',[rematchable.id]))[0]
+ // The game still works. It is the record that is refused, never the move.
+ assert.equal(won.result,'X'); assert.equal(won.sender_wins,2)
+})
+assert.equal((await query("select count(*)::int n from together_events where kind='game_result'"))[0].n,0)
+// ...and turning it back on does not invent the past. together_seed_events()
+// seeds only from evidence still on disk, and the rooms those games were played
+// in are gone — a count guessed from what is left is a number two people would
+// believe.
+await asUser(A,()=>query('select set_together_optin($1,true)',[B]))
+assert.equal((await query("select count(*)::int n from together_events where kind='game_result'"))[0].n,0)
+assert.equal(gatedBefore > 0,true)
+await db.exec('rollback')
+assert.equal((await query("select count(*)::int n from together_events where kind='game_result'"))[0].n,gatedBefore)
+console.log('PASS a finished round is recorded once by the statement that decides it, survives the room, is derived rather than stored, and is never collected for a pair who have not both opted in')
+
+// ---------------------------------------------------------------------------
 // A play invitation leaves a timestamped record in the conversation
 // (202609150041). Six things have to be true at once, and the 'call' rollout
 // got three of them wrong the first time.

@@ -62,3 +62,22 @@
 # bogus "Photo" tile. It goes live only AFTER the frontend carrying the thread
 # event ships and is verified on the served bundle.
 202609150041_game_invite_events
+
+# 202609150060 is shelved ONLY because it is blocked on 202609140034, which is
+# itself on this list. It alters together_events (a new `game_result` kind) and
+# derives the pair's lifetime game record from it, so a database without 0034
+# has no table to alter — the migration raises
+#
+#   together_events is missing. Apply 202609140034_timeline_events first.
+#
+# rather than letting "relation does not exist" be the error an operator has to
+# interpret. Apply the two in one sitting, 0034 first, and remove BOTH lines in
+# that same change. There is nothing else holding it back: it adds no trigger to
+# a hot path, no new table, and no write a client can reach.
+#
+# The client half ships either way. loadGameRecord() tells a missing RPC apart
+# from a failed read (lib/gameRecord.js), so on a database without this the
+# Games tab is simply not drawn — and, crucially, a read that merely FAILED
+# still draws it and says so, because a section that hides itself on a flaky
+# network is a failure rendered as an answer.
+202609150060_game_records
