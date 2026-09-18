@@ -1,1 +1,113 @@
-.pm-page{display:flex;flex-direction:column;gap:18px;padding-bottom:calc(32px + env(safe-area-inset-bottom))}.pm-page h2{font-size:20px;margin:0}.pm-page p{margin:0;line-height:1.55}.pm-muted{color:var(--ink);opacity:.75;font-size:14px}.pm-stack{display:flex;flex-direction:column;gap:14px}.pm-moods,.pm-actions{display:flex;gap:10px;flex-wrap:wrap}.pm-page button:not(.btn-dark){background:var(--card);color:var(--ink);border:1px solid currentColor;border-radius:18px;padding:12px 16px;min-height:44px}.pm-moods button[aria-pressed=true]{outline:2px solid var(--ink);outline-offset:2px}.pm-page button:disabled{opacity:.5;cursor:default}.pm-card{background:var(--card);color:var(--ink);border:1px solid color-mix(in srgb,var(--ink) 18%,transparent);padding:20px;border-radius:24px;display:flex;flex-direction:column;gap:16px}.pm-prompt{font-size:22px;font-weight:600}.pm-page select,.pm-page input{box-sizing:border-box;width:100%;background:var(--card);color:var(--ink);border:1px solid currentColor;border-radius:14px;padding:12px;font:inherit;font-size:16px;min-height:48px}.pm-page canvas{width:100%;height:auto;aspect-ratio:4/3;background:white;border-radius:16px;touch-action:none;border:1px solid #817b90}.pm-feedback{padding:16px;border:1px solid currentColor;border-radius:16px}.pm-actions>*{flex:1 1 130px}.pm-page .btn-dark{min-height:48px;white-space:normal}.pm-page button:focus-visible,.pm-page canvas:focus-visible{outline:3px solid var(--ink);outline-offset:3px}@media(max-width:380px){.pm-card{padding:14px}.pm-moods>*{flex:1 1 100%}}
+/* Little moments — the pair activities reached from Play.
+ *
+ * Rewritten onto the design system. The first version used zero tokens and
+ * invented its own scale (14/16/20/22px type, 10/14/18/20px spacing,
+ * 14/16/18/24px radii) on a screen that sits directly beside SoloPlay, which
+ * is entirely on tokens — so the two read as different apps. CLAUDE.md's rule
+ * is that adopting a token is never a visual change, but new work picks a step
+ * rather than inventing a size.
+ *
+ * The activity card is a VIBRANT fill, per the ABC language ("use them BOLDLY
+ * as full card backgrounds, not just thin accents"). It is painted from a
+ * CLASS, never an inline style, and `.pm-card` is listed in index.css's
+ * fixed-light context — an inline vibrant fill never enters that context, and
+ * that is exactly how `.fp-stat` ended up near-white text on lavender at night.
+ */
+
+.pm-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+  padding-bottom: calc(var(--sp-6) + env(safe-area-inset-bottom));
+}
+
+/* Light-weight display headings, per the reference. The old version set the
+   prompt to 600, which is the one weight this language does not use. */
+.pm-page h2 {
+  font-size: var(--fs-h2);
+  font-weight: 300;
+  letter-spacing: -0.01em;
+  margin: 0;
+}
+.pm-page p { margin: 0; line-height: 1.55; }
+.pm-muted { color: var(--muted); font-size: var(--fs-sm); }
+
+.pm-stack { display: flex; flex-direction: column; gap: var(--sp-3); }
+.pm-moods, .pm-actions { display: flex; gap: var(--sp-2); flex-wrap: wrap; }
+.pm-actions > * { flex: 1 1 130px; }
+
+/* Quiet pill buttons. The dark circular/near-black button is reserved for the
+   one primary action per surface, which here is "send". */
+.pm-page button:not(.btn-dark) {
+  background: var(--card);
+  color: var(--ink);
+  border: 1px solid color-mix(in srgb, var(--ink) 18%, transparent);
+  border-radius: var(--r-pill);
+  padding: var(--sp-3) var(--sp-4);
+  min-height: 44px;
+  font-size: var(--fs-body);
+}
+.pm-moods button[aria-pressed='true'] {
+  background: var(--ink);
+  color: var(--bg);
+  border-color: var(--ink);
+}
+.pm-page button:disabled { opacity: 0.5; cursor: default; }
+.pm-page .btn-dark { min-height: 48px; white-space: normal; }
+
+/* The activity itself: one vibrant card, generous padding, big radius. */
+.pm-card {
+  background: var(--lavender);
+  border-radius: var(--r-card);
+  padding: var(--sp-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+.pm-prompt { font-size: var(--fs-lead); line-height: 1.45; }
+
+.pm-page select,
+.pm-page input {
+  box-sizing: border-box;
+  width: 100%;
+  background: var(--card);
+  color: var(--ink);
+  border: 1px solid color-mix(in srgb, var(--ink) 18%, transparent);
+  border-radius: var(--r-row);
+  padding: var(--sp-3);
+  font: inherit;
+  /* 16px minimum or iOS zooms the whole page on focus. */
+  font-size: 16px;
+  min-height: 48px;
+}
+
+/* The drawing pad stays white in both schemes: it is a sheet of paper, and the
+   stroke colour is baked into the exported PNG. It carries no text, so it needs
+   no ink context — see NO_WORDS in tests/theme-context.test.js. */
+.pm-page canvas {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 4 / 3;
+  background: #fff;
+  border-radius: var(--r-row);
+  border: 1px solid color-mix(in srgb, var(--ink) 20%, transparent);
+  touch-action: none;
+}
+
+.pm-feedback {
+  padding: var(--sp-4);
+  border: 1px solid color-mix(in srgb, var(--ink) 18%, transparent);
+  border-radius: var(--r-row);
+  font-size: var(--fs-body);
+}
+
+.pm-page button:focus-visible,
+.pm-page canvas:focus-visible {
+  outline: 3px solid var(--ink);
+  outline-offset: 3px;
+}
+
+@media (max-width: 380px) {
+  .pm-card { padding: var(--sp-4); }
+  .pm-moods > * { flex: 1 1 100%; }
+}

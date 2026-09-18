@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { sendChat, sendSnap } from '../lib/db'
 import { MISSIONS, DATE_IDEAS, DRAW_WORDS, nextIdea, normalizePoint } from '../lib/playMoments'
 import { useAlias } from '../hooks/useAliasClock'
+import { BackIcon } from './Icons'
 import { peerAlias } from '../lib/alias'
 import '../styles/playMoments.css'
 
@@ -93,7 +94,7 @@ export default function PlayMoments({ me, friends, initialFriend = '', onBack })
     } finally { inFlight.current = false; if (alive.current) setBusy(false) }
   }
   return <div className="app screen">
-    <div className="header"><button className="pill-btn pill-inline" disabled={busy} onClick={onBack}>Back</button><h1>Little moments</h1></div>
+    <div className="header"><button type="button" className="circle filled" disabled={busy} onClick={onBack} aria-label="Back"><BackIcon /></button><h1>Little moments</h1></div>
     <div className="list pm-page">
       <p className="pm-muted">A little fun, on your own timing. No score to protect. Always okay to skip.</p>
       <label className="pm-stack">Private with<select value={friend} disabled={busy} onChange={e => { setFriend(e.target.value); setNotice(''); setError(''); attempt.current = null }}><option value="">Choose a friend</option>{friends.map(p => <option key={p.id} value={p.id}>{peerAlias(alias, p, 'Your friend')}{p.username ? ` · @${p.username}` : ''}</option>)}</select></label>
