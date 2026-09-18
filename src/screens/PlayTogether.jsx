@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Confirm from '../components/Confirm'
 import SoloPlay from './SoloPlay'
+import PlayMoments from '../components/PlayMoments'
 import { BackIcon, CheckIcon, CloseIcon, GamepadIcon } from '../components/Icons'
 import { useAuth } from '../hooks/useAuth'
 import { useBackLayer } from '../hooks/useBackLayer'
@@ -383,7 +384,7 @@ export default function PlayTogether({ onBack }) {
   // so the screen is one tap from an invitation rather than a dropdown.
   useEffect(() => { try { const withId = sessionStorage.getItem(`meera:play-with:${me}`); if (!withId) return; setSelected(withId); sessionStorage.removeItem(`meera:play-with:${me}`) } catch {} }, [me])
   const closeSolo = useCallback(() => setOpen(null), [])
-  useBackLayer(open === 'solo', closeSolo)
+  useBackLayer(open === 'solo' || open === 'moments', closeSolo)
   const chosen = useMemo(() => friends.find((f) => f.id === selected), [friends, selected])
   const inviteGame = async () => {
     if (!chosen || actionBusy.current) return
@@ -429,6 +430,7 @@ export default function PlayTogether({ onBack }) {
   // The solo half REPLACES this screen rather than rendering inside its list:
   // it has its own header and its own scroll, and nesting an `.app` inside a
   // `.list` would give it two of each. Back closes it before Play.
+  if (open === 'moments') return <PlayMoments me={me} friends={friends} initialFriend={selected} onBack={closeSolo} />
   if (open === 'solo') return <SoloPlay me={me} onBack={closeSolo} />
   return <div className="app screen">
     <div className="header"><button type="button" className="circle filled" onClick={onBack} aria-label="Back"><BackIcon /></button><h1>Play</h1></div>
@@ -438,6 +440,7 @@ export default function PlayTogether({ onBack }) {
         <GameRoom key={inviteId} me={me} friend={chosen} incoming={mark === 'O'} accepted={accepted} inviteId={inviteId} room={room} mark={mark} game={roomGame} onClose={closeGame} />
       ) : (
         <div className="play-grid">
+          <button type="button" className="play-card" style={{ background: 'var(--card)' }} onClick={() => setOpen('moments')}><span className="eyebrow">A little surprise</span><h2>Little moments</h2><p>Secret missions, drawing challenges and a mystery date jar. Play now, reply later.</p></button>
           {rooms.length > 0 && (
             <section className="game-resume-list" aria-label="Your game rooms">
               <h2>Pick up &amp; play</h2>

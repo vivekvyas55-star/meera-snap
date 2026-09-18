@@ -360,11 +360,11 @@ async function uploadSnapThumb(me, clientId, blob) {
   }
 }
 
-export async function sendSnap(me, otherId, { blob, viewSeconds, caption, allowSave = null, clientId = crypto.randomUUID() }) {
+export async function sendSnap(me, otherId, { blob, viewSeconds, caption, allowSave = null, clientId = crypto.randomUUID(), uploadId = clientId }) {
   const body = await downscaleImage(blob, 1600, 0.85)
-  const path = `${me}/snaps/${clientId}.${mediaExtension(body)}`
+  const path = `${me}/snaps/${uploadId}.${mediaExtension(body)}`
   await uploadMedia(path, body)
-  const thumbPath = await uploadSnapThumb(me, clientId, body)
+  const thumbPath = await uploadSnapThumb(me, uploadId, body)
   const data = await insertMessage({ ...pairFilter(me, otherId), sender_id: me, client_id: clientId, kind: 'snap', body: caption || null, media_path: path, thumb_path: thumbPath, media_type: 'image', view_seconds: viewSeconds, allow_save: await resolveAllowSave(me, otherId, allowSave), delivered_at: new Date().toISOString() })
   notify(otherId, 'snap')
   return data
