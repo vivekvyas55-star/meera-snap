@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { answerPrompt, getAnniversary, getPairPrompt, getStreaks, listPromptAnswers, signedUrl, streakState } from '../lib/db'
+import { answerPrompt, getAnniversary, getStreaks, getTodaysPrompt, listPromptAnswers, signedUrl, streakState } from '../lib/db'
 import { listOnThisDay } from '../lib/together'
 import { loadGameRecord } from '../lib/gameRecord'
 import '../styles/us.css'
@@ -77,6 +77,10 @@ export default function UsPair({ me, friend, onOpenChat }) {
   const [record, setRecord] = useState(undefined)
   const [answer, setAnswer] = useState('')
   const [saving, setSaving] = useState(false)
+  // A failed send has to SAY so. The first version swallowed it, so tapping
+  // send did nothing at all and looked like a dead button — which is how this
+  // shipped broken: the RPC was raising the whole time and nobody could see it.
+  const [sendError, setSendError] = useState(null)
 
   useEffect(() => {
     if (!other) return undefined
@@ -89,7 +93,15 @@ export default function UsPair({ me, friend, onOpenChat }) {
       getAnniversary(me, other),
       getStreaks(me),
       listOnThisDay(other, 8),
-      getPairPrompt(other),
+      // todays_prompt(), NOT pair_prompt(). answer_daily_prompt validates the
+      // submitted id against todays_prompt() — and the two pick from the pool
+      // on different epochs (CLAUDE.md records them as 13 apart mod 30), so a
+      // pair_prompt id is refused with "The daily question has changed" every
+      // time. Showing one question and validating against another is a schema
+      // inconsistency that predates this screen; until it is reconciled, the
+      // surface that WRITES has to read from the same function the writer
+      // checks, or the answer can never land.
+      getTodaysPrompt(),
       loadGameRecord(other),
       listPromptAnswers(me, other),
     ]).then(([a, s, c, p, g, ans]) => {
@@ -121,6 +133,7 @@ export default function UsPair({ me, friend, onOpenChat }) {
     const body = answer.trim()
     if (!body || saving) return
     setSaving(true)
+    setSendError(null)
     try {
       await answerPrompt(me, other, prompt.id, body, prompt.on_date)
       // Re-read rather than assume: the reveal rule means answering is also how
@@ -128,8 +141,11 @@ export default function UsPair({ me, friend, onOpenChat }) {
       // empty reply where one exists.
       setAnswers(await listPromptAnswers(me, other).catch(() => ({ mine: { body }, theirs: null })))
       setAnswer('')
-    } catch { /* the card stays as it was; nothing is claimed */ }
-    finally { setSaving(false) }
+    } catch (err) {
+      // The draft is deliberately kept: it is the user's sentence, and clearing
+      // it on failure would lose it to a network blip.
+      setSendError(err?.message || 'That did not send. Try again.')
+    } finally { setSaving(false) }
   }
 
   return (
@@ -181,6 +197,7 @@ export default function UsPair({ me, friend, onOpenChat }) {
               <button type="button" className="circle filled" disabled={!answer.trim() || saving} onClick={send} aria-label="Send your answer">→</button>
             </div>
           ) : null}
+          {sendError && <p className="us-senderr" role="alert">{sendError}</p>}
         </section>
       )}
 

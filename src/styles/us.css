@@ -205,3 +205,10 @@
   .us-hero, .us-question { padding: var(--sp-4); }
   .us-capsule { width: 78px; height: 78px; }
 }
+
+/* A failed answer says so, in the card, where the attempt happened. */
+.us-senderr {
+  margin: 0;
+  font-size: var(--fs-sm);
+  line-height: 1.4;
+}
