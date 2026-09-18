@@ -3,6 +3,14 @@
 > transactional recovery setup, and separate provider/hook modules. Historical
 > notes below describe earlier versions; do not replay their SQL instructions.
 >
+> **Live as of 18 Sep 2026.** Production is `mqxfggwncoazgmcswedi`. Applied
+> today: `202609150070` (a pending friend request was a read on the whole
+> profile row, birth year included), `202609150080` (a recipient could reset a
+> snap's open counter and reopen it forever), `202609150090` (E2E identity
+> public keys — inert). Shelved and awaiting a human read:
+> `202609140035_ops_telemetry` and `202609150100_pair_totals` (an AFTER INSERT
+> trigger on the hottest write in the app).
+>
 > **Live as of 9 Sep 2026.** Production is `mqxfggwncoazgmcswedi`. The `cleanup`
 > worker runs every 15 min and **Realtime public channel access is disabled** —
 > every channel is private. Six cron jobs. **3 real users** (plus 5 seed bots —
@@ -41,12 +49,23 @@ See [README.md](README.md) for one-time Supabase setup and deployment.
 
 ```bash
 npm run dev      # dev server on :5173
-npm run build    # production build to dist/
+npm run build    # production build to dist/ (vendor split — see below)
 npm run preview  # serve the built output
 npx oxlint src   # lint
 npx vitest run   # component + unit tests (250+, and growing)
 npm run test:db  # runs EVERY migration in supabase/migrations/ against PGlite
 ```
+
+**Vendor is its own chunk, for the RETURNING visitor** (`manualChunks` in
+`vite.config.js`). react, react-dom and supabase-js are ~400 kB that never
+change between deploys, and while they sat in the entry chunk every deploy gave
+them a new content hash and every phone re-downloaded the lot — entry 556 kB.
+It is 164 kB now, vendor cached across deploys. First load moves the same bytes;
+the second does not, and for a PWA three people open daily the second is the one
+that matters. **rolldown only accepts the CALLBACK form** — the object form
+fails with "manualChunks is not a function". Leaflet and qrcode are deliberately
+absent: they are already isolated behind the lazy imports of SnapMap and
+Snapcode, and naming them would pull them into an eagerly-loaded chunk.
 
 Requires `.env` with `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`; the app
 throws on import without them. Copy `.env.example`.
@@ -335,6 +354,22 @@ miss re-armed a 15-min lock — and since `get_security_question` is anon-callab
 stranger's recovery locked out forever. `last_attempt_at` makes it a rolling
 window. (3) `get_snap_score(target)` took any uuid from any signed-in caller;
 it's now self-or-accepted-friend, returning 0 otherwise.
+
+**`202609150100_pair_totals.sql` (SHELVED)** — `friendship_charms()` counts
+messages and snaps by querying rows still in `messages`, and messages here are
+ephemeral: cleared after three visits, purged at 31 days. So its totals are
+really "what happens to still exist" and they drift DOWNWARD. Showing a couple
+a lifetime figure that quietly shrinks is worse than showing nothing, which is
+why Us had no counts. 0034's rule again — materialise a fact whose evidence is
+deleted. The DB test deletes every message in the pair and asserts the totals do
+not move; that assertion is the feature. Gated on the Together opt-in and
+deleted on opt-out (an observation nobody authored), seeded backfills are marked
+`seeded` so the client cannot present them as lifetime figures, and there is no
+write grant at all, so a count cannot be forged by whoever it flatters. Shelved
+because it is an AFTER INSERT trigger on the hottest write in the app — one
+upsert of five integers wrapped in `begin…exception when others then null`, but
+the same call 0034 made about its own. `getPairTotals()` answers null on
+PGRST202, so the client renders nothing without it.
 
 **`chatlist_perf.sql`** — `latest_messages()` returns the newest few rows per
 conversation (SECURITY INVOKER, so RLS still scopes it) in one round trip.
@@ -1578,6 +1613,48 @@ operator-only. Cron for both is in `operations/`, standalone, per the usual rule
 run in the SQL editor.** There is no hosted dashboard and the file does not
 pretend there is one.
 
+## E2E media encryption — stages 1–3a, and NOTHING claims it yet
+
+`lib/e2e.js` (crypto), `lib/e2eStore.js` (this device's identity),
+`202609150090_e2e_keys.sql` (publication). **Media is still stored exactly as
+it was.** Nothing routes through any of it, and nothing in the app may describe
+itself as end-to-end encrypted until the upload and viewer paths are converted.
+Said at the top of both files too, because claiming a property the code does
+not back is the failure this repo keeps catching in itself — reverse-privacy,
+screenshot detection, and a biometric unlock that verifies nothing.
+
+**Why it is feasible here at all:** nothing server-side reads media bytes. The
+cleanup Edge Function works on paths, `claim_media_cleanup` checks references
+rather than content, thumbnails are produced on the client by `downscaleImage`
+BEFORE upload, and `together_on_this_day()` returns a path and never an image.
+In most apps a server-side thumbnailer is what makes this a rewrite.
+
+- ECDH **P-256**, not X25519 — WebCrypto ships P-256 everywhere Meera runs.
+- HKDF-derived wrapping key per PAIR; a fresh AES-GCM content key per OBJECT.
+  Reusing one key across objects would reuse the (key, iv) space, and AES-GCM
+  fails catastrophically on iv reuse rather than gracefully.
+- The private key lives in **IndexedDB as a CryptoKey**, not a JWK string in
+  localStorage. It is extractable only because a non-extractable key cannot be
+  backed up, and on a phone-only app that turns a lost phone into lost photos.
+- **One identity per DEVICE**, reusing `deviceKey()`. Keying by user would mean
+  a second sign-in either locked you out of your own media or forced the private
+  key to travel. A content key is wrapped for every live key a person has.
+- **A device that cannot PERSIST a key refuses to make one** — a key held only
+  in memory would encrypt today and be unreadable after a reload: write-only
+  media.
+- `user_keys.backup` (the private key under the user's passphrase) is
+  **column-scoped out of the SELECT grant**. RLS is row-level and cannot hide a
+  column, so the friend read policy would otherwise hand a friend the wrapped
+  private key sitting in the same row, leaving only a passphrase they could
+  attack offline. `my_key_backup()` is the one door; the missing grant is the
+  wall. Caught by writing the test, while the comment above it claimed the
+  opposite.
+
+**Stages 3b and 4 are NOT built**: wrapped content keys have nowhere to live
+yet (one row per object per recipient device, i.e. another migration), and the
+decision taken was to encrypt NEW media only — existing objects stay plaintext
+and age out, rather than rewriting storage under a running cleanup worker.
+
 ## Egress is the scarcest resource — media is the whole bill
 
 Free tier gives 5 GB/month. With ~250 MB stored and 17 users, egress was 1.11 GB
@@ -1731,6 +1808,21 @@ of bug keeps taking, and the reason to check the wall every time you fix a door.
   `toggle_saved`. `block_user()` deletes the friendship; that RPC never looked
   at one, so a blocked person could keep dropping emoji into the thread.
 
+**And the fourth case is `open_count` (`202609150080`).** `record_snap_open()`
+is SECURITY DEFINER and increments by one; `message_visible` and `isVisibleTo`
+both hide a snap at `SNAP_MAX_OPENS`. That is the entire reopen limit — and the
+baseline also granted `update (open_count)` to authenticated, with
+`messages_update` allowing either party and nothing constraining the column. So
+a RECIPIENT could `PATCH {"open_count": 0}` and reopen a snap without limit.
+Found by dumping EFFECTIVE grants from a real database (`pg_attribute.attacl`)
+rather than reading SQL, then attacking them as the recipient; the client only
+ever READS the column, so the grant served nothing but the bypass. Revoked,
+with `guard_message_open_count` behind it — an invariant ("never decreases"),
+not a role check, so a later migration re-widening the grant cannot reopen it.
+`cleared_by` went in the same breath: the trigger already refused a cross-user
+clear, but leaving a write grant open because a trigger happens to cover it is
+how the next audit finds the fifth instance.
+
 **Watch for paste truncation.** Large migrations pasted into the Monaco SQL
 editor have been silently truncated mid-statement, leaving columns/functions/
 grants missing — the root cause behind several "bug" reports (including the
@@ -1798,6 +1890,24 @@ prepended to something that already has one.
   Function plus an image proxy — and then every card is a remote image fetched
   per viewer per render, which is exactly the egress that is the whole hosting
   bill. Reels, YouTube and everything else share one plain anchor.
+
+## Auto-scroll measures the PREVIOUS height, never the current one
+
+`Chat.jsx` (`lastHeight`) and `GameChat` in `PlayTogether.jsx`.
+
+"Am I near the bottom?" cannot be answered inside the effect that reacts to
+`messages`: by the time it runs React has appended the arriving row, so the
+distance from the bottom IS that row's height. Anything taller than the 120px
+threshold therefore read as "they have scrolled up" — the pill appeared, the
+thread did not move, and **the message that triggered the check was the reason
+the check failed.** Short messages scrolled into view; long ones, photo tiles
+and voice notes did not, which is why it presented as intermittent.
+
+Appending below does not move `scrollTop`, so the PREVIOUS render's
+`scrollHeight` answers the question the current one cannot. A ref written from
+scroll events also works, right up until one is missed or the position is moved
+programmatically — this needs no events at all. `GameChat` had no auto-scroll
+whatsoever; every reply mid-game had to be scrolled to by hand.
 
 ## The thread's two "already seen this" sets
 
@@ -1955,6 +2065,42 @@ Sources, each already computed by the screen that owns it and reported up:
   gap and drops one type step, to 54.4px slots. **The labels stay** — five bare
   icons is a guessing game, and two of these glyphs do not name themselves.
 
+## Us SHOWS the pair; it does not link to it
+
+`screens/Us.jsx` + `components/UsPair.jsx` + `styles/us.css`.
+
+Us was a column of `pc-nav` rows — the same component Profile uses for
+SETTINGS — four of which read "Open Memories", "Open Snap Map", "Open
+Together", "Play". Nothing on the screen was about the two of you; it was a
+directory filed under a heart. **No migration was needed to fix that**: every
+RPC below was already applied and already reachable.
+
+- It opens on your CLOSEST pair — highest streak, the person ChatList already
+  marks with 💛 — with an avatar switcher only when there is more than one
+  friend. A two-person app should not ask who you mean every time.
+- Days together is the hero because it counts a DECISION, not a habit, which is
+  what lets it be large without becoming a number to protect. No progress bars,
+  no "you haven't played today": the screen-time and game-record copy
+  blocklists apply here with more force, not less.
+- **Capsules are `<img>`, never buttons.** `together_on_this_day()` returns
+  `thumb_path` and never `media_path`, so there is nothing full-size to open,
+  and adding one to the RPC is exactly the screen that spends the month's
+  egress. A tap target that silently does nothing is worse than a still image.
+- **The six reads settle INDEPENDENTLY.** They were one `Promise.allSettled`,
+  which made the whole panel wait for the slowest of six round trips before
+  anything appeared — seconds of blank space on a phone. Each keeps its own
+  catch, so the property allSettled was there for survives per-read.
+- **The question card must read `todays_prompt()`, not `pair_prompt()`.**
+  `answer_daily_prompt` validates the submitted id against the former, and the
+  two pick from the pool on different epochs (13 apart mod 30), so a
+  `pair_prompt` id is refused with "The daily question has changed" every single
+  time. The surface that WRITES has to read from the function the writer checks.
+  A silent `catch` there rendered a raising RPC as a dead button.
+- The four doors are ONE segmented control, deliberately not a second tab bar:
+  it would sit directly above the real one, cost ~52px on the screen that
+  finally has content, and imply the four are peers you switch between. They are
+  not — each REPLACES the screen and two are heavy lazy chunks.
+
 ## When a screen may have more than one entrance
 
 The tab-bar work moved every pair surface into `Us` "whole, not copied", and
@@ -2044,6 +2190,17 @@ makes it a habit rather than a coincidence. In each, a `.catch` mapped a
 | Chat-list question badge | nobody is waiting on you — `listPromptStatus` returned `{}` |
 | Billing status | "No subscription", which is exactly what failing open looks like |
 | Credit history | an empty ledger, on a screen about money |
+
+**A failed REFRESH must not replace a working screen.** The inverse of the
+table above, and it shipped: `ChatList.load()` re-runs on every
+`postgres_changes` event on messages, friendships, streaks and profiles, so on a
+phone it runs constantly — and it only had to lose once, to a blip or a token
+refresh mid-flight, to paint "Couldn't load your chats" over a list that was on
+screen and correct, where it then sat until something triggered another load.
+The banner is for having NOTHING to show; with a list already up the stale list
+is real data and the failure was about one request. The empty case still shows
+the banner, pinned by its own test, so this cannot turn a real outage into a
+permanently empty list.
 
 **The rule: a fallback value must mean "we do not know".** In practice that is
 three states, not two — and JS gives you two empties, so use them deliberately:
@@ -2770,6 +2927,16 @@ SAME transaction as the `game_invites` row.
   `MessageRow`'s final `else` — a bogus "Photo" tile. Apply it only after the
   frontend carrying the `'game'` branch is live and verified on the served
   bundle, removing the `.unapplied` line in that same change.
+
+**The resume list is labelled and ordered by `playState()`, not by its own
+wording.** It used to write a parallel status ladder — "Your board is saved",
+"Invitation pending" — while `playState()` next door computed "Your turn" for
+the same room and showed it on the chip inside a conversation. The screen that
+is ABOUT games told you less than the one about a person, and the two could
+drift. One pure function decides both, and `ATTENTION` orders the list by what
+most wants attention — the ranking `roomWith()` already uses to pick a single
+room. An unknown key sorts last rather than throwing, because a room kind added
+after this bundle shipped is normal for a few minutes after every deploy.
 
 **Signaling rides `signal:<recipient>:<sender>`, not a topic of its own.**
 There is no `game:` branch in `realtime_allowed`, which is why Ludo is not built:
