@@ -1,10 +1,10 @@
 import React from 'react'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
 
 const mocks = vi.hoisted(() => {
   const channel = {}
-  channel.on = () => channel
+  channel.on = (_type, _filter, cb) => { if (cb) channel.handler = cb; return channel }
   channel.subscribe = () => channel
   return {
     channel,
@@ -157,4 +157,33 @@ test('a failed prompt read never turns into "nobody is waiting"', async () => {
   await waitFor(() => expect(mocks.prompts.mock.calls.length).toBeGreaterThan(1))
   expect(chips(view)).toHaveLength(1)
   expect(chips(view)[0].textContent).toContain('Your turn')
+})
+
+test('a failed refresh keeps the list on screen instead of replacing it with an error', async () => {
+  // load() re-runs on every postgres_changes event on messages, friendships,
+  // streaks and profiles, so on a phone it runs constantly — and it only had to
+  // lose once to paint "Couldn't load your chats" over a list that was on screen
+  // and correct, where it then sat until something triggered another load.
+  mocks.friends.mockResolvedValue([friend('sneha')])
+  const view = await show()
+  expect(view.container.querySelectorAll('.chat-row').length).toBe(1)
+
+  // The next background refresh fails, as a flaky mobile connection will.
+  mocks.friends.mockRejectedValue(new Error('Failed to fetch'))
+  const before = mocks.friends.mock.calls.length
+  // A realtime event is what really drives the refresh, constantly, on a phone.
+  await act(async () => { mocks.channel.handler?.({ eventType: 'INSERT', new: {} }) })
+  await waitFor(() => expect(mocks.friends.mock.calls.length).toBeGreaterThan(before))
+  // The conversation is still there, and no alarm was raised about it.
+  expect(view.container.querySelectorAll('.chat-row').length).toBe(1)
+  expect(screen.queryByText(/Couldn’t load your chats/)).toBe(null)
+})
+
+test('with nothing to show, a failure still says so', async () => {
+  // The banner is for having nothing on screen — that case must keep working,
+  // or the fix above turns a real outage into a permanently empty list.
+  mocks.friends.mockRejectedValue(new Error('Failed to fetch'))
+  render(<ChatList onOpenChat={vi.fn()} onOpenProfile={vi.fn()} onOpenMap={vi.fn()} />)
+  await screen.findByText(/Couldn’t load your chats/, {}, { timeout: 5000 })
+  expect(screen.getByRole('button', { name: /retry/i })).toBeTruthy()
 })

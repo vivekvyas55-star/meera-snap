@@ -42,6 +42,11 @@ export default function ChatList({ active = true, onOpenChat, onOpenProfile, onS
   const [query, setQuery] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  // What the screen is currently showing. A ref because the catch below needs
+  // it without re-arming load() on every list change — load() is a dependency
+  // of the realtime subscription, and re-arming it would tear the channel down
+  // and rebuild it every time a message arrived.
+  const friendsRef = useRef([])
   const requestRef = useRef(0)
   const [friends, setFriends] = useState([])
   const [lastByFriend, setLastByFriend] = useState({})
@@ -75,13 +80,30 @@ export default function ChatList({ active = true, onOpenChat, onOpenProfile, onS
     ])
     if (request !== requestRef.current) return
     setError(null)
+    friendsRef.current = list
     setFriends(list)
     setStreaks(streakRows)
     setLastByFriend(latest)
     // Cosmetic extras — never let them fail the list.
     listStatusNotes().then(setNotes).catch(() => {})
     birthdaysToday().then(setBirthdays).catch(() => {})
-    } catch (err) { if (request === requestRef.current) setError(err.message) }
+    } catch (err) {
+      // A FAILED REFRESH MUST NOT REPLACE A WORKING SCREEN.
+      //
+      // load() re-runs on every postgres_changes event on messages, friendships,
+      // streaks and profiles, so on a phone it runs constantly — and it only had
+      // to lose once (a blip, a token refresh mid-flight) to paint "Couldn't load
+      // your chats" over a list that was on screen and correct. It then stayed
+      // there until something happened to trigger another load.
+      //
+      // The banner is for having nothing to show. With a list already up, the
+      // honest thing is to keep showing it and let the next refresh win — the
+      // stale list is real data, and the failure was about this one request, not
+      // about the conversations.
+      if (request !== requestRef.current) return
+      if (friendsRef.current.length === 0) setError(err.message)
+      else console.warn('chat list refresh failed, keeping what is on screen:', err.message)
+    }
     finally { if (request === requestRef.current) setLoading(false) }
   }, [me])
 
