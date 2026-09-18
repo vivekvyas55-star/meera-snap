@@ -1,6 +1,7 @@
 import { lazy, useCallback, useEffect, useState } from 'react'
 import {
   clearStatusNote,
+  getStreaks,
   listActiveGameRooms,
   listFriendsWithProfiles,
   listPromptStatus,
@@ -29,9 +30,11 @@ import {
   NoteIcon,
   SparkIcon,
 } from '../components/Icons'
+import UsPair from '../components/UsPair'
 import Memories from './Memories'
 import Together from './Together'
 import '../styles/privacy.css'
+import '../styles/us.css'
 
 // ONE import strategy for Play. App.jsx already reaches this screen through a
 // `lazy()` — the from-a-conversation route — and Us used to reach the same
@@ -88,6 +91,11 @@ export default function Us({ me, onBack, openPlay, onPlayOpened, onOpenChat }) {
   // other people and must never be what a dropped request renders as.
   const [waiting, setWaiting] = useState(undefined)
   const [friends, setFriends] = useState(undefined)
+  // Who Us is about. Defaults to your closest pair — the highest streak, the
+  // same person ChatList already marks with 💛 — because this is a two-person
+  // app and making you pick somebody every single time is what made the screen
+  // feel like a directory. Null until the friend list arrives.
+  const [who, setWho] = useState(null)
 
   useEffect(() => {
     if (openPlay) {
@@ -158,6 +166,29 @@ export default function Us({ me, onBack, openPlay, onPlayOpened, onOpenChat }) {
 
   useEffect(() => { load() }, [load])
 
+  // Who the screen opens on, in its OWN effect.
+  //
+  // This started life inside the loader that also builds the waiting signals,
+  // and that was wrong for a reason worth keeping: one throw in a shared async
+  // function takes everything after it down with it, so a failed streak read
+  // would have silently emptied "someone's turn to hear from you". Separate
+  // effects fail separately.
+  useEffect(() => {
+    if (!friends?.length) return undefined
+    let alive = true
+    const fallback = () => { if (alive) setWho((c) => (c && friends.some((p) => p.id === c) ? c : friends[0]?.id ?? null)) }
+    getStreaks(me).then((rows) => {
+      if (!alive) return
+      setWho((current) => {
+        if (current && friends.some((p) => p.id === current)) return current
+        const score = (id) => (rows ?? []).find((r) => r.user_a === id || r.user_b === id)?.count ?? 0
+        return [...friends].sort((a, b) => score(b.id) - score(a.id))[0]?.id ?? null
+      })
+    }).catch(fallback)
+    return () => { alive = false }
+  }, [me, friends])
+
+
   const saveNote = async () => {
     const text = note.trim()
     await noteSave.run(async () => {
@@ -206,6 +237,52 @@ export default function Us({ me, onBack, openPlay, onPlayOpened, onOpenChat }) {
       </div>
 
       <div className="list profile-list">
+        {/* WHO this screen is about. Shown only when there is a choice to make;
+            one friend needs no switcher, and a row of one avatar is furniture. */}
+        {(friends?.length ?? 0) > 1 && (
+          <div className="us-who" role="group" aria-label="Who this is about">
+            {friends.map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                aria-pressed={p.id === who}
+                aria-label={alias(p)}
+                onClick={() => setWho(p.id)}
+              >
+                <Avatar profile={p} size="sm" />
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* The pair itself, rather than four rows offering to show it to you. */}
+        {who && (
+          <UsPair
+            me={me}
+            friend={friends?.find((p) => p.id === who) ?? null}
+            onOpenChat={onOpenChat}
+          />
+        )}
+
+        {/* The doors that remain, as chips. They were four grey `pc-nav` rows
+            reading "Open Memories" / "Open Snap Map" / "Open Together" /
+            "Play" — the same component Profile uses for settings, which is
+            what made the pair layer read as a directory. */}
+        <div className="us-doors">
+          <button type="button" className="us-door" onClick={() => setShowMemories(true)}>
+            <ImageIcon width={17} height={17} aria-hidden="true" /> Memories
+          </button>
+          <button type="button" className="us-door" onClick={() => setShowMap(true)}>
+            <MapIcon width={17} height={17} aria-hidden="true" /> Snap Map
+          </button>
+          <button type="button" className="us-door" onClick={() => setShowTogether(true)}>
+            <HeartIcon width={17} height={17} aria-hidden="true" /> Together
+          </button>
+          <button type="button" className="us-door" onClick={() => setShowPlay(true)}>
+            <GamepadIcon width={17} height={17} aria-hidden="true" /> Play
+          </button>
+        </div>
+
         {/* Only when there is genuinely something, and only ever about another
             person. There is deliberately no "you haven't played today" row and
             no place to put one — see the rule at the top of lib/navBadges.js.
@@ -272,50 +349,6 @@ export default function Us({ me, onBack, openPlay, onPlayOpened, onOpenChat }) {
             savedLabel={noteSaved ? 'Note set for 24 hours' : 'Note cleared'}
           />
 
-          <div className="pc-label">Memories</div>
-          <p className="field-hint">
-            Snaps you chose to keep. Private to you — nobody else can open this.
-          </p>
-          <button onClick={() => setShowMemories(true)} className="pc-nav">
-            <span className="pc-nav-icon" aria-hidden="true">
-              <ImageIcon width={19} height={19} />
-            </span>
-            <span className="pc-nav-title">Open Memories</span>
-            <span className="pc-nav-go" aria-hidden="true">
-              <ArrowIcon width={17} height={17} />
-            </span>
-          </button>
-
-          <div className="pc-label">Snap Map</div>
-          {/* Ghost Mode is the default and there is no row in the database
-              until you tap Share, so the hint says what is true right now
-              rather than what the screen can do. */}
-          <p className="field-hint">
-            Where your friends are, if they chose to share. You start in Ghost Mode.
-          </p>
-          <button onClick={() => setShowMap(true)} className="pc-nav">
-            <span className="pc-nav-icon" aria-hidden="true">
-              <MapIcon width={19} height={19} />
-            </span>
-            <span className="pc-nav-title">Open Snap Map</span>
-            <span className="pc-nav-go" aria-hidden="true">
-              <ArrowIcon width={17} height={17} />
-            </span>
-          </button>
-
-          <div className="pc-label">Together</div>
-          <p className="field-hint">
-            A shared timeline and scrapbook for one friendship. Off until you both turn it on.
-          </p>
-          <button onClick={() => setShowTogether(true)} className="pc-nav">
-            <span className="pc-nav-icon" aria-hidden="true">
-              <HeartIcon width={19} height={19} />
-            </span>
-            <span className="pc-nav-title">Open Together</span>
-            <span className="pc-nav-go" aria-hidden="true">
-              <ArrowIcon width={17} height={17} />
-            </span>
-          </button>
         </SettingsGroup>
 
         {/* ================================================================
@@ -333,16 +366,6 @@ export default function Us({ me, onBack, openPlay, onPlayOpened, onOpenChat }) {
             A game with a friend, played turn by turn inside Meera. Your own puzzles and the
             runner are in here too, under “Your little break”.
           </p>
-          <button onClick={() => setShowPlay(true)} className="pc-nav">
-            <span className="pc-nav-icon" aria-hidden="true">
-              <GamepadIcon width={19} height={19} />
-            </span>
-            <span className="pc-nav-title">Play</span>
-            <span className="pc-nav-go" aria-hidden="true">
-              <ArrowIcon width={17} height={17} />
-            </span>
-          </button>
-
           {/* Just us is per-conversation by design — it opens from the chip in
               a thread and from the friend sheet, and nothing about it lives
               outside one pair. So this is a LINK to it, not a second copy: pick

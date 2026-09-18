@@ -1,0 +1,178 @@
+/* The pair panel at the top of Us.
+ *
+ * On the design tokens (--sp-*, --fs-*, --r-*) throughout: the lesson from
+ * playMoments.css, which invented its own scale beside SoloPlay's and read as a
+ * different app. Adopting a token is never a visual change; inventing one is.
+ *
+ * `.us-hero` and `.us-question` are vibrant fills painted from a CLASS, never
+ * an inline style, and both are listed in index.css's fixed-light context — an
+ * inline fill never enters that list, which is how `.fp-stat` ended up
+ * near-white on lavender at night. tests/theme-context.test.js enforces it.
+ */
+
+.us-pair {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  margin-bottom: var(--sp-5);
+}
+
+/* The hero. Oversized, LIGHT weight display numerals, per the reference —
+   this is the one number on the screen that should stop you. */
+.us-hero {
+  background: var(--lavender);
+  border-radius: var(--r-card);
+  padding: var(--sp-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+.us-hero-n {
+  font-size: var(--fs-display);
+  font-weight: 300;
+  letter-spacing: -0.03em;
+  line-height: 1;
+}
+.us-hero-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  font-size: var(--fs-body);
+}
+.us-chip {
+  background: color-mix(in srgb, var(--ink) 12%, transparent);
+  border-radius: var(--r-pill);
+  padding: var(--sp-1) var(--sp-3);
+  font-size: var(--fs-sm);
+  white-space: nowrap;
+}
+
+/* "On this day" — thumbnails only, and they are images rather than buttons.
+   See the comment in UsPair.jsx: the RPC returns no full-size path by design,
+   because a dozen capsules naming a dozen originals is the screen that spends
+   the month's egress. */
+.us-onthisday h2 {
+  font-size: var(--fs-h2);
+  font-weight: 300;
+  letter-spacing: -0.01em;
+  margin: 0 0 var(--sp-3);
+}
+.us-strip {
+  display: flex;
+  gap: var(--sp-2);
+  overflow-x: auto;
+  scroll-snap-type: x proximity;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: var(--sp-1);
+}
+.us-strip::-webkit-scrollbar { display: none; }
+.us-capsule {
+  width: 92px;
+  height: 92px;
+  flex: 0 0 auto;
+  object-fit: cover;
+  border-radius: var(--r-tile);
+  scroll-snap-align: start;
+  background: var(--card);
+}
+
+.us-question {
+  background: var(--lime);
+  border-radius: var(--r-card);
+  padding: var(--sp-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+.us-q {
+  margin: 0;
+  font-size: var(--fs-lead);
+  line-height: 1.4;
+}
+.us-answered {
+  margin: 0;
+  font-size: var(--fs-body);
+  line-height: 1.5;
+}
+.us-answer { display: flex; gap: var(--sp-2); align-items: center; }
+.us-answer input {
+  flex: 1;
+  min-width: 0;
+  background: var(--bg);
+  color: var(--ink);
+  border: none;
+  border-radius: var(--r-pill);
+  padding: var(--sp-3) var(--sp-4);
+  font: inherit;
+  /* 16px minimum or iOS zooms the page on focus. */
+  font-size: 16px;
+  min-height: 48px;
+}
+
+.us-record {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--fs-sm);
+}
+
+.us-open {
+  align-self: flex-start;
+  background: var(--ink);
+  color: var(--bg);
+  border: none;
+  border-radius: var(--r-pill);
+  padding: var(--sp-3) var(--sp-5);
+  min-height: 44px;
+  font-size: var(--fs-body);
+}
+.us-open:active { opacity: 0.85; }
+
+/* The doors that remain are chips, not a column of grey rows saying "Open X". */
+.us-doors {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-5);
+}
+.us-door {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  background: var(--card);
+  color: var(--ink);
+  border: 1px solid color-mix(in srgb, var(--ink) 14%, transparent);
+  border-radius: var(--r-pill);
+  padding: var(--sp-3) var(--sp-4);
+  min-height: 44px;
+  font-size: var(--fs-body);
+}
+.us-door:active { opacity: 0.85; }
+
+/* The person this screen is about, and how to change them. */
+.us-who {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  overflow-x: auto;
+  padding-bottom: var(--sp-2);
+  margin-bottom: var(--sp-3);
+}
+.us-who::-webkit-scrollbar { display: none; }
+.us-who button {
+  flex: 0 0 auto;
+  background: none;
+  border: none;
+  padding: 2px;
+  border-radius: 50%;
+  opacity: 0.45;
+}
+.us-who button[aria-pressed='true'] {
+  opacity: 1;
+  box-shadow: 0 0 0 2px var(--ink);
+}
+
+@media (max-width: 380px) {
+  .us-hero, .us-question { padding: var(--sp-4); }
+  .us-capsule { width: 78px; height: 78px; }
+}

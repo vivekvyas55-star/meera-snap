@@ -237,9 +237,10 @@ beforeEach(() => {
 test('Us holds what moved out of Profile — the same controls, one copy each', async () => {
   render(<Us me="u1" onBack={() => {}} />)
   await screen.findByLabelText('Status note')
-  expect(screen.getByText('Open Memories')).toBeTruthy()
-  expect(screen.getByText('Open Together')).toBeTruthy()
-  expect(screen.getByRole('button', { name: 'Play' })).toBeTruthy()
+  expect(screen.getByRole('button', { name: /Memories/ })).toBeTruthy()
+  expect(screen.getByRole('button', { name: /Together/ })).toBeTruthy()
+  expect(screen.getByRole('button', { name: /Snap Map/ })).toBeTruthy()
+  expect(screen.getByRole('button', { name: /Play/ })).toBeTruthy()
   // "Just us" is a LINK to the conversation it lives in, not a second copy.
   expect(screen.getByRole('button', { name: 'Just us' })).toBeTruthy()
 })
@@ -255,7 +256,7 @@ test('the solo games keep ONE door — Us does not add a second', async () => {
 test('Back closes one layer at a time: the sub-screen first, then Us', async () => {
   const onBack = vi.fn()
   render(<Us me="u1" onBack={onBack} />)
-  fireEvent.click(await screen.findByText('Open Memories'))
+  fireEvent.click(await screen.findByRole('button', { name: /Memories/ }))
   await screen.findByText('MEMORIES')
   // The sub-screen pushed its own layer, so a Back press takes that one and
   // leaves Us standing — this is the bug that made Back from Memories close
@@ -263,7 +264,7 @@ test('Back closes one layer at a time: the sub-screen first, then Us', async () 
   window.dispatchEvent(new PopStateEvent('popstate'))
   await waitFor(() => expect(screen.queryByText('MEMORIES')).toBe(null))
   expect(onBack).not.toHaveBeenCalled()
-  await screen.findByText('Open Memories')
+  await screen.findByRole('button', { name: /Memories/ })
 })
 
 test('a failed read never tells you that nobody is waiting', async () => {

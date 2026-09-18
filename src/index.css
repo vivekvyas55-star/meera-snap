@@ -343,6 +343,9 @@
 .solo-calm,
 /* styles/playMoments.css — the Little moments activity card (lavender). */
 .pm-card,
+/* styles/us.css — the pair panel's hero (lavender) and question card (lime). */
+.us-hero,
+.us-question,
 /* styles/garden.css + escape.css — painted from JS. */
 .mg-today,
 .mg-unlock.is-on,
