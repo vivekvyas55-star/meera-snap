@@ -142,6 +142,24 @@ test('history you were already shown is not counted as new mail', async () => {
   expect(pill.textContent).not.toContain('3 new')
 })
 
+test('a tall message arriving while you are at the bottom scrolls, it does not raise the pill', async () => {
+  // The regression: "am I near the bottom?" was measured inside the effect that
+  // reacts to `messages` — i.e. AFTER React had appended the arriving row. The
+  // distance from the bottom was therefore that row's own height, so anything
+  // taller than the 120px threshold reported "they have scrolled up" and the
+  // message that triggered the check was the reason it failed. Short messages
+  // scrolled into view, long ones and photo tiles silently did not.
+  await openChat([chat('m1', 'friend', 'hello')])
+  const before = box.scrollHeight
+  box.scrollHeight = before + 600 // a long paragraph, a photo tile, a voice note
+  try {
+    arrive(chat('m2', 'friend', 'a much longer message than the others'))
+    await screen.findByText('a much longer message than the others', {}, { timeout: 5000 })
+    // Nothing was scrolled away from, so there is nothing to be "behind" on.
+    expect(screen.queryByRole('button', { name: /new message/ })).toBe(null)
+  } finally { box.scrollHeight = before }
+})
+
 test('your own arriving message never counts as unread', async () => {
   await openChat([chat('m1', 'friend', 'hello')])
   scrollUp()

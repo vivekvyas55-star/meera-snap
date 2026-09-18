@@ -52,6 +52,16 @@ function GameChat({ me, friend }) {
   const [sending, setSending] = useState(false)
   const [unread, setUnread] = useState(0)
   const scroll = useRef(null)
+  // The panel had no auto-scroll at all: a message arrived, the list grew, and
+  // it stayed wherever it was — so the newest line sat below the fold and you
+  // had to scroll for every reply, mid-game.
+  //
+  // Measured against the height BEFORE the render, exactly as Chat.jsx does:
+  // once the arriving row is in the DOM, the distance from the bottom IS that
+  // row's height, so a long message defeats its own scroll. Appending below
+  // does not move scrollTop, so the previous height is the honest denominator.
+  const lastHeight = useRef(0)
+  const openedAt = useRef(false)
   const openRef = useRef(open)
   const sendingRef = useRef(false)
   const chatVersion = useRef(0)
@@ -136,6 +146,24 @@ function GameChat({ me, friend }) {
     finally { sendingRef.current = false; setSending(false) }
   }
   const submit = (event) => { event.preventDefault(); send(draft, true) }
+
+  // Opening the panel always lands on the newest line; after that only when the
+  // reader is already at the bottom, so scrolling back to re-read something is
+  // not yanked away by the next reply.
+  useEffect(() => {
+    const el = scroll.current
+    if (!open || !el) return
+    const prev = lastHeight.current
+    // Opening always lands on the newest line; after that only when the reader
+    // was already at the bottom, so scrolling back to re-read something is not
+    // yanked away by the next reply.
+    const jump = !openedAt.current || prev === 0
+      || prev - el.scrollTop - el.clientHeight < 40
+    openedAt.current = true
+    lastHeight.current = el.scrollHeight
+    if (jump) el.scrollTop = el.scrollHeight
+  }, [messages, open])
+  useEffect(() => { if (!open) { openedAt.current = false; lastHeight.current = 0 } }, [open])
 
   return <div className={`game-chat ${open ? 'open' : ''}`}>
     <button type="button" className="game-chat-toggle" onClick={() => setOpen((value) => !value)} aria-expanded={open}>

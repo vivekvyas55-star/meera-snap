@@ -144,6 +144,20 @@ export default function Chat({ friend, onBack, onOpenPlay }) {
   const draftRef = useRef(null)
   const [behind, setBehind] = useState(0) // new messages that landed while scrolled up
   const seenAtBottom = useRef(new Set()) // ids already on screen at the bottom
+  // The thread's scrollHeight as of the LAST render.
+  //
+  // "Am I at the bottom?" cannot be measured inside the effect that reacts to
+  // `messages`: by then React has appended the arriving row, so the distance
+  // from the bottom is that row's own height. Anything taller than the 120px
+  // threshold — a long paragraph, a photo tile, a voice note — read as "they
+  // have scrolled up", and the message that triggered the check was the reason
+  // it failed. Short messages scrolled into view; tall ones silently did not.
+  //
+  // Appending below does not move scrollTop, so the PREVIOUS height answers the
+  // question the current one cannot. A ref of scroll events would also work
+  // until one is missed or the position is moved programmatically; this needs
+  // no events at all.
+  const lastHeight = useRef(0)
   const [forwardMsg, setForwardMsg] = useState(null) // chat being forwarded
   const [unsendMsg, setUnsendMsg] = useState(null) // pending unsend confirmation
   const [attachFile, setAttachFile] = useState(null) // picked media awaiting its send decision
@@ -323,6 +337,7 @@ export default function Chat({ friend, onBack, onOpenPlay }) {
     const el = threadRef.current
     if (!el) return
     el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
+    lastHeight.current = el.scrollHeight
     seenAtBottom.current = new Set(messages.map((m) => m.id))
     setBehind(0)
   }
@@ -395,6 +410,7 @@ export default function Chat({ friend, onBack, onOpenPlay }) {
     if (!didInitialScroll.current && messages.length > 0) {
       el.scrollTop = el.scrollHeight // instant jump to latest on open
       didInitialScroll.current = true
+      lastHeight.current = el.scrollHeight
       // Landing at the bottom IS being caught up. Returning without recording
       // that left the set empty, so the first message to arrive after you
       // scrolled up counted the whole loaded window with it — a chat you had
@@ -402,12 +418,11 @@ export default function Chat({ friend, onBack, onOpenPlay }) {
       seenAtBottom.current = new Set(messages.map((m) => m.id))
       return
     }
-    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 120
-    // Count by message id, not by length. A length delta counted the whole
-    // first page (lastCount started at 0), every page of history paged in by
-    // scrolling UP, and messages you sent yourself — all of which reported as
-    // "N new messages".
-    if (nearBottom) {
+    // Measured against the height BEFORE this render — see `lastHeight`.
+    const prev = lastHeight.current
+    const wasAtBottom = prev === 0 || prev - el.scrollTop - el.clientHeight < 120
+    lastHeight.current = el.scrollHeight
+    if (wasAtBottom) {
       el.scrollTo({ top: el.scrollHeight })
       seenAtBottom.current = new Set(messages.map((m) => m.id))
       setBehind(0)
