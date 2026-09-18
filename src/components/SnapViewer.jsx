@@ -22,6 +22,12 @@ export default function SnapViewer({ message, me, onClose, onScreenshot }) {
   const [counting, setCounting] = useState(false)
   const [url, setUrl] = useState(null)
   const [ready, setReady] = useState(false) // media actually on screen
+  // Enough of the video has arrived to start it. Distinct from `ready`, which
+  // means it is actually PLAYING: a mobile browser refuses autoplay for a video
+  // with audio, so "loaded" and "playing" are different states and the overlay
+  // must not report the first as the second. Saying "Loading…" at somebody
+  // whose video is sitting there ready is a failure rendered as an answer.
+  const [canPlay, setCanPlay] = useState(false)
   // Own snaps: no countdown, view as long as you like.
   const [remaining, setRemaining] = useState(isMine ? null : (message.view_seconds ?? null))
   const [saved, setSaved] = useState(false)
@@ -112,6 +118,7 @@ export default function SnapViewer({ message, me, onClose, onScreenshot }) {
               preload="auto"
               controls={false}
               onPlaying={countOpen}
+              onCanPlay={() => setCanPlay(true)}
               onError={() => setError('Could not play this video. Close and try again.')}
               onEnded={() => onCloseRef.current()}
               // If iOS blocks autoplay-with-audio, a tap (user gesture) starts
@@ -124,7 +131,9 @@ export default function SnapViewer({ message, me, onClose, onScreenshot }) {
             <img src={url} alt="" onLoad={countOpen} onError={() => setError("Could not load this snap. Close and try again.")} />
           ))}
         {error && <div className="viewer-loading">{error}</div>}
-        {url && !ready && !error && <div className="viewer-loading">Loading…</div>}
+        {url && !ready && !error && (
+          <div className="viewer-loading">{isVideo && canPlay ? 'Tap to play' : 'Loading…'}</div>
+        )}
         {message.body && ready && <div className="viewer-caption">{message.body}</div>}
 
         {remaining !== null && ready && <div className="timer">{remaining}</div>}

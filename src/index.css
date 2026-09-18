@@ -758,6 +758,18 @@ input, textarea { font: inherit; }
 
 /* Snapchat sets messages against a coloured left bar rather than in bubbles;
    here that bar sits on the reference's rounded card. */
+/* A link inside a message bubble. Underlined rather than tinted alone: the
+   bubble is already one of several fills, so colour cannot be the only marker,
+   and on the sender's barred bubble a hue would land on top of another hue.
+   Wraps anywhere so a long share URL cannot push the bubble past 320px. */
+.msg-link {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  overflow-wrap: anywhere;
+}
+.msg-link:active { opacity: 0.7; }
+
 .msg-body {
   background: var(--card); border-radius: var(--r-row);
   border-left: 3px solid var(--accent);
@@ -1187,9 +1199,14 @@ input, textarea { font: inherit; }
   background: var(--glass); color: var(--on-fill);
   text-align: center; padding: 14px; font-size: 17px;
 }
+/* Covers the whole viewer, so it MUST NOT take the tap. A video with audio is
+   refused autoplay on mobile, and the gesture that starts it is a tap on the
+   <video> underneath — this overlay sat on top of it and swallowed every one,
+   leaving "Loading…" on screen forever. */
 .viewer-loading {
   position: absolute; inset: 0; display: grid; place-items: center;
   color: var(--glass-muted); font-size: 15px;
+  pointer-events: none;
 }
 
 /* Story "seen by" — eye pill bottom-left of your own story, and its list. */
