@@ -87,35 +87,35 @@ export default function UsPair({ me, friend, onOpenChat }) {
     let alive = true
     setDays(undefined); setStreak(undefined); setCapsules(undefined)
     setPrompt(undefined); setRecord(undefined); setAnswers(undefined); setAnswer('')
-    // allSettled, not all: one rejected read must not turn the other four into
-    // "nothing here". That is the seven-times bug wearing a Promise.
-    Promise.allSettled([
-      getAnniversary(me, other),
-      getStreaks(me),
-      listOnThisDay(other, 8),
-      // todays_prompt(), NOT pair_prompt(). answer_daily_prompt validates the
-      // submitted id against todays_prompt() — and the two pick from the pool
-      // on different epochs (CLAUDE.md records them as 13 apart mod 30), so a
-      // pair_prompt id is refused with "The daily question has changed" every
-      // time. Showing one question and validating against another is a schema
-      // inconsistency that predates this screen; until it is reconciled, the
-      // surface that WRITES has to read from the same function the writer
-      // checks, or the answer can never land.
-      getTodaysPrompt(),
-      loadGameRecord(other),
-      listPromptAnswers(me, other),
-    ]).then(([a, s, c, p, g, ans]) => {
-      if (!alive) return
-      // getAnniversary resolves the DATE itself, not a row.
-      setDays(a.status === 'fulfilled' ? daysSince(a.value) : null)
-      setAnswers(ans.status === 'fulfilled' ? ans.value : null)
-      setStreak(s.status === 'fulfilled'
-        ? streakState((s.value ?? []).find((r) => r.user_a === other || r.user_b === other))
-        : null)
-      setCapsules(c.status === 'fulfilled' ? c.value : null)
-      setPrompt(p.status === 'fulfilled' ? p.value : null)
-      setRecord(g.status === 'fulfilled' ? g.value : null)
-    })
+    // SIX reads, each landing on its own.
+    //
+    // This was one Promise.allSettled, and that made the whole panel wait for
+    // the SLOWEST of six round trips before anything appeared — on a phone,
+    // seconds of blank space where the hero should be. Reported as "the first
+    // two cards load later". Settling them independently means the hero paints
+    // as soon as the anniversary is back, and a slow capsule query no longer
+    // holds up today's question.
+    //
+    // Each still has its own catch, so one rejected read cannot turn the other
+    // five into "nothing here" — that was the reason for allSettled and it is
+    // preserved, just per-read instead of collectively.
+    const settle = (promise, set, shape = (v) => v) =>
+      promise.then((v) => { if (alive) set(shape(v)) }).catch(() => { if (alive) set(null) })
+
+    settle(getAnniversary(me, other), setDays, daysSince)
+    settle(getStreaks(me), setStreak, (rows) =>
+      streakState((rows ?? []).find((r) => r.user_a === other || r.user_b === other)))
+    settle(listOnThisDay(other, 8), setCapsules)
+    // todays_prompt(), NOT pair_prompt(). answer_daily_prompt validates the
+    // submitted id against todays_prompt() — and the two pick from the pool on
+    // different epochs (CLAUDE.md records them as 13 apart mod 30), so a
+    // pair_prompt id is refused with "The daily question has changed" every
+    // time. The surface that WRITES has to read from the function the writer
+    // checks, or the answer can never land.
+    settle(getTodaysPrompt(), setPrompt)
+    settle(loadGameRecord(other), setRecord)
+    settle(listPromptAnswers(me, other), setAnswers)
+
     return () => { alive = false }
   }, [me, other])
 
