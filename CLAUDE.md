@@ -60,6 +60,20 @@ cache-first for other GETs, so `fetch('/')` from the page can return the OLD
 shell while the rendered page is current — read `document.querySelector('script[src]')`
 instead of trusting a fetch.
 
+**A deploy dies silently if the commit author email is not a Git account.**
+Vercel refuses the deployment before scheduling a build, so `vercel ls` shows
+`UNKNOWN`, `vercel inspect` shows `Builds: . [0ms]` and `vercel logs` answers
+"No logs found" — there is no error anywhere on the CLI side, because nothing
+ever ran. It is not a plan limit, not a build slot, and not the code; removing
+stuck deployments and retrying reproduces it exactly. The reason is only on the
+dashboard's Inspect page: *"the commit email … could not be matched to a Git
+account."* The address for this repo is `vivekvyas55@gmail.com`, which is also
+what 29 of its commits already use. Four deploys were lost to this on
+18 Sep 2026 after a brief set the author to a different address; fixing it with
+`git config user.email` plus
+`git rebase <base> --exec "git commit --amend --no-edit --reset-author"` made
+the next deploy Ready in 8 seconds.
+
 ## Architecture
 
 Three swipeable panes — Chat / Camera / Stories — paged by a CSS transform in
