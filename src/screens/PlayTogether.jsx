@@ -10,7 +10,14 @@ import { peerAlias } from '../lib/alias'
 import { rematchGame, listFriendsWithProfiles, resolveGameInvite, syncGameRoom, endGameRoom, listActiveGameRooms, isVisibleTo, clearViewedChats, listMessages, sendChat, pairKey, markChatsOpened } from '../lib/db'
 import { useToast } from '../hooks/useToast'
 import { sendSignal, signalReceiver } from '../lib/privateRealtime'
-import { peerPresence, pieceToMove, scoreboard } from '../lib/gameState'
+import { peerPresence, pieceToMove, playState, scoreboard } from '../lib/gameState'
+
+// What a room most wants from you, lowest first. The same ranking roomWith()
+// uses to pick ONE room for the chat chip — your turn, then an invitation, then
+// anything merely live — applied here to ORDER the list, so the thing you can
+// act on is not below the thing you cannot. A key this build has never heard of
+// sorts last rather than throwing.
+const ATTENTION = { resume: 0, invited: 1, rematch: 2, away: 3, waiting: 4, idle: 5 }
 import { GAMES, GAME_IDS, createInvite, gameOf, playTurn, titleOf } from '../lib/games'
 import { CheckersBoard, ConnectFourBoard, TicTacToeBoard } from '../components/GameBoards'
 import { notify } from '../lib/push'
@@ -472,10 +479,17 @@ export default function PlayTogether({ onBack }) {
           {rooms.length > 0 && (
             <section className="game-resume-list" aria-label="Your game rooms">
               <h2>Pick up &amp; play</h2>
-              {rooms.map((game) => {
+              {/* Ordered by what most wants attention, and LABELLED by the same
+                  pure function the chat chip uses. This screen used to say
+                  "Your board is saved" where the chip in a conversation said
+                  "Your turn" — so the screen that is about games told you less
+                  than the one that is about a person. playState() is already
+                  written, pure and tested; there is no second rule here. */}
+              {[...rooms].sort((x, y) => (ATTENTION[playState(x, me).key] ?? 9) - (ATTENTION[playState(y, me).key] ?? 9)).map((game) => {
                 const peer = friends.find((f) => f.id === (game.sender_id === me ? game.recipient_id : game.sender_id))
-                return <button type="button" className="game-resume-card" key={game.id} onClick={() => resume(game)}>
-                  <span><strong>{titleOf(game.game)} with {nameOf(alias, peer)}</strong><small>{game.status === 'pending' ? game.sender_id === me ? 'Invitation pending' : 'Invited you to play' : game.result ? 'Round finished' : 'Your board is saved'}</small></span>
+                const state = playState(game, me)
+                return <button type="button" className={`game-resume-card ${state.key === 'resume' ? 'is-turn' : ''}`} key={game.id} onClick={() => resume(game)}>
+                  <span><strong>{titleOf(game.game)} with {nameOf(alias, peer)}</strong><small>{state.label}</small></span>
                   <span>{game.status === 'pending' && game.recipient_id === me ? 'Review' : 'Resume'} →</span>
                 </button>
               })}

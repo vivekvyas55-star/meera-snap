@@ -318,3 +318,9 @@
 .pg-game.pg-lavender { background: var(--lavender); }
 .pg-game.pg-lime     { background: var(--lime); }
 .pg-game.pg-coral    { background: var(--coral); }
+
+/* A room waiting on YOU is the one thing on this screen you can act on, so it
+   is marked as well as sorted first — ordering alone is invisible when there
+   is only one card, which for a two-person app is the usual case. */
+.game-resume-card.is-turn { border-color: var(--ink); }
+.game-resume-card.is-turn small { color: var(--ink); }
