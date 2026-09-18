@@ -31,7 +31,20 @@ export function probeTopic(me) {
 // 'checking'— the join is in flight. Says nothing either way, deliberately.
 // 'live'    — joined, as this account.
 // 'blocked' — the join failed or was closed on us.
-const CLOSED = ['CHANNEL_ERROR', 'TIMED_OUT', 'CLOSED']
+// CLOSED IS NOT A DROP. Every removeChannel() reports it — a sign-out, a
+// refcount reaching zero, React re-running an effect — so counting it made the
+// banner fire during ordinary teardown and claim, in as many words, that
+// messages and calls may not arrive. `lib/telemetry.js` already excludes it for
+// exactly this reason; the two had drifted, and the one that was wrong is the
+// one that talks to the user.
+const DROPPED = ['CHANNEL_ERROR', 'TIMED_OUT']
+
+// A drop is not yet an outage. supabase-js rejoins on its own, and a phone
+// switching cell to wifi produces one routinely — so a single drop is news
+// about a moment, not about the account. Only claim the channel is down if it
+// is STILL down after this, which is the same judgement the chat list makes
+// when a background refresh fails: do not replace something true with an alarm.
+const BLOCKED_AFTER_MS = 12000
 
 let binding = null // { me, channel, state }
 let refs = 0
@@ -54,6 +67,7 @@ export function subscribeAccountProbe(fn) {
 function teardown() {
   if (!binding) return
   const { channel } = binding
+  clearTimeout(binding.timer)
   binding = null
   supabase.removeChannel(channel)
 }
@@ -75,7 +89,7 @@ export function retainAccountProbe(me) {
 
   teardown()
   const channel = supabase.channel(probeTopic(me), { config: { private: true } })
-  const mine = { me, channel, state: 'checking' }
+  const mine = { me, channel, state: 'checking', timer: null }
   binding = mine
   // A binding of some kind, so this is a channel of the same shape as the ones
   // the app really uses rather than a bare join. Nothing writes this topic —
@@ -85,9 +99,22 @@ export function retainAccountProbe(me) {
   channel.subscribe((status) => {
     // A status for a channel we have already replaced or closed is not news.
     if (binding !== mine) return
-    if (status === 'SUBSCRIBED') mine.state = 'live'
-    else if (CLOSED.includes(status)) mine.state = 'blocked'
-    else return
+    if (status === 'SUBSCRIBED') {
+      clearTimeout(mine.timer)
+      mine.timer = null
+      if (mine.state === 'live') return
+      mine.state = 'live'
+    } else if (DROPPED.includes(status)) {
+      // Already said so, or already counting down to saying so.
+      if (mine.state === 'blocked' || mine.timer) return
+      mine.timer = setTimeout(() => {
+        if (binding !== mine) return
+        mine.timer = null
+        mine.state = 'blocked'
+        publish()
+      }, BLOCKED_AFTER_MS)
+      return
+    } else return
     publish()
   })
   publish()
