@@ -76,15 +76,3 @@
 # Games tab is simply not drawn — and, crucially, a read that merely FAILED
 # still draws it and says so, because a section that hides itself on a flaky
 # network is a failure rendered as an answer.
-
-# 202609150070 closes a live privacy hole: `profiles_read` allowed SELECT on any
-# pair with a friendships row of ANY status, so a PENDING friend request was a
-# read on the target's whole profile row — including `birthday`, which is a full
-# date of birth. Listed here only because it has not been applied by hand yet;
-# it should be applied SOON, and it is the one item on this list that is not a
-# deliberate deferral.
-#
-# Apply it in the SQL editor and remove this line in the same change. Order does
-# not matter relative to the deploy: getProfile/listFriendsWithProfiles fall back
-# to the old direct select on PGRST202, so the bundle works either way.
-202609150070_profile_projection
