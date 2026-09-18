@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase, emailForUsername } from '../lib/supabase'
 import { getProfile, clearMediaCache } from '../lib/db'
 import { disablePush } from '../lib/push'
-import { clearOutbox } from '../lib/outbox'
+import { clearOutbox, pendingCount } from '../lib/outbox'
 
 import { AuthContext } from './useAuth'
 
@@ -79,7 +79,12 @@ export function AuthProvider({ children }) {
     if (error) throw new Error(humanize(error.message))
   }
 
-  const signOut = async () => {
+  const signOut = async ({ discardPending = false } = {}) => {
+    // Unsent drafts are the user's work and they live only on this device.
+    // Ask before destroying them rather than deciding on their behalf.
+    if (!discardPending && pendingCount(session?.user?.id) > 0) {
+      throw new Error('You have unsent messages. Send them first, or choose to discard them when logging out.')
+    }
     // Detach the device first, but never let that failure trap someone in a
     // signed-in session — offline, disablePush throws and logout was impossible.
     // The failure still has to be SURFACED, because a device that keeps its
@@ -92,10 +97,15 @@ export function AuthProvider({ children }) {
     } catch (err) {
       detachError = err
     }
-    clearOutbox(session?.user?.id)
-    clearMediaCache()
+    // Local data is destroyed only AFTER the sign-out actually succeeds. It used
+    // to be cleared first, so a failed signOut (offline, or a 500) left the user
+    // still signed in with their pending messages already gone — the one
+    // outcome that is worse than either a clean logout or a clean failure.
+    const me = session?.user?.id
     const { error } = await supabase.auth.signOut()
     if (error) throw error
+    clearMediaCache()
+    try { clearOutbox(me) } catch { /* Already signed out; local cleanup must not report failure. */ }
     if (detachError) {
       throw new Error(
         'Signed out, but this device may still receive notifications — open Meera here once you’re back online.'

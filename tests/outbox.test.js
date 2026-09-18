@@ -1,6 +1,19 @@
 import { beforeEach, expect, test, vi } from 'vitest'
 import { enqueue, outboxFor, flushOutbox, clearOutbox } from '../src/lib/outbox'
 beforeEach(() => localStorage.clear())
+test('damaged entries do not block valid drafts and remain available for recovery', async () => {
+  localStorage.setItem('meera:outbox:broken', '{')
+  localStorage.setItem('meera:outbox:invalid', JSON.stringify({ text: 'recover me' }))
+  localStorage.setItem('meera_outbox', '{')
+  enqueue({ me: 'a', otherId: 'b', text: 'valid' })
+  expect(outboxFor('a', 'b')).toHaveLength(1)
+  const send = vi.fn(async () => {})
+  await flushOutbox(send, 'a')
+  expect(send).toHaveBeenCalledTimes(1)
+  expect(() => clearOutbox('a')).not.toThrow()
+  expect(localStorage.getItem('meera:outbox:broken')).toBe('{')
+  expect(localStorage.getItem('meera:outbox:invalid')).toContain('recover me')
+})
 test('quota failure leaves no false pending item', () => {
   vi.spyOn(Storage.prototype,'setItem').mockImplementation(() => { throw new Error('quota') })
   expect(() => enqueue({me:'a',otherId:'b',text:'keep my draft'})).toThrow('Could not save')

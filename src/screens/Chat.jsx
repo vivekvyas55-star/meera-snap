@@ -25,6 +25,7 @@ import {
   unsend,
 } from '../lib/db'
 import { barColorFor, statusFor } from '../lib/status'
+import { linkSegments } from '../lib/linkify'
 import { gameEventLabel, isThreadEvent } from '../lib/threadEvent'
 import { enqueue, outboxFor, retryQueued, removeQueued, OUTBOX_EVENT } from '../lib/outbox'
 import { mergeMessages } from '../lib/messageState'
@@ -1580,7 +1581,7 @@ function MessageRow({
           onPointerCancel={scrambled ? () => { releasePress(); setRevealed(false) } : undefined}
           title={scrambled ? 'Hold to read' : undefined}
         >
-          {privacyBody(message, me, revealed)}
+          <MessageText text={privacyBody(message, me, revealed)} linked={!scrambled || revealed} />
           {scrambled && !revealed && <LockIcon width={12} height={12} className="msg-lock" />}
         </div>
       ) : message.kind === 'sticker' ? (
@@ -1652,6 +1653,39 @@ function MessageRow({
 function isScrambled(message, me) {
   if (message.sender_id !== me || message.kind !== 'chat') return false
   return Date.now() - new Date(message.created_at).getTime() > 60000
+}
+
+// A chat body, with any URL in it tappable.
+//
+// `linked` is false while a message is SCRAMBLED, and that is the whole
+// interaction between this and reverse-privacy: a reversed URL is not a URL,
+// and linkifying the un-reversed text under reversed-looking characters would
+// hand an over-the-shoulder reader the one part of the message that is worth
+// reading. Reverse-privacy is unchanged — the sender holds to reveal, exactly
+// as they already do to read it, and the link is live in that revealed state.
+// The recipient never scrambles, so for them a shared link is always tappable.
+function MessageText({ text, linked }) {
+  const segments = useMemo(() => (linked ? linkSegments(text) : []), [text, linked])
+  if (!linked || !segments.some((seg) => seg.type === 'link')) return text
+  return segments.map((seg, i) => (seg.type === 'link' ? (
+    <a
+      key={i}
+      className="msg-link"
+      href={seg.href}
+      target="_blank"
+      // noopener is what stops the opened page reaching back through
+      // window.opener into a tab holding the session.
+      rel="noopener noreferrer nofollow"
+      // The bubble is also a button (tap opens a snap, double-tap throws a
+      // tapback). Without this, following a link would fire those too.
+      onClick={(e) => e.stopPropagation()}
+      onDoubleClick={(e) => e.stopPropagation()}
+    >
+      {seg.value}
+    </a>
+  ) : (
+    <span key={i}>{seg.value}</span>
+  )))
 }
 
 function privacyBody(message, me, revealed) {

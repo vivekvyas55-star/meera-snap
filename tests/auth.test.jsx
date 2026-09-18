@@ -5,9 +5,10 @@ const mocks=vi.hoisted(()=>({signUp:vi.fn(),signOut:vi.fn(),getProfile:vi.fn(),d
 vi.mock('../src/lib/supabase',()=>({emailForUsername:u=>u+'@meera.local',supabase:{auth:{getSession:async()=>({data:{session:null}}),onAuthStateChange:cb=>{mocks.callback=cb;return {data:{subscription:{unsubscribe:vi.fn()}}}},signUp:mocks.signUp,signOut:mocks.signOut}}}))
 vi.mock('../src/lib/db',()=>({getProfile:mocks.getProfile,clearMediaCache:mocks.clear}))
 vi.mock('../src/lib/push',()=>({disablePush:mocks.disable}))
-vi.mock('../src/lib/outbox',()=>({clearOutbox:vi.fn()}))
+vi.mock('../src/lib/outbox',()=>({clearOutbox:vi.fn(),pendingCount:vi.fn(() => 0)}))
 import { AuthProvider } from '../src/hooks/AuthProvider'
 import { useAuth } from '../src/hooks/useAuth'
+import { pendingCount, clearOutbox } from '../src/lib/outbox'
 afterEach(()=>{cleanup();vi.clearAllMocks();localStorage.clear()})
 const wrapper=({children})=><AuthProvider>{children}</AuthProvider>
 test('signup uses transactional recovery data and removes legacy browser secrets',async()=>{
@@ -35,4 +36,19 @@ test('logout detaches notifications first, and a failed detach is reported witho
  expect(mocks.signOut).toHaveBeenCalled()
  mocks.disable.mockResolvedValue();await act(()=>result.current.signOut())
  expect(mocks.disable.mock.invocationCallOrder.at(-1)).toBeLessThan(mocks.signOut.mock.invocationCallOrder.at(-1))
+})
+test('logout preserves drafts if declined or if authentication sign-out fails', async () => {
+ pendingCount.mockReturnValue(2)
+ const {result}=renderHook(useAuth,{wrapper});await waitFor(()=>expect(result.current.loading).toBe(false))
+ await expect(result.current.signOut()).rejects.toThrow(/unsent messages/)
+ expect(mocks.signOut).not.toHaveBeenCalled()
+ expect(clearOutbox).not.toHaveBeenCalled()
+ mocks.signOut.mockResolvedValueOnce({error:new Error('offline')})
+ await expect(result.current.signOut({discardPending:true})).rejects.toThrow('offline')
+ expect(clearOutbox).not.toHaveBeenCalled()
+ mocks.signOut.mockResolvedValueOnce({error:null})
+ await act(()=>result.current.signOut({discardPending:true}))
+ expect(clearOutbox).toHaveBeenCalledTimes(1)
+ expect(clearOutbox.mock.invocationCallOrder[0]).toBeGreaterThan(mocks.signOut.mock.invocationCallOrder.at(-1))
+ pendingCount.mockReturnValue(0)
 })

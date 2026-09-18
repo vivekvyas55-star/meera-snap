@@ -1056,7 +1056,34 @@ is invisible immediately rather than waiting on the purge.
 
 `profiles.birthday` needed its own `grant update (birthday)` — hardening.sql
 revoked table-wide UPDATE, so any new writable column fails with 42501 before
-RLS is consulted. Only month/day is ever shown; the year is never rendered.
+RLS is consulted.
+
+**Only month/day ever leaves the database, and that is now enforced there**
+(`202609150070_profile_projection.sql`). It used to be enforced in a renderer,
+which is not enforcement: `profiles_read` allowed SELECT whenever ANY
+`friendships` row existed for the pair, **with no status predicate**, and
+`sendFriendRequest` creates that row unilaterally as `pending`. So anyone who
+could name a username could request a friendship and immediately read the whole
+profile row back over PostgREST — including `birthday`, a full `date`, i.e. date
+of birth — without the target ever accepting. The anon key is in the bundle, so
+what a component chooses to draw is irrelevant.
+
+- `profiles_read` is now `id = auth.uid()`. Nobody reads anybody else's row.
+- Peer identities come from `visible_profiles(ids uuid[])`, a SECURITY DEFINER
+  projection naming its columns. `birthday` is returned **only** for an
+  `accepted` friendship, normalised to `'2000-MM-DD'` — the year is discarded in
+  SQL, so it cannot leak even to a real friend. A fixed sentinel year keeps the
+  existing month/day formatting working unchanged.
+- Blocked pairs get nothing, via `blocked_between` — a block that still returned
+  a name and an avatar would be a half-block.
+- **`getProfile` / `listFriendsWithProfiles` / `listStoryViewers` all go through
+  `profilesByIds`**, which falls back to the old direct select on `PGRST202`.
+  That is what makes the bundle safe to ship in either order relative to the
+  migration — the lesson from `202609150041`, where a migration went ahead of
+  its frontend and every play invitation rendered as a bogus "Photo" tile for
+  every user. Do not add a fourth peer-profile read that skips it.
+- Asserted in `tests/database.mjs` and **mutation-checked**: restoring the old
+  permissive policy fails the assertion.
 
 Snap Map's distance readout needs no schema — both coordinates are already on
 the map, so `distanceKm` is pure client maths.
@@ -1718,6 +1745,46 @@ broken at least once:
 - **A swipe that fires a reply sets `longPressed`** so the trailing click can't
   also open (consume) a snap; `startPress` clears it again on the next press.
 
+## Links in a message are anchors, and the allowlist is the boundary
+
+`src/lib/linkify.js` + `MessageText` in `Chat.jsx`. Bodies rendered as plain
+text, so sharing a reel meant the recipient read a URL off the screen and
+retyped it.
+
+**A message body is attacker-supplied text that goes straight into an `href`.**
+Anyone holding a friendships row can write one. So `hrefFor()` parses with
+`URL` and then checks `protocol` against an **allowlist of exactly `http:` and
+`https:`** — `javascript:` there is script execution in an origin holding the
+session, and `data:` is a fabricated document under Meera's own name. A bare
+`www.` host is the one convenience and is given `https:`; a scheme is **never**
+prepended to something that already has one.
+
+- **The match must start at a token boundary.** `\b` is not enough: `:` is a
+  non-word character, so `\bhttps?:\/\/` matches the tail of
+  `blob:https://…` and `javascript:https://…`, linking a substring while the
+  text on screen reads as another scheme entirely. A leading capture group
+  (`(^|[\s([{<"'])`) pins it — a capture group rather than a lookbehind, so it
+  does not depend on lookbehind support in an older mobile Safari. A test found
+  this; it was not caught by reading.
+- **Concatenating every segment's `value` reproduces the body exactly.** The
+  renderer must never be able to drop or reorder somebody's words, and that
+  invariant is asserted over a table of bodies rather than argued.
+- **A link does not fire the bubble's gestures.** The bubble is `role="button"`
+  — tap opens a snap, double-tap throws a tapback — so the anchor stops
+  propagation on both. `rel="noopener noreferrer nofollow"` with
+  `target="_blank"`.
+- **A scrambled message is not linkified** (`linked={!scrambled || revealed}`).
+  Reverse-privacy reverses the sender's own text after 60s; linking the
+  un-reversed URL underneath reversed-looking characters would hand an
+  over-the-shoulder reader the most legible part of the message. The sender
+  holds to reveal — which they already do to read it — and the link is live in
+  that state. The recipient never scrambles, so for them it is always tappable.
+- **There is deliberately NO preview card.** It needs the target's Open Graph
+  tags, which a static bundle cannot fetch (CORS), so it would take an Edge
+  Function plus an image proxy — and then every card is a remote image fetched
+  per viewer per render, which is exactly the egress that is the whole hosting
+  bill. Reels, YouTube and everything else share one plain anchor.
+
 ## The thread's two "already seen this" sets
 
 `Chat.jsx` keeps two id sets, and BOTH have to be seeded from the same three
@@ -2248,6 +2315,24 @@ countdown. Messages show timestamps.
   is returned hard-coded empty with no consumer. Documented so the gap is
   visible rather than trusted.
 
+  **One damaged draft must not take the queue down.** `read()` used to
+  `JSON.parse` every entry unguarded, so a single unreadable value threw — and
+  `enqueue`, `outboxFor`, `clearOutbox` and `flushOutbox` all threw with it,
+  making every *other* pending message unsendable and invisible at once. Entries
+  are now parsed through a `try` and shape-checked (`valid()`), a damaged one is
+  skipped and **left untouched on disk** rather than cleared (it is still the
+  user's text), and the storage key must match the item's own `tempId` or
+  `removeQueued` would delete a different row than the one just sent.
+
+  **Signing out destroys local drafts, so it asks first and goes last.**
+  `clearOutbox` ran BEFORE `supabase.auth.signOut()`, so a failed sign-out —
+  offline, or a 500 — left the user still signed in with their pending messages
+  already gone, which is worse than either a clean logout or a clean failure.
+  It now runs only after the sign-out actually succeeds, and `signOut()` refuses
+  outright while `pendingCount(me) > 0` unless called as
+  `signOut({ discardPending: true })`. Profile puts a `Confirm` in front of it
+  naming the number. Unsent work is the user's and lives only on that device.
+
   **The flush tracks re-entry.** `removeQueued` dispatches `OUTBOX_EVENT` from
   inside the loop, and that re-entrant flush is rejected because the concurrent
   guard is still set — so the second message you sent while the first was in
@@ -2681,6 +2766,15 @@ every six seconds, and the invitation broadcast arrives *before* that RPC can
 see the row. Clearing `invite` from the poll made the invite card appear and then
 vanish on its own — the entire "Play doesn't work" report. The poll now only
 drops an invitation it can prove has expired.
+
+**...and a poll in flight must not land on top of something newer.** "Merge,
+not overwrite" was only half of it: the six-second poll `await`s two RPCs and a
+`getProfile`, and a realtime invitation, an accept, opening the card, dismissing
+it or a change of account can all happen during that window — after which the
+poll's snapshot is stale and writing it puts a superseded (or already-dismissed)
+invitation back on screen. `gameSignalVersion` is a ref bumped by every one of
+those sources; `refreshGameInvites` reads it before its awaits and again after
+each, and stands down if it moved.
 
 An invitation is also mirrored into `sessionStorage` (`meera:pending-game:<me>`)
 so a reload during the ring doesn't lose it, and a failed `resolveGameInvite`

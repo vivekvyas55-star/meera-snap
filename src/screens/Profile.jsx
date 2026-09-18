@@ -8,6 +8,7 @@ import {
   updateProfile,
 } from '../lib/db'
 import { useAuth } from '../hooks/useAuth'
+import { pendingCount } from '../lib/outbox'
 import Confirm from '../components/Confirm'
 import Plans from './Plans'
 import Billing from './Billing'
@@ -96,6 +97,8 @@ export default function Profile({ onBack }) {
   const [friendCount, setFriendCount] = useState(null)
   const [score, setScore] = useState(null)
   const [confirmLock, setConfirmLock] = useState(false)
+  // How many unsent drafts logging out would destroy. null = nothing pending.
+  const [logoutDrafts, setLogoutDrafts] = useState(null)
   const [pinSetup, setPinSetup] = useState(false)
   // Shown here and NOWHERE else. On the lock screen it would tell whoever is
   // holding the phone that the code is one they can look up.
@@ -266,7 +269,14 @@ export default function Profile({ onBack }) {
           <BackIcon />
         </button>
         <h1>Profile &amp; privacy</h1>
-        <button className="circle filled" onClick={() => signOut().catch(err => toast(err.message))} aria-label="Log out">
+        <button className="circle filled" onClick={() => {
+          // Ask BEFORE signing out, not after: unsent drafts live only on this
+          // device and signing out is what destroys them.
+          let pending = 0
+          try { pending = pendingCount(profile?.id) } catch { pending = 0 }
+          if (pending > 0) { setLogoutDrafts(pending); return }
+          signOut().catch(err => toast(err.message))
+        }} aria-label="Log out">
           <PowerIcon />
         </button>
       </div>
@@ -682,6 +692,19 @@ export default function Profile({ onBack }) {
               // The passcode is now the user's own, so the default warning goes.
               setUsingDefault(false)
               pinSave.run(async () => true)
+            }}
+          />
+        )}
+        {logoutDrafts !== null && (
+          <Confirm
+            title={`Log out with ${logoutDrafts} unsent ${logoutDrafts === 1 ? 'message' : 'messages'}?`}
+            body={`${logoutDrafts === 1 ? 'That message has' : 'Those messages have'} not been sent yet and ${logoutDrafts === 1 ? 'is' : 'are'} saved only on this device. Logging out deletes ${logoutDrafts === 1 ? 'it' : 'them'} for good. Go back, reconnect, and they will send on their own.`}
+            confirmLabel="Discard and log out"
+            danger
+            onCancel={() => setLogoutDrafts(null)}
+            onConfirm={() => {
+              setLogoutDrafts(null)
+              signOut({ discardPending: true }).catch(err => toast(err.message))
             }}
           />
         )}

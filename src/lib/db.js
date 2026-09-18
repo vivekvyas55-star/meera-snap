@@ -23,14 +23,36 @@ const pairFilter = (u1, u2) => {
 // --------------------------------------------------------------------------
 // profiles & friends
 // --------------------------------------------------------------------------
-export async function getProfile(userId) {
-  const { data, error } = await supabase
+// A peer's identity comes from the projection, never from the row: `birthday`
+// is a full date and `profiles_read` used to hand it to anyone holding a
+// PENDING friendship row (202609150070). Self is returned whole by the same
+// function.
+//
+// `missingFn` is the PGRST202 degradation used throughout this file — the
+// bundle may ship before the migration is applied, and a frontend that cannot
+// read a profile at all is a blank app. The fallback is the OLD behaviour, so
+// it is no worse than today and closes the moment the migration lands.
+const missingFn = (error) => error?.code === 'PGRST202'
+
+async function profilesByIds(ids) {
+  const { data, error } = await supabase.rpc('visible_profiles', { ids })
+  if (!error) return data ?? []
+  if (!missingFn(error)) throw error
+  const { data: rows, error: rowError } = await supabase
     .from('profiles')
     .select('*')
-    .eq('id', userId)
-    .single()
-  if (error) throw error
-  return data
+    .in('id', ids)
+  if (rowError) throw rowError
+  return rows ?? []
+}
+
+export async function getProfile(userId) {
+  const rows = await profilesByIds([userId])
+  const row = rows.find((p) => p?.id === userId)
+  // Not found is not the same as failed: a blocked or unrelated id simply is
+  // not visible, and the callers that tolerate that already use .catch().
+  if (!row) throw new Error('Profile unavailable')
+  return row
 }
 
 export async function updateProfile(userId, fields) {
@@ -116,12 +138,8 @@ export async function listFriendsWithProfiles(me) {
   const rows = await listFriendships(me)
   if (rows.length === 0) return []
   const otherIds = rows.map((r) => (r.user_a === me ? r.user_b : r.user_a))
-  const { data: profiles, error } = await supabase
-    .from('profiles')
-    .select('*')
-    .in('id', otherIds)
-  if (error) throw error
-  const byId = new Map((profiles ?? []).map((p) => [p.id, p]))
+  const profiles = await profilesByIds(otherIds)
+  const byId = new Map(profiles.map((p) => [p.id, p]))
   return rows
     .map((r) => {
       const otherId = r.user_a === me ? r.user_b : r.user_a
@@ -1087,11 +1105,8 @@ export async function listStoryViewers(storyId, me) {
   if (error) throw error
   const rows = data ?? []
   if (rows.length === 0) return []
-  const { data: profs } = await supabase
-    .from('profiles')
-    .select('id, username, display_name, avatar_emoji, avatar_hue')
-    .in('id', rows.map((r) => r.viewer_id))
-  const byId = new Map((profs ?? []).map((p) => [p.id, p]))
+  const profs = await profilesByIds(rows.map((r) => r.viewer_id))
+  const byId = new Map(profs.map((p) => [p.id, p]))
   return rows.map((r) => ({ ...r, profile: byId.get(r.viewer_id) }))
 }
 

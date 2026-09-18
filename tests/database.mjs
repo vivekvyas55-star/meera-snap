@@ -1378,4 +1378,19 @@ await asUser(A,async()=>{
  await assert.rejects(query('select * from schema_migrations'),/permission denied/)
 })
 console.log('PASS schema_version reports the newest applied migration to a signed-in client')
+// A PENDING friend request must not be a read on somebody's profile row, and an
+// accepted one must not carry the YEAR. Both halves are asserted here because
+// the client only ever RENDERED month/day — a privacy claim enforced in a
+// renderer is not enforced at all once the anon key is in the bundle.
+await db.query("update profiles set birthday='1995-04-03' where id=$1",[A])
+await db.query('delete from friendships where user_a=$1 and user_b=$2',[A,C])
+await db.query("insert into friendships(user_a,user_b,requested_by,status) values($1,$2,$2,'pending')",[A,C])
+// C has a pending request in with A and still cannot read the row at all.
+assert.equal((await asUser(C,()=>query('select birthday from profiles where id=$1',[A]))).length,0)
+assert.equal((await asUser(C,()=>query('select visible_profiles($1) p',[[A]])))[0].p.birthday,null)
+// B is an accepted friend: month and day, with the year replaced.
+assert.equal((await asUser(B,()=>query('select visible_profiles($1) p',[[A]])))[0].p.birthday,'2000-04-03')
+// A reads their own row whole.
+assert.equal((await asUser(A,()=>query('select visible_profiles($1) p',[[A]])))[0].p.birthday,'1995-04-03')
+console.log('PASS a pending request reads no profile, and an accepted friend gets no birth year')
 await db.close()

@@ -73,6 +73,13 @@ function Shell() {
   const [gameInvite, setGameInvite] = useState(null)
   const [playVisible, setPlayVisible] = useState(false)
   const gameRefresh = useRef(false)
+  // Bumped by every source that is NEWER than a poll in flight: a realtime
+  // invitation, an accept, opening or dismissing the card, and a change of
+  // account. refreshGameInvites reads it before its awaits and again after, and
+  // stands down if it moved — the six-second poll's snapshot predates anything
+  // that happened while it was waiting, so writing it would put a stale (or
+  // already-dismissed) invitation back on screen over a live one.
+  const gameSignalVersion = useRef(0)
   useEffect(() => {
     const changed = (event) => setPlayVisible(event.detail)
     window.addEventListener('meera:play-visibility', changed)
@@ -193,18 +200,21 @@ function Shell() {
   const refreshGameInvites = useCallback(async () => {
     if (!profile?.id || gameRefresh.current) return
     gameRefresh.current = true
+    const version = gameSignalVersion.current
     try {
     const [pending, accepted] = await Promise.all([
       listPendingGameInvites(),
       listAcceptedGameInviteResponses(),
     ])
     const row = pending[0] || accepted[0]
+    if (version !== gameSignalVersion.current) return
     if (!row) { setGameInvite(null); try { sessionStorage.removeItem(`meera:pending-game:${profile.id}`) } catch {} return }
     const isResponse = row.status === 'accepted'
     const peer = await getProfile(isResponse ? row.recipient_id : row.sender_id).catch(() => null)
+    if (version !== gameSignalVersion.current) return
     if (!peer) return
     const next = { ...row, peer, response: isResponse ? 'accepted' : undefined }
-    setGameInvite((current) => current?.id === next.id ? current : next)
+    setGameInvite(next)
     if (!isResponse) {
       try { sessionStorage.setItem(`meera:pending-game:${profile.id}`, JSON.stringify(next)) } catch {}
     }
@@ -213,6 +223,10 @@ function Shell() {
 
   useEffect(() => {
     const profileId = profile?.id
+    // A different account must not inherit the previous one's invitation, and a
+    // poll started for the old id must not land on the new one.
+    gameSignalVersion.current++
+    setGameInvite(null)
     if (!profileId) return
     const receiver = signalReceiver(profileId)
       .on('broadcast', { event: 'game_invite' }, ({ payload, peer }) => {
@@ -222,6 +236,7 @@ function Shell() {
         // caught up — the invite arriving late is exactly the bug the merge in
         // this file was written to fix.
         if (payload?.room && isKnownGame(payload.game)) {
+          gameSignalVersion.current++
           const next = { ...payload, id: payload.invite_id, peer }
           setGameInvite(next)
           try { sessionStorage.setItem(`meera:pending-game:${profile.id}`, JSON.stringify(next)) } catch {}
@@ -229,6 +244,7 @@ function Shell() {
       })
       .on('broadcast', { event: 'game_accept' }, ({ payload, peer }) => {
         if (!payload?.room) return
+        gameSignalVersion.current++
         setGameInvite({ ...payload, id: payload.invite_id, peer, response: 'accepted' })
       }).subscribe()
     return () => receiver.close()
@@ -440,6 +456,7 @@ function Shell() {
             try { sessionStorage.setItem(`meera:resume-game:${profile.id}`, JSON.stringify(gameInvite)) } catch {}
             if (gameInvite.id) acknowledgeGameInvite(gameInvite.id).catch(() => {})
           }
+          gameSignalVersion.current++
           setGameInvite(null); setShowUs(true); setOpenPlay(true)
         }}>Open</button>
         <button type="button" className="game-banner-dismiss" aria-label="Dismiss game invitation" onClick={async () => {
@@ -448,6 +465,7 @@ function Shell() {
             const action = gameInvite.response === 'accepted' ? acknowledgeGameInvite(gameInvite.id) : resolveGameInvite(gameInvite.id, 'dismissed')
             await action
           }
+          gameSignalVersion.current++
           setGameInvite(null)
           try { sessionStorage.removeItem(`meera:pending-game:${profile.id}`) } catch {}
           } catch { toast('Could not dismiss the invitation. Try again.') }

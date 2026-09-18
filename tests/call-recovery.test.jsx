@@ -135,12 +135,20 @@ test('a failed push does not cancel a call to a friend who is in the app', async
 })
 
 test('a push that reports no subscriptions still gives up on an offline friend', async () => {
-  mocks.notify.mockImplementation(() => defer({ data: { sent: 0, reason: 'no subscriptions' }, error: null }))
+  // Released by hand rather than deferred on a timer: `await act()` spends at
+  // least one macrotask turn, so a setTimeout(0) resolution races the assertion
+  // below and the call was sometimes already torn down by the time it ran. The
+  // point of this test is the ORDER — it rings first, and only the push's
+  // verdict ends it — so the round trip has to still be in flight here.
+  let release
+  mocks.notify.mockImplementation(() => new Promise(r => {
+    release = () => r({ data: { sent: 0, reason: 'no subscriptions' }, error: null })
+  }))
   const { result } = mount()
   let started
   await act(async () => { started = result.current.startCall({ id: 'friend', username: 'friend' }, false) })
   expect(result.current.call?.state).toBe('outgoing')
-  await act(async () => { await started })
+  await act(async () => { release(); await started })
   expect(result.current.call).toBe(null)
   expect(signalled('cancel')).toHaveLength(1)
   expect(mocks.toast).toHaveBeenCalledWith('friend isn’t available right now')
