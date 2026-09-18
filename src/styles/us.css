@@ -318,3 +318,38 @@
 
 /* The primary action: opening the conversation is what people came to do. */
 .us-open { width: 100%; text-align: center; }
+
+/* The status editor, collapsed. Its summary carries the live state, so folding
+   it hides the EDITOR and never the answer to "what are my friends seeing?". */
+.us-note > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  cursor: pointer;
+  min-height: 44px;
+  list-style: none;
+}
+.us-note > summary::-webkit-details-marker { display: none; }
+.us-note > summary::after {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(45deg);
+  opacity: 0.5;
+  flex: 0 0 auto;
+}
+.us-note[open] > summary::after { transform: rotate(-135deg); }
+.us-note > summary .pc-chip {
+  max-width: 60%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Vertical rhythm: the sections were each spaced as though they were the only
+   thing on the page, which is what made it scroll so far. */
+.us-pair { gap: var(--sp-3); margin-bottom: var(--sp-3); }
+.us-doors { margin-bottom: var(--sp-4); }

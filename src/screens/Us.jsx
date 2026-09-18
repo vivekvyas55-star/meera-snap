@@ -342,13 +342,18 @@ export default function Us({ me, onBack, openPlay, onPlayOpened, onOpenChat }) {
           title="What friends see"
           icon={<NoteIcon width={19} height={19} />}
         >
-          <div className="pc-label-row">
-            {/* Not a <label>: the field's accessible name is "Status note",
-                which is what it is, while the visible line is the question it
-                answers. */}
-            <div className="pc-label">What’s up?</div>
-            {noteSaved ? <span className="pc-chip on">Live for friends</span> : null}
-          </div>
+          {/* COLLAPSED by default. This sat open above the interactive half of
+              the screen, so a note you set once a week pushed memories, games
+              and the question down every single visit. The summary carries the
+              state — what is live right now — so collapsing it hides the
+              editor, never the answer to "what are my friends seeing?". */}
+          <details className="us-note">
+          <summary>
+            <span className="pc-label">What’s up?</span>
+            {noteSaved
+              ? <span className="pc-chip on">{noteSaved}</span>
+              : <span className="pc-chip">Nothing set</span>}
+          </summary>
           <p className="field-hint" id="pc-note-hint">
             Visible to accepted friends · expires in 24h
           </p>
@@ -374,6 +379,7 @@ export default function Us({ me, onBack, openPlay, onPlayOpened, onOpenChat }) {
             error={noteSave.error}
             savedLabel={noteSaved ? 'Note set for 24 hours' : 'Note cleared'}
           />
+          </details>
 
         </SettingsGroup>
 
