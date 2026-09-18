@@ -27,6 +27,7 @@ export const GAMES = {
     glyph: '✕◯',
     blurb: 'Take turns, chat, and pick up where you left off. Rooms expire after 24 hours.',
     tint: 'var(--lavender)',
+    tintClass: 'pg-lavender',
     // A move is one square index, sent through play_game_move.
     move: 'cell',
     initialBoard: () => Array(9).fill(''),
@@ -37,6 +38,7 @@ export const GAMES = {
     glyph: '●●●●',
     blurb: 'Drop a disc, four in a row wins. Gravity does half the work.',
     tint: 'var(--lime)',
+    tintClass: 'pg-lime',
     // A move is a COLUMN, not a cell — gravity decides the rest. Still
     // play_game_move; the database derives the landing square itself.
     move: 'column',
@@ -48,6 +50,7 @@ export const GAMES = {
     glyph: '⛃⛀',
     blurb: 'Captures are forced, jumps chain, and a man that reaches the far row is crowned.',
     tint: 'var(--coral)',
+    tintClass: 'pg-coral',
     // A move is a whole path — [from, ...landings] — because a multi-jump is
     // one turn. It goes through play_game_path, which re-validates every hop.
     move: 'path',

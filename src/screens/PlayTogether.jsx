@@ -494,8 +494,7 @@ export default function PlayTogether({ onBack }) {
                 key={id}
                 role="radio"
                 aria-checked={pick === id}
-                className={`pg-game ${pick === id ? 'is-picked' : ''}`}
-                style={{ background: item.tint }}
+                className={`pg-game ${item.tintClass} ${pick === id ? 'is-picked' : ''}`}
                 onClick={() => setPick(id)}
               >
                 <span className="pg-game-glyph" aria-hidden="true">{item.glyph}</span>

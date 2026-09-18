@@ -346,6 +346,10 @@
 /* styles/us.css — the pair panel's hero (lavender) and question card (lime). */
 .us-hero,
 .us-question,
+/* styles/games.css — the three game cards in Play. */
+.pg-game.pg-lavender,
+.pg-game.pg-lime,
+.pg-game.pg-coral,
 /* styles/garden.css + escape.css — painted from JS. */
 .mg-today,
 .mg-unlock.is-on,

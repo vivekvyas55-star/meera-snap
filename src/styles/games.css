@@ -306,3 +306,15 @@
   display: block;
   margin: var(--sp-5) 0 var(--sp-1);
 }
+
+/* The three game cards were painted with an INLINE background from
+   `GAMES[id].tint`, and an inline vibrant fill never enters index.css's
+   fixed-light context — so at night they rendered near-white ink on lavender,
+   lime and coral, which is to say invisible. Reported as "Play has nothing".
+   It is the `.fp-stat` bug exactly, and the reason `.ig-game` next door looked
+   fine is that it is registered in the test's JS_PAINTED list while this was
+   not. Painted from a CLASS now: listing the selector is then enough, and
+   nothing in JSX can put a fill somewhere the list cannot see it. */
+.pg-game.pg-lavender { background: var(--lavender); }
+.pg-game.pg-lime     { background: var(--lime); }
+.pg-game.pg-coral    { background: var(--coral); }
