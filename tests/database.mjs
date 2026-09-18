@@ -1393,4 +1393,29 @@ assert.equal((await asUser(B,()=>query('select visible_profiles($1) p',[[A]])))[
 // A reads their own row whole.
 assert.equal((await asUser(A,()=>query('select visible_profiles($1) p',[[A]])))[0].p.birthday,'1995-04-03')
 console.log('PASS a pending request reads no profile, and an accepted friend gets no birth year')
+// The snap reopen limit is a WALL, not just a door (202609150080).
+//
+// record_snap_open() is SECURITY DEFINER and increments open_count by one, and
+// both message_visible and isVisibleTo hide a snap at SNAP_MAX_OPENS. But the
+// baseline granted `update (open_count)` to authenticated and messages_update
+// allows either party, so a RECIPIENT could PATCH the counter back to 0 over
+// PostgREST and reopen without limit. The client never writes the column; the
+// grant served nothing but the bypass. Same shape as opened_at (0050) and
+// saved_by (202609090032): the RPC is a door, the grant is the wall.
+const wallPath = `${A}/snaps/wall.jpg`
+await db.query(`insert into storage.objects(bucket_id,name) values('media',$1)`,[wallPath])
+const wallMsg = (await query(`insert into public.messages(user_a,user_b,sender_id,kind,body,media_path,delivered_at)
+  values($1,$2,$1,'snap','s',$3,now()) returning id`,[A,B,wallPath]))[0].id
+await asUser(B, async () => {
+  await assert.rejects(query('update public.messages set open_count=0 where id=$1',[wallMsg]),/permission denied/)
+  await assert.rejects(query('update public.messages set cleared_by=array[$1::uuid,$2::uuid] where id=$3',[A,B,wallMsg]),/permission denied/)
+  // ...and the sanctioned path still works, which is what makes the revoke safe.
+  assert.equal((await query('select public.record_snap_open($1) n',[wallMsg]))[0].n,1)
+})
+// The trigger holds even if a later migration re-widens the grant — twice now
+// a migration has silently re-issued one this repo had narrowed.
+await db.exec('grant update (open_count) on public.messages to authenticated')
+await asUser(B, () => assert.rejects(query('update public.messages set open_count=0 where id=$1',[wallMsg]),/cannot decrease/))
+await db.exec('revoke update (open_count) on public.messages from authenticated')
+console.log('PASS a recipient cannot reset a snap open counter, by grant or by trigger')
 await db.close()

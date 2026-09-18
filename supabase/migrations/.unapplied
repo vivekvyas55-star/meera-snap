@@ -76,3 +76,14 @@
 # Games tab is simply not drawn — and, crucially, a read that merely FAILED
 # still draws it and says so, because a section that hides itself on a flaky
 # network is a failure rendered as an answer.
+
+# 202609150080 closes an ephemerality bypass: `grant update (open_count)` from
+# the baseline let a RECIPIENT PATCH a snap's open counter back to 0 over
+# PostgREST and reopen it without limit, around record_snap_open(). Verified
+# against a real database, and verified closed by the same probe.
+#
+# There is NO client half and no ordering risk — the bundle never wrote either
+# column, so this can be applied at any time. Listed only because it has not
+# been run by hand yet. Apply it in the SQL editor and delete these lines in the
+# same change.
+202609150080_open_count_wall
