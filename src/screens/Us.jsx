@@ -268,18 +268,22 @@ export default function Us({ me, onBack, openPlay, onPlayOpened, onOpenChat }) {
             reading "Open Memories" / "Open Snap Map" / "Open Together" /
             "Play" — the same component Profile uses for settings, which is
             what made the pair layer read as a directory. */}
-        <div className="us-doors">
+        <div className="us-doors" role="group" aria-label="Shared with this person">
           <button type="button" className="us-door" onClick={() => setShowMemories(true)}>
-            <ImageIcon width={17} height={17} aria-hidden="true" /> Memories
+            <ImageIcon width={20} height={20} aria-hidden="true" />
+            <span>Memories</span>
           </button>
           <button type="button" className="us-door" onClick={() => setShowMap(true)}>
-            <MapIcon width={17} height={17} aria-hidden="true" /> Snap Map
+            <MapIcon width={20} height={20} aria-hidden="true" />
+            <span>Snap Map</span>
           </button>
           <button type="button" className="us-door" onClick={() => setShowTogether(true)}>
-            <HeartIcon width={17} height={17} aria-hidden="true" /> Together
+            <HeartIcon width={20} height={20} aria-hidden="true" />
+            <span>Together</span>
           </button>
           <button type="button" className="us-door" onClick={() => setShowPlay(true)}>
-            <GamepadIcon width={17} height={17} aria-hidden="true" /> Play
+            <GamepadIcon width={20} height={20} aria-hidden="true" />
+            <span>Play</span>
           </button>
         </div>
 

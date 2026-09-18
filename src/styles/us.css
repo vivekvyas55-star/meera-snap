@@ -128,26 +128,55 @@
 }
 .us-open:active { opacity: 0.85; }
 
-/* The doors that remain are chips, not a column of grey rows saying "Open X". */
+/* The doors that remain: ONE segmented control, not four loose pills and not a
+ * second tab bar.
+ *
+ * A second floating dark bar was the obvious idea and is the wrong one — it
+ * would sit directly above the real tab bar (two stacked bars), cost ~52px of
+ * vertical space on the screen that finally has content, and imply these four
+ * are peers you switch between. They are not: each REPLACES the screen, and
+ * two are heavy lazy chunks (SnapMap ~159 kB, PlayTogether ~88 kB). Implying
+ * they are all mounted is how Us ended up statically importing Play and
+ * downloading seven games to open a tab — see tests/one-door.test.js.
+ *
+ * So: one control, four equal segments, at the top where a segmented control
+ * belongs. Scrolls rather than wraps, because a control that reflows to two
+ * rows stops reading as one thing.
+ */
 .us-doors {
   display: flex;
-  flex-wrap: wrap;
-  gap: var(--sp-2);
-  margin-bottom: var(--sp-5);
-}
-.us-door {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--sp-2);
+  gap: var(--sp-1);
   background: var(--card);
-  color: var(--ink);
-  border: 1px solid color-mix(in srgb, var(--ink) 14%, transparent);
-  border-radius: var(--r-pill);
-  padding: var(--sp-3) var(--sp-4);
-  min-height: 44px;
-  font-size: var(--fs-body);
+  border-radius: var(--r-card);
+  padding: var(--sp-1);
+  margin-bottom: var(--sp-5);
+  overflow-x: auto;
+  scrollbar-width: none;
 }
-.us-door:active { opacity: 0.85; }
+.us-doors::-webkit-scrollbar { display: none; }
+
+.us-door {
+  flex: 1 1 0;
+  min-width: 68px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-1);
+  background: none;
+  color: var(--ink);
+  border: none;
+  border-radius: var(--r-row);
+  padding: var(--sp-3) var(--sp-2);
+  /* Over the 44px touch minimum even at the smallest step. */
+  min-height: 56px;
+  font-size: var(--fs-micro);
+  line-height: 1.1;
+  white-space: nowrap;
+}
+.us-door svg { opacity: 0.85; }
+.us-door:active { background: color-mix(in srgb, var(--ink) 8%, transparent); }
+.us-door:focus-visible { outline: 3px solid var(--ink); outline-offset: -3px; }
 
 /* The person this screen is about, and how to change them. */
 .us-who {

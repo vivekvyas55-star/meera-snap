@@ -1418,4 +1418,33 @@ await db.exec('grant update (open_count) on public.messages to authenticated')
 await asUser(B, () => assert.rejects(query('update public.messages set open_count=0 where id=$1',[wallMsg]),/cannot decrease/))
 await db.exec('revoke update (open_count) on public.messages from authenticated')
 console.log('PASS a recipient cannot reset a snap open counter, by grant or by trigger')
+// E2E key publication (202609150090). The property that matters is not that a
+// friend CAN read your public key — it is that they cannot read the wrapped
+// private one sitting in the same row. RLS is row-level and cannot hide a
+// column, so the friend read policy would hand over `backup` too; the
+// column-scoped SELECT grant is what actually stops it. The RPC is a door, the
+// grant is the wall — for the fourth time in this schema.
+await asUser(A,()=>query(`insert into public.user_keys(device_key,user_id,public_jwk,backup)
+  values('dev-a',$1,'{"kty":"EC","crv":"P-256"}'::jsonb,'salt.iv.ciphertext')`,[A]))
+await asUser(B, async () => {
+  // The public half, through the door, because A and B are accepted friends.
+  const keys = await query('select * from public.friend_public_keys($1)',[A])
+  assert.equal(keys.length,1)
+  assert.equal(keys[0].device_key,'dev-a')
+  // The wrapped private half: refused at the grant, before RLS is consulted.
+  await assert.rejects(query('select backup from public.user_keys where user_id=$1',[A]),/permission denied/)
+  // ...and selecting the row wholesale must not smuggle it out either.
+  await assert.rejects(query('select * from public.user_keys where user_id=$1',[A]),/permission denied/)
+})
+await asUser(C,async()=>{
+  // A stranger gets nothing at all, not even the public key.
+  assert.equal((await query('select * from public.friend_public_keys($1)',[A])).length,0)
+})
+// Even the owner cannot read the column directly; my_key_backup is the one way.
+await asUser(A, async () => {
+  await assert.rejects(query('select backup from public.user_keys where user_id=$1',[A]),/permission denied/)
+  assert.equal((await query('select public.my_key_backup($1) b',['dev-a']))[0].b,'salt.iv.ciphertext')
+})
+await asUser(B,async()=>assert.equal((await query('select public.my_key_backup($1) b',['dev-a']))[0].b,null))
+console.log('PASS a friend gets your public key and never the wrapped private one')
 await db.close()
