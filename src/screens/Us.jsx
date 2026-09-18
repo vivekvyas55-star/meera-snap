@@ -15,10 +15,8 @@ import { useBackLayer } from '../hooks/useBackLayer'
 import { useToast } from '../hooks/useToast'
 import { useSaveState } from '../lib/useSaveState'
 import Avatar from '../components/Avatar'
-import Portal from '../components/Portal'
 import SaveState from '../components/SaveState'
 import SettingsGroup from '../components/SettingsGroup'
-import Sheet from '../components/Sheet'
 import {
   ArrowIcon,
   BackIcon,
@@ -80,7 +78,6 @@ export default function Us({ me, onBack, openPlay, onPlayOpened, onOpenChat }) {
   const [showTogether, setShowTogether] = useState(false)
   const [showPlay, setShowPlay] = useState(Boolean(openPlay))
   const [showMap, setShowMap] = useState(false)
-  const [picking, setPicking] = useState(false)
 
   const [note, setNote] = useState('')
   const [noteSaved, setNoteSaved] = useState('')
@@ -207,7 +204,6 @@ export default function Us({ me, onBack, openPlay, onPlayOpened, onOpenChat }) {
   const closeTogether = useCallback(() => setShowTogether(false), [])
   const closePlay = useCallback(() => setShowPlay(false), [])
   const closeMap = useCallback(() => setShowMap(false), [])
-  const closePicker = useCallback(() => setPicking(false), [])
 
   // Each sub-screen is its own Back layer, pushed after the layer App holds for
   // this overlay, so Android's Back closes Memories before it closes Us — one
@@ -263,13 +259,12 @@ export default function Us({ me, onBack, openPlay, onPlayOpened, onOpenChat }) {
                 and status actually belong to. The ALIAS, never display_name —
                 a screen someone can glance at over your shoulder follows the
                 same rule as the chat list. */}
-            <p className="us-selected">
-              <strong>{alias(friends.find((p) => p.id === who))}</strong> · Your private space
-            </p>
+            {/* No alias in visible copy: the avatar row above already says WHO,
+                and the rotating alias is a privacy affordance, not a caption. */}
+            <p className="us-selected">Your private space</p>
             <UsPair
               me={me}
               friend={friends?.find((p) => p.id === who) ?? null}
-              alias={alias}
               waiting={Array.isArray(waiting) ? waiting.length : 0}
               onOpenChat={onOpenChat}
               onOpenPlay={() => setShowPlay(true)}
@@ -298,14 +293,6 @@ export default function Us({ me, onBack, openPlay, onPlayOpened, onOpenChat }) {
           <button type="button" className="us-door" onClick={() => setShowPlay(true)}>
             <GamepadIcon width={20} height={20} aria-hidden="true" />
             <span>Play</span>
-          </button>
-          {/* Just us lives inside a conversation, so this opens the picker and
-              lands you in that chat — a LINK, not a second copy. It sits with
-              the other pair surfaces rather than in a group of its own, which
-              is what made this screen read as two screens stacked. */}
-          <button type="button" className="us-door" onClick={() => setPicking(true)}>
-            <HeartIcon width={20} height={20} aria-hidden="true" />
-            <span>Just us · chat</span>
           </button>
         </div>
 
@@ -388,37 +375,6 @@ export default function Us({ me, onBack, openPlay, onPlayOpened, onOpenChat }) {
             ================================================================ */}
       </div>
 
-      {picking && (
-        <Portal>
-          <Sheet onClose={closePicker} label="Open a conversation">
-            <h2>Just us</h2>
-            {/* Three states again. undefined = still loading, null = the friend
-                list could not be read, [] = you have no accepted friends yet. */}
-            {friends === undefined && <p className="field-hint" role="status">Loading your people…</p>}
-            {friends === null && <p className="field-hint">Couldn’t load your friends. Try again in a moment.</p>}
-            {Array.isArray(friends) && friends.length === 0 && (
-              <p className="field-hint">Add a friend first — this one needs two.</p>
-            )}
-            {Array.isArray(friends) &&
-              friends.map((f) => (
-                <button
-                  key={f.id}
-                  className="row"
-                  onClick={() => {
-                    closePicker()
-                    onOpenChat?.(f)
-                  }}
-                >
-                  <Avatar profile={f} />
-                  <div className="row-main">
-                    <div className="row-name">{alias(f)}</div>
-                    <div className="row-sub">@{f.username}</div>
-                  </div>
-                </button>
-              ))}
-          </Sheet>
-        </Portal>
-      )}
     </div>
   )
 }

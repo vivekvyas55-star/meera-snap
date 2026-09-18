@@ -67,7 +67,7 @@ function Capsule({ item }) {
   return <img className="us-capsule" src={url} alt="" loading="lazy" />
 }
 
-export default function UsPair({ me, friend, alias, waiting = 0, onOpenChat, onOpenPlay, onOpenMemories }) {
+export default function UsPair({ me, friend, waiting = 0, onOpenChat, onOpenPlay, onOpenMemories }) {
   const other = friend?.id
   const [days, setDays] = useState(undefined)
   const [streak, setStreak] = useState(undefined)
@@ -127,7 +127,6 @@ export default function UsPair({ me, friend, alias, waiting = 0, onOpenChat, onO
   const mine = answers?.mine?.body ?? null
   const theirs = answers?.theirs?.body ?? null
   const askable = !!prompt?.id && answers !== undefined && answers !== null && !mine
-  const who = alias?.(friend) || friend.username || 'them'
 
   const send = async () => {
     const body = answer.trim()
@@ -156,7 +155,7 @@ export default function UsPair({ me, friend, alias, waiting = 0, onOpenChat, onO
 
   return (
     <div className="us-pair">
-      <p className="us-private">Private to you and {who}</p>
+      <p className="us-private">Only you and this person can see it</p>
 
       {days != null && (
         <section className="us-hero">
@@ -208,11 +207,11 @@ export default function UsPair({ me, friend, alias, waiting = 0, onOpenChat, onO
               </div>
               {theirs ? (
                 <div className="us-answer-card">
-                  <span className="us-answer-who">{who}</span>
+                  <span className="us-answer-who">Their answer</span>
                   <p>{theirs}</p>
                 </div>
               ) : (
-                <p className="us-waiting">Waiting for {who}&rsquo;s answer.</p>
+                <p className="us-waiting">Waiting for their answer.</p>
               )}
               {theirs && onOpenChat && (
                 <button type="button" className="us-reply" onClick={() => onOpenChat(friend)}>Reply in chat</button>
