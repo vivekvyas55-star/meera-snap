@@ -419,7 +419,11 @@ function SendSheet({ friends, sending, onCancel, onSend }) {
                 borderRadius: '50%',
                 border: selected.includes(f.profile.id) ? 'none' : '1.5px solid var(--hairline)',
                 background: selected.includes(f.profile.id) ? 'var(--ink)' : 'transparent',
-                color: '#fff',
+                // var(--bg), never '#fff'. --ink is near-black in light mode and
+                // near-WHITE at night, so a hardcoded white tick on it was white
+                // on white after dark: you selected a friend and nothing changed.
+                // --bg is the one token guaranteed to contrast with --ink in both.
+                color: 'var(--bg)',
                 display: 'grid',
                 placeItems: 'center',
                 flex: '0 0 auto',
