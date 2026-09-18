@@ -8,7 +8,7 @@
 
 // Bump on every service-worker change, or browsers keep serving the old one and
 // new handlers (push, notificationclick) never activate.
-const VERSION = 'meera-v2'
+const VERSION = 'meera-v3'
 const SHELL = `${VERSION}-shell`
 
 // Precache only the entry point. Hashed build assets are picked up at runtime.
@@ -45,8 +45,19 @@ self.addEventListener('push', (event) => {
     data = { title: 'Meera', body: event.data ? event.data.text() : '' }
   }
   const title = data.title || 'Meera'
-  event.waitUntil(
-    self.registration.showNotification(title, {
+  event.waitUntil((async () => {
+    // DO NOT notify somebody who is already looking at Meera.
+    //
+    // A banner for the message you are reading is the single most common way a
+    // messaging app feels unprofessional, and the app already shows it: the
+    // Realtime INSERT puts it in the thread, and a call rings through
+    // CallOverlay. A call is still let through when the app is merely OPEN but
+    // not focused, because a phone in a pocket is not "already looking".
+    const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true })
+    const looking = clients.some((c) => c.focused && c.visibilityState === 'visible')
+    if (looking) return
+
+    return self.registration.showNotification(title, {
       body: data.body || '',
       icon: '/icons/icon-192.png',
       badge: '/icons/icon-192.png',
@@ -60,7 +71,7 @@ self.addEventListener('push', (event) => {
       vibrate: data.urgent ? [600, 400, 600, 400] : [200],
       data: { url: data.url || '/' },
     })
-  )
+  })())
 })
 
 self.addEventListener('notificationclick', (event) => {

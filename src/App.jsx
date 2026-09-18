@@ -301,6 +301,30 @@ function Shell() {
 
   // A scanned Snapcode opens the app at ?add=<username>; once signed in, send
   // that friend request, then strip the param so it can't fire twice.
+  // A notification that lands you on the home screen has made you do the work
+  // twice: you already told the phone which conversation you cared about by
+  // tapping it. `?chat=<id>` is what the service worker navigates to, and the
+  // param is stripped immediately so a reload or a shared URL does not reopen
+  // it. Same shape as `?add=` below, deliberately — one deep-link idiom.
+  useEffect(() => {
+    if (!profile) return
+    const params = new URLSearchParams(window.location.search)
+    const chatWith = params.get('chat')
+    if (!chatWith) return
+    const url = new URL(window.location.href)
+    url.searchParams.delete('chat')
+    window.history.replaceState({}, '', url)
+    ;(async () => {
+      try {
+        const peer = await getProfile(chatWith)
+        // A stranger, a removed friend or a blocked one simply does not open.
+        // Silently: a toast naming somebody you can no longer see would leak
+        // the very thing the block was for.
+        if (peer?.id) setOpenChat(peer)
+      } catch { /* not visible to us any more; stay where we are */ }
+    })()
+  }, [profile])
+
   useEffect(() => {
     if (!profile) return
     const add = new URLSearchParams(window.location.search).get('add')

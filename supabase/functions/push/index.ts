@@ -207,7 +207,13 @@ Deno.serve(async (req) => {
     title: 'Meera',
     body: spec.body(who),
     tag: `${spec.tag}:${user.id}`, // per-sender, so two friends don't overwrite each other
-    url: '/',
+    // Land on the CONVERSATION, not the home screen. Tapping a notification is
+    // the user saying which chat they care about; dropping them on the chat
+    // list makes them say it twice. A call is the exception — the ring is a
+    // full-screen overlay wherever the app happens to be, so it needs no route.
+    // Only an id travels here, never a name: the payload is encrypted
+    // end-to-end, but the URL ends up in history and in the OS.
+    url: kind === 'call' ? '/' : `/?chat=${user.id}`,
     urgent, // the SW keys ring behaviour off this, not off the tag string
   })
 
