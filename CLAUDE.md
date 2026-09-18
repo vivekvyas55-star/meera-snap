@@ -3199,6 +3199,18 @@ night. If you paint a card from JS, add its selector to the list.
   `var(--card)`), so "More to play" rendered dark ink on a dark card at night.
   A surface that follows the theme must not be pinned against it.
 
+**An INLINE fill is invisible to that test, so it has its own inventory**
+(`tests/inline-fill.test.js`). The theme test reads stylesheets; a
+`style={{ background: … }}` is not in one. That is exactly how Play's three
+game cards shipped painted `var(--lavender)`/`--lime`/`--coral` from
+`GAMES[id].tint`, outside the fixed-light context, wearing dark-mode ink at
+night — present, laid out and unreadable, reported as "Play has nothing". The
+same sweep then found `CameraScreen`'s send-to tick painting `var(--ink)` with
+a hardcoded `color: '#fff'`: white on white after dark, so selecting a friend
+showed nothing. Every inline background in `src/` is now listed with the reason
+it is allowed, and a new one fails until somebody decides which it is. Prefer
+painting from a CLASS — that is the half the theme test can see.
+
 `tests/theme-context.test.js` derives the painted selectors from every
 stylesheet and asserts both halves; `tests/solo-screen.test.jsx` and
 `tests/mood-garden.test.jsx` keep their file-local versions of the first half.
