@@ -1447,4 +1447,42 @@ await asUser(A, async () => {
 })
 await asUser(B,async()=>assert.equal((await query('select public.my_key_backup($1) b',['dev-a']))[0].b,null))
 console.log('PASS a friend gets your public key and never the wrapped private one')
+// Pair totals (202609150100). The point of materialising them is that the
+// evidence is deleted: friendship_charms() counts rows still in `messages`, so
+// its numbers drift DOWNWARD as chats clear and the 31-day purge runs. A
+// lifetime total that shrinks is worse than none.
+await db.query('delete from public.together_optin')
+await db.query('delete from public.pair_totals')
+// Not opted in: nothing accrues at all. The opt-in is a COLLECTION gate.
+const tMsg = (await query(`insert into public.messages(user_a,user_b,sender_id,kind,body,delivered_at)
+  values($1,$2,$1,'chat','before opt-in',now()) returning id`,[A,B]))[0].id
+assert.equal((await query('select count(*)::int n from public.pair_totals'))[0].n,0)
+// Both opt in, then it counts.
+await asUser(A,()=>query('select public.set_together_optin($1,true)',[B]))
+await asUser(B,()=>query('select public.set_together_optin($1,true)',[A]))
+await query(`insert into public.messages(user_a,user_b,sender_id,kind,body,delivered_at)
+  values($1,$2,$1,'chat','one',now())`,[A,B])
+const vPath = `${B}/voice/totals.webm`
+await db.query(`insert into storage.objects(bucket_id,name) values('media',$1)`,[vPath])
+await query(`insert into public.messages(user_a,user_b,sender_id,kind,media_path,delivered_at)
+  values($1,$2,$2,'voice',$3,now())`,[A,B,vPath])
+// A call log is not a message — the rule bump_streak and the unread badge use.
+await query(`insert into public.messages(user_a,user_b,sender_id,kind,body,delivered_at)
+  values($1,$2,$1,'call','voice|missed',now())`,[A,B])
+let totals = (await asUser(A,()=>query('select * from public.together_totals($1)',[B])))[0]
+assert.equal(Number(totals.messages),2)
+assert.equal(Number(totals.voice),1)
+// THE WHOLE POINT: the rows go, the count stays.
+await db.query('delete from public.messages where user_a=$1 and user_b=$2',[A,B])
+totals = (await asUser(A,()=>query('select * from public.together_totals($1)',[B])))[0]
+assert.equal(Number(totals.messages),2,'a purged message must not un-count itself')
+// A stranger gets nothing, and neither does an opted-out pair.
+await asUser(C,async()=>assert.equal((await query('select * from public.together_totals($1)',[A])).length,0))
+await asUser(B,()=>query('select public.set_together_optin($1,false)',[A]))
+assert.equal((await query('select count(*)::int n from public.pair_totals'))[0].n,0,'opting out deletes them')
+// No client may write one: the count cannot be forged by whoever it flatters.
+await asUser(A,()=>assert.rejects(
+  query('insert into public.pair_totals(user_a,user_b,messages) values($1,$2,9999)',[A,B]),/permission denied/))
+void tMsg
+console.log('PASS pair totals survive the purge, need both opt-ins, and cannot be written by a client')
 await db.close()

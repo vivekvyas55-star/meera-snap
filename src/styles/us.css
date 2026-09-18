@@ -212,3 +212,16 @@
   font-size: var(--fs-sm);
   line-height: 1.4;
 }
+
+/* What the two of you have sent each other. Counted at send time — see
+   202609150100 — because the messages themselves are ephemeral. */
+.us-totals { display: flex; flex-direction: column; gap: var(--sp-2); }
+.us-totals-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2) var(--sp-4);
+  font-size: var(--fs-body);
+  color: var(--muted);
+}
+.us-totals-row strong { color: var(--ink); font-weight: 400; }
+.us-totals-note { margin: 0; font-size: var(--fs-meta); color: var(--muted); line-height: 1.4; }

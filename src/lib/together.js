@@ -165,3 +165,33 @@ export async function removeScrapbookItem(item) {
   // cleanup worker is about to remove.
   for (const path of [item.media_path, item.thumb_path]) if (path) forgetSignedUrl(path)
 }
+
+// What the two of you have actually sent each other (202609150100).
+//
+// Materialised at send time rather than counted from `messages`, because the
+// messages are ephemeral: `friendship_charms()` counts rows still on disk, so
+// its totals drift DOWNWARD as chats clear and the 31-day purge runs. A
+// lifetime figure that shrinks is worse than none.
+//
+// Three states, as everywhere on this surface. `undefined` is not asked,
+// `null` is the read failed OR the pair has not both opted in — the RPC
+// returns no row rather than a row of zeros, because zeros would render as
+// "you have never spoken", which is a claim. An object is an answer.
+export async function getPairTotals(otherId) {
+  const { data, error } = await supabase.rpc('together_totals', { other: otherId })
+  if (error) {
+    // A database without the migration is not a pair with nothing to show.
+    if (error.code === 'PGRST202') return null
+    throw error
+  }
+  return data?.[0] ?? null
+}
+
+// Backfills from the rows still on disk when a pair first opts in. Deliberately
+// best-effort and deliberately an UNDERCOUNT — it can only see what has not
+// been purged, which is why the row it writes is marked `seeded` and the UI
+// must not call the result a lifetime total.
+export async function seedPairTotals(otherId) {
+  const { error } = await supabase.rpc('seed_pair_totals', { other: otherId })
+  if (error && error.code !== 'PGRST202') throw error
+}

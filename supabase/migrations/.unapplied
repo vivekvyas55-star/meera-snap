@@ -76,3 +76,14 @@
 # Games tab is simply not drawn — and, crucially, a read that merely FAILED
 # still draws it and says so, because a section that hides itself on a flaky
 # network is a failure rendered as an answer.
+
+# 202609150100 counts what the two of you have sent each other, at send time.
+# It puts an AFTER INSERT trigger on `messages` — the hottest write in the app —
+# so it wants a human read before it is live, the same call 202609140034 makes
+# about its own triggers. The body is one upsert of five integers, gated on the
+# Together opt-in, and wrapped in `begin … exception when others then null`, so
+# a counting failure can never fail a send.
+#
+# The client half ships either way: getPairTotals() answers null on PGRST202, so
+# the totals row simply does not render on a database without this.
+202609150100_pair_totals

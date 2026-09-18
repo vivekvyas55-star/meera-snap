@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { answerPrompt, getAnniversary, getStreaks, getTodaysPrompt, listPromptAnswers, signedUrl, streakState } from '../lib/db'
-import { listOnThisDay } from '../lib/together'
+import { getPairTotals, listOnThisDay } from '../lib/together'
 import { loadGameRecord } from '../lib/gameRecord'
 import '../styles/us.css'
 
@@ -75,6 +75,7 @@ export default function UsPair({ me, friend, onOpenChat }) {
   const [prompt, setPrompt] = useState(undefined)
   const [answers, setAnswers] = useState(undefined)
   const [record, setRecord] = useState(undefined)
+  const [totals, setTotals] = useState(undefined)
   const [answer, setAnswer] = useState('')
   const [saving, setSaving] = useState(false)
   // A failed send has to SAY so. The first version swallowed it, so tapping
@@ -86,7 +87,8 @@ export default function UsPair({ me, friend, onOpenChat }) {
     if (!other) return undefined
     let alive = true
     setDays(undefined); setStreak(undefined); setCapsules(undefined)
-    setPrompt(undefined); setRecord(undefined); setAnswers(undefined); setAnswer('')
+    setPrompt(undefined); setRecord(undefined); setAnswers(undefined)
+    setTotals(undefined); setAnswer('')
     // SIX reads, each landing on its own.
     //
     // This was one Promise.allSettled, and that made the whole panel wait for
@@ -115,6 +117,7 @@ export default function UsPair({ me, friend, onOpenChat }) {
     settle(getTodaysPrompt(), setPrompt)
     settle(loadGameRecord(other), setRecord)
     settle(listPromptAnswers(me, other), setAnswers)
+    settle(getPairTotals(other), setTotals)
 
     return () => { alive = false }
   }, [me, other])
@@ -198,6 +201,22 @@ export default function UsPair({ me, friend, onOpenChat }) {
             </div>
           ) : null}
           {sendError && <p className="us-senderr" role="alert">{sendError}</p>}
+        </section>
+      )}
+
+      {/* Counted at send time, so a cleared chat and the 31-day purge do not
+          walk the number backwards. `seeded` means the pair opted in after the
+          fact and the backfill could only see what had not been purged — said
+          out loud rather than presented as a lifetime figure. */}
+      {totals && Number(totals.messages) > 0 && (
+        <section className="us-totals">
+          <div className="us-totals-row">
+            <span><strong>{grouped(Number(totals.messages))}</strong> messages</span>
+            {Number(totals.photos) > 0 && <span><strong>{grouped(Number(totals.photos))}</strong> photos</span>}
+            {Number(totals.videos) > 0 && <span><strong>{grouped(Number(totals.videos))}</strong> videos</span>}
+            {Number(totals.voice) > 0 && <span><strong>{grouped(Number(totals.voice))}</strong> voice notes</span>}
+          </div>
+          {totals.seeded && <p className="us-totals-note">Counted from when you both turned Together on; earlier messages had already cleared.</p>}
         </section>
       )}
 
