@@ -257,11 +257,7 @@ export default function Us({ me, onBack, openPlay, onPlayOpened, onOpenChat }) {
 
         {/* The pair itself, rather than four rows offering to show it to you. */}
         {who && (
-          <UsPair
-            me={me}
-            friend={friends?.find((p) => p.id === who) ?? null}
-            onOpenChat={onOpenChat}
-          />
+          <UsPair me={me} friend={friends?.find((p) => p.id === who) ?? null} />
         )}
 
         {/* The doors that remain, as chips. They were four grey `pc-nav` rows
@@ -284,6 +280,14 @@ export default function Us({ me, onBack, openPlay, onPlayOpened, onOpenChat }) {
           <button type="button" className="us-door" onClick={() => setShowPlay(true)}>
             <GamepadIcon width={20} height={20} aria-hidden="true" />
             <span>Play</span>
+          </button>
+          {/* Just us lives inside a conversation, so this opens the picker and
+              lands you in that chat — a LINK, not a second copy. It sits with
+              the other pair surfaces rather than in a group of its own, which
+              is what made this screen read as two screens stacked. */}
+          <button type="button" className="us-door" onClick={() => setPicking(true)}>
+            <HeartIcon width={20} height={20} aria-hidden="true" />
+            <span>Just us</span>
           </button>
         </div>
 
@@ -358,37 +362,6 @@ export default function Us({ me, onBack, openPlay, onPlayOpened, onOpenChat }) {
         {/* ================================================================
             2 — PLAY  (moved here from Profile, whole)
             ================================================================ */}
-        <SettingsGroup
-          eyebrow="Play"
-          title="Games together"
-          icon={<GamepadIcon width={19} height={19} />}
-        >
-          {/* The description stays outside the button so the button's
-              accessible name is the word on it. The solo games are behind this
-              same door ("Your little break"), deliberately — one door each. */}
-          <p className="field-hint">
-            A game with a friend, played turn by turn inside Meera. Your own puzzles and the
-            runner are in here too, under “Your little break”.
-          </p>
-          {/* Just us is per-conversation by design — it opens from the chip in
-              a thread and from the friend sheet, and nothing about it lives
-              outside one pair. So this is a LINK to it, not a second copy: pick
-              a person and you land in that conversation, where the feature
-              already is. */}
-          <div className="pc-label">Just us</div>
-          <p className="field-hint">
-            Lives inside a conversation. Pick who, and Meera opens that chat.
-          </p>
-          <button onClick={() => setPicking(true)} className="pc-nav">
-            <span className="pc-nav-icon" aria-hidden="true">
-              <HeartIcon width={19} height={19} />
-            </span>
-            <span className="pc-nav-title">Just us</span>
-            <span className="pc-nav-go" aria-hidden="true">
-              <ArrowIcon width={17} height={17} />
-            </span>
-          </button>
-        </SettingsGroup>
       </div>
 
       {picking && (

@@ -67,7 +67,7 @@ function Capsule({ item }) {
   return <img className="us-capsule" src={url} alt="" loading="lazy" />
 }
 
-export default function UsPair({ me, friend, onOpenChat }) {
+export default function UsPair({ me, friend }) {
   const other = friend?.id
   const [days, setDays] = useState(undefined)
   const [streak, setStreak] = useState(undefined)
@@ -167,6 +167,21 @@ export default function UsPair({ me, friend, onOpenChat }) {
               </span>
             )}
           </div>
+          {/* The counts belong IN the hero. As their own block they read as a
+              second, unrelated thing — three separate cards all saying "here
+              are numbers about us" is what made this screen feel stacked. */}
+          {(totals || record?.games > 0) && (
+            <div className="us-hero-counts">
+              {totals && Number(totals.messages) > 0 && <span>{grouped(Number(totals.messages))} messages</span>}
+              {totals && Number(totals.photos) > 0 && <span>{grouped(Number(totals.photos))} photos</span>}
+              {totals && Number(totals.videos) > 0 && <span>{grouped(Number(totals.videos))} videos</span>}
+              {totals && Number(totals.voice) > 0 && <span>{grouped(Number(totals.voice))} voice</span>}
+              {record?.games > 0 && <span>{grouped(record.games)} games</span>}
+            </div>
+          )}
+          {totals?.seeded && (
+            <p className="us-totals-note">Counted from when you both turned Together on.</p>
+          )}
         </section>
       )}
 
@@ -204,33 +219,6 @@ export default function UsPair({ me, friend, onOpenChat }) {
         </section>
       )}
 
-      {/* Counted at send time, so a cleared chat and the 31-day purge do not
-          walk the number backwards. `seeded` means the pair opted in after the
-          fact and the backfill could only see what had not been purged — said
-          out loud rather than presented as a lifetime figure. */}
-      {totals && Number(totals.messages) > 0 && (
-        <section className="us-totals">
-          <div className="us-totals-row">
-            <span><strong>{grouped(Number(totals.messages))}</strong> messages</span>
-            {Number(totals.photos) > 0 && <span><strong>{grouped(Number(totals.photos))}</strong> photos</span>}
-            {Number(totals.videos) > 0 && <span><strong>{grouped(Number(totals.videos))}</strong> videos</span>}
-            {Number(totals.voice) > 0 && <span><strong>{grouped(Number(totals.voice))}</strong> voice notes</span>}
-          </div>
-          {totals.seeded && <p className="us-totals-note">Counted from when you both turned Together on; earlier messages had already cleared.</p>}
-        </section>
-      )}
-
-      {record?.games > 0 && (
-        <p className="us-record">
-          {grouped(record.games)} game{record.games === 1 ? '' : 's'} together
-        </p>
-      )}
-
-      {onOpenChat && (
-        <button type="button" className="us-open" onClick={() => onOpenChat(friend)}>
-          Open your chat
-        </button>
-      )}
     </div>
   )
 }
