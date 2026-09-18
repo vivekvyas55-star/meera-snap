@@ -76,13 +76,3 @@
 # Games tab is simply not drawn — and, crucially, a read that merely FAILED
 # still draws it and says so, because a section that hides itself on a flaky
 # network is a failure rendered as an answer.
-
-# 202609150090 publishes E2E identity PUBLIC keys. Stage 2 of 4 and completely
-# inert: no client reads or writes it yet, and media is still stored exactly as
-# it is today. It is listed here only because it has not been applied by hand.
-#
-# Applying it EARLY is deliberate rather than premature — keys have to exist and
-# be readable for a while before the first encrypted object is sent, or the
-# first send has nobody to wrap a content key for. Apply it in the SQL editor
-# and delete these lines in the same change.
-202609150090_e2e_keys
