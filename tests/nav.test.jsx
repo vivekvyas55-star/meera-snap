@@ -242,7 +242,10 @@ test('Us holds what moved out of Profile — the same controls, one copy each', 
   expect(screen.getByRole('button', { name: /Snap Map/ })).toBeTruthy()
   expect(screen.getByRole('button', { name: /Play/ })).toBeTruthy()
   // "Just us" is a LINK to the conversation it lives in, not a second copy.
-  expect(screen.getByRole('button', { name: 'Just us' })).toBeTruthy()
+  // Matched loosely: the label now says where it GOES ("Just us · chat"),
+  // because "Just us" alone read as a mode rather than a destination. The rule
+  // this pins — one door, reachable from here — is unchanged.
+  expect(screen.getByRole('button', { name: /Just us/ })).toBeTruthy()
 })
 
 test('the solo games keep ONE door — Us does not add a second', async () => {

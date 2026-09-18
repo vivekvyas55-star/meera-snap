@@ -243,3 +243,78 @@
   opacity: 0.7;
   line-height: 1.4;
 }
+
+/* Whose space this is. The avatar row above is initials. */
+.us-selected {
+  margin: 0 0 var(--sp-3);
+  font-size: var(--fs-body);
+  color: var(--muted);
+}
+.us-selected strong { color: var(--ink); font-weight: 400; }
+
+.us-private {
+  margin: 0;
+  font-size: var(--fs-meta);
+  color: var(--muted);
+}
+
+/* Secondary to the number above it, deliberately: that one counts a decision,
+   this counts a habit — and a habit shown as loudly becomes something to
+   protect. There is no "you lost it" state and there must not be one. */
+.us-streak {
+  font-size: var(--fs-sm);
+  opacity: 0.7;
+  white-space: nowrap;
+}
+
+/* Today's question: three states, and the third one is the point. */
+.us-answers { display: flex; flex-direction: column; gap: var(--sp-2); }
+.us-answer-card {
+  background: color-mix(in srgb, var(--ink) 8%, transparent);
+  border-radius: var(--r-row);
+  padding: var(--sp-3);
+}
+.us-answer-who {
+  display: block;
+  font-size: var(--fs-micro);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  opacity: 0.6;
+  margin-bottom: 2px;
+}
+.us-answer-card p { margin: 0; font-size: var(--fs-body); line-height: 1.4; }
+.us-waiting { margin: 0; font-size: var(--fs-sm); opacity: 0.75; }
+.us-reply {
+  align-self: flex-start;
+  background: none;
+  border: 1px solid currentColor;
+  border-radius: var(--r-pill);
+  padding: var(--sp-2) var(--sp-4);
+  min-height: 40px;
+  font-size: var(--fs-sm);
+  color: inherit;
+}
+
+/* One line of shared-activity metadata — never message content. */
+.us-summary {
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--muted);
+}
+
+/* Nothing yet is an invitation, not a blank screen. */
+.us-start { display: flex; flex-direction: column; gap: var(--sp-3); }
+.us-start h2 { margin: 0; font-size: var(--fs-h2); font-weight: 300; letter-spacing: -0.01em; }
+.us-start-row { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+.us-start-row button {
+  background: var(--card);
+  color: var(--ink);
+  border: 1px solid color-mix(in srgb, var(--ink) 14%, transparent);
+  border-radius: var(--r-pill);
+  padding: var(--sp-3) var(--sp-4);
+  min-height: 44px;
+  font-size: var(--fs-body);
+}
+
+/* The primary action: opening the conversation is what people came to do. */
+.us-open { width: 100%; text-align: center; }

@@ -257,7 +257,25 @@ export default function Us({ me, onBack, openPlay, onPlayOpened, onOpenChat }) {
 
         {/* The pair itself, rather than four rows offering to show it to you. */}
         {who && (
-          <UsPair me={me} friend={friends?.find((p) => p.id === who) ?? null} />
+          <>
+            {/* Whose space this is. The row above is initials and avatars, so
+                without this the screen never says who its question, timeline
+                and status actually belong to. The ALIAS, never display_name —
+                a screen someone can glance at over your shoulder follows the
+                same rule as the chat list. */}
+            <p className="us-selected">
+              <strong>{alias(friends.find((p) => p.id === who))}</strong> · Your private space
+            </p>
+            <UsPair
+              me={me}
+              friend={friends?.find((p) => p.id === who) ?? null}
+              alias={alias}
+              waiting={Array.isArray(waiting) ? waiting.length : 0}
+              onOpenChat={onOpenChat}
+              onOpenPlay={() => setShowPlay(true)}
+              onOpenMemories={() => setShowMemories(true)}
+            />
+          </>
         )}
 
         {/* The doors that remain, as chips. They were four grey `pc-nav` rows
@@ -287,7 +305,7 @@ export default function Us({ me, onBack, openPlay, onPlayOpened, onOpenChat }) {
               is what made this screen read as two screens stacked. */}
           <button type="button" className="us-door" onClick={() => setPicking(true)}>
             <HeartIcon width={20} height={20} aria-hidden="true" />
-            <span>Just us</span>
+            <span>Just us · chat</span>
           </button>
         </div>
 
@@ -322,7 +340,6 @@ export default function Us({ me, onBack, openPlay, onPlayOpened, onOpenChat }) {
         <SettingsGroup
           eyebrow="Shared moments"
           title="What friends see"
-          hint="Everything here is visible to accepted friends and nobody else."
           icon={<NoteIcon width={19} height={19} />}
         >
           <div className="pc-label-row">
@@ -333,7 +350,7 @@ export default function Us({ me, onBack, openPlay, onPlayOpened, onOpenChat }) {
             {noteSaved ? <span className="pc-chip on">Live for friends</span> : null}
           </div>
           <p className="field-hint" id="pc-note-hint">
-            A line your friends see under your name. Disappears after 24 hours.
+            Visible to accepted friends · expires in 24h
           </p>
           <input
             value={note}
@@ -344,13 +361,14 @@ export default function Us({ me, onBack, openPlay, onPlayOpened, onOpenChat }) {
             aria-label="Status note"
             aria-describedby="pc-note-hint"
           />
-          <button
-            className="btn-dark"
-            onClick={saveNote}
-            disabled={noteSave.busy || note.trim() === noteSaved.trim()}
-          >
-            {noteSave.busy ? 'Saving…' : note.trim() ? 'Set note' : 'Clear note'}
-          </button>
+          {/* Nothing to save renders NO button rather than a grey one. A
+              disabled control with unchanged text reads as broken — the user
+              cannot tell "there is nothing to do" from "this does not work". */}
+          {(noteSave.busy || note.trim() !== noteSaved.trim()) && (
+            <button className="btn-dark" onClick={saveNote} disabled={noteSave.busy}>
+              {noteSave.busy ? 'Saving…' : note.trim() ? 'Save note' : 'Clear note'}
+            </button>
+          )}
           <SaveState
             state={noteSave.state}
             error={noteSave.error}

@@ -67,7 +67,7 @@ function Capsule({ item }) {
   return <img className="us-capsule" src={url} alt="" loading="lazy" />
 }
 
-export default function UsPair({ me, friend }) {
+export default function UsPair({ me, friend, alias, waiting = 0, onOpenChat, onOpenPlay, onOpenMemories }) {
   const other = friend?.id
   const [days, setDays] = useState(undefined)
   const [streak, setStreak] = useState(undefined)
@@ -124,13 +124,10 @@ export default function UsPair({ me, friend }) {
 
   if (!friend) return null
   const shown = (capsules ?? []).filter((c) => c.thumb_path).slice(0, 8)
-  // pair_prompt returns (id, body, on_date) and nothing about who has answered;
-  // the answers are their own read, and the reveal rule is RLS — you only see
-  // theirs once yours is written, so `theirs` being absent is an answer, not a
-  // gap to fill in.
   const mine = answers?.mine?.body ?? null
   const theirs = answers?.theirs?.body ?? null
   const askable = !!prompt?.id && answers !== undefined && answers !== null && !mine
+  const who = alias?.(friend) || friend.username || 'them'
 
   const send = async () => {
     const body = answer.trim()
@@ -139,49 +136,52 @@ export default function UsPair({ me, friend }) {
     setSendError(null)
     try {
       await answerPrompt(me, other, prompt.id, body, prompt.on_date)
-      // Re-read rather than assume: the reveal rule means answering is also how
-      // THEIR answer becomes visible, and inventing that locally would show an
-      // empty reply where one exists.
       setAnswers(await listPromptAnswers(me, other).catch(() => ({ mine: { body }, theirs: null })))
       setAnswer('')
     } catch (err) {
-      // The draft is deliberately kept: it is the user's sentence, and clearing
-      // it on failure would lose it to a network blip.
       setSendError(err?.message || 'That did not send. Try again.')
     } finally { setSaving(false) }
   }
 
+  // One line of shared-activity metadata, never message content. Built only
+  // from what is already loaded — no extra round trip for a sentence.
+  const summary = [
+    waiting > 0 && `${waiting} waiting on you`,
+    shown.length > 0 && `${shown.length} from this day`,
+    record?.games > 0 && `${grouped(record.games)} games played`,
+  ].filter(Boolean)
+
+  // Nothing to show yet is an INVITATION, not a blank screen.
+  const bare = days == null && !shown.length && !prompt?.body && !totals
+
   return (
     <div className="us-pair">
-      {/* Days together is the one number that is genuinely about the pair and
-          not about activity — it counts a decision, not a habit, which is why
-          it can be the hero without becoming a streak to protect. */}
+      <p className="us-private">Private to you and {who}</p>
+
       {days != null && (
         <section className="us-hero">
           <span className="us-hero-n">{grouped(days)}</span>
           <div className="us-hero-foot">
             <span>days together</span>
             {streak?.count > 0 && (
-              <span className="us-chip" aria-label={`${streak.count} day streak`}>
-                <span aria-hidden="true">🔥</span> {streak.count}
+              // Secondary, deliberately. The number above counts a decision;
+              // this counts a habit, and a habit presented as loudly becomes
+              // something to protect rather than something that happened.
+              // There is no "you lost it" state anywhere and there must not be.
+              <span className="us-streak" title={`${streak.count} day connection streak, based on shared activity`}>
+                {streak.count} day streak
               </span>
             )}
           </div>
-          {/* The counts belong IN the hero. As their own block they read as a
-              second, unrelated thing — three separate cards all saying "here
-              are numbers about us" is what made this screen feel stacked. */}
           {(totals || record?.games > 0) && (
             <div className="us-hero-counts">
               {totals && Number(totals.messages) > 0 && <span>{grouped(Number(totals.messages))} messages</span>}
               {totals && Number(totals.photos) > 0 && <span>{grouped(Number(totals.photos))} photos</span>}
               {totals && Number(totals.videos) > 0 && <span>{grouped(Number(totals.videos))} videos</span>}
-              {totals && Number(totals.voice) > 0 && <span>{grouped(Number(totals.voice))} voice</span>}
               {record?.games > 0 && <span>{grouped(record.games)} games</span>}
             </div>
           )}
-          {totals?.seeded && (
-            <p className="us-totals-note">Counted from when you both turned Together on.</p>
-          )}
+          {totals?.seeded && <p className="us-totals-note">Counted from when you both turned Together on.</p>}
         </section>
       )}
 
@@ -192,15 +192,32 @@ export default function UsPair({ me, friend }) {
         </section>
       )}
 
+      {/* THREE states, and the third one is the point: an unanswered question
+          used to render as an incomplete card with no explanation of what it
+          was waiting for. */}
       {prompt?.body && (
         <section className="us-question">
           <span className="eyebrow">Today&rsquo;s question</span>
           <p className="us-q">{prompt.body}</p>
+
           {mine ? (
-            <p className="us-answered">
-              You said: {mine}
-              {theirs ? <><br />They said: {theirs}</> : null}
-            </p>
+            <div className="us-answers">
+              <div className="us-answer-card">
+                <span className="us-answer-who">Your answer</span>
+                <p>{mine}</p>
+              </div>
+              {theirs ? (
+                <div className="us-answer-card">
+                  <span className="us-answer-who">{who}</span>
+                  <p>{theirs}</p>
+                </div>
+              ) : (
+                <p className="us-waiting">Waiting for {who}&rsquo;s answer.</p>
+              )}
+              {theirs && onOpenChat && (
+                <button type="button" className="us-reply" onClick={() => onOpenChat(friend)}>Reply in chat</button>
+              )}
+            </div>
           ) : askable ? (
             <div className="us-answer">
               <input
@@ -212,13 +229,31 @@ export default function UsPair({ me, friend }) {
                 onChange={(e) => setAnswer(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter') send() }}
               />
-              <button type="button" className="circle filled" disabled={!answer.trim() || saving} onClick={send} aria-label="Send your answer">→</button>
+              <button type="button" className="circle filled" disabled={!answer.trim() || saving} onClick={send} aria-label="Send your answer">&rarr;</button>
             </div>
           ) : null}
           {sendError && <p className="us-senderr" role="alert">{sendError}</p>}
         </section>
       )}
 
+      {summary.length > 0 && <p className="us-summary">{summary.join(' · ')}</p>}
+
+      {bare && (
+        <section className="us-start">
+          <h2>Start something small together</h2>
+          <div className="us-start-row">
+            {onOpenPlay && <button type="button" onClick={onOpenPlay}>Play something</button>}
+            {onOpenMemories && <button type="button" onClick={onOpenMemories}>Save a memory</button>}
+          </div>
+        </section>
+      )}
+
+      {/* THE primary action. The four doors below are equal-weight by design;
+          this one is not, because opening the conversation is what somebody
+          came here to do more often than anything else on the screen. */}
+      {onOpenChat && (
+        <button type="button" className="us-open" onClick={() => onOpenChat(friend)}>Open chat</button>
+      )}
     </div>
   )
 }
