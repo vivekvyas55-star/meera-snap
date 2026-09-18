@@ -31,6 +31,36 @@ const newestMigration = expectedMigrations.at(-1).replace(/\.sql$/, '')
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
+  build: {
+    rollupOptions: {
+      output: {
+        // VENDOR IS SPLIT OUT FOR THE RETURNING VISITOR, not the first one.
+        //
+        // First load downloads the same bytes either way. What changes is the
+        // SECOND load: react, react-dom and supabase-js are ~400 kB that never
+        // change between deploys, and while they sat in the entry chunk every
+        // deploy gave them a new content hash and every phone re-downloaded the
+        // lot. That is the wrong trade for a PWA three people open daily and
+        // which shipped fifteen times in one afternoon — and it is felt as
+        // "everything takes too long to load", because after a deploy it does.
+        //
+        // Now a deploy invalidates the app chunk and leaves vendor cached.
+        //
+        // Leaflet and qrcode are deliberately absent: they are already isolated
+        // by the lazy imports of SnapMap and Snapcode, and naming them here
+        // would pull them back into an eagerly-loaded chunk — the exact mistake
+        // one-door.test.js exists to catch, where Us statically importing Play
+        // downloaded seven games to open a tab.
+        // A function, not a map: rolldown only accepts the callback form.
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return undefined
+          if (/node_modules[\\/](react|react-dom|scheduler)[\\/]/.test(id)) return 'react'
+          if (id.includes('@supabase')) return 'supabase'
+          return undefined
+        },
+      },
+    },
+  },
   define: {
     __SCHEMA_EXPECTED__: JSON.stringify(newestMigration),
     // The count, because the newest id alone cannot see a gap in the middle:
