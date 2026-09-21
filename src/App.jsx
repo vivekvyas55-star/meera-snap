@@ -301,6 +301,20 @@ function Shell() {
 
   // A scanned Snapcode opens the app at ?add=<username>; once signed in, send
   // that friend request, then strip the param so it can't fire twice.
+  // Tell the service worker which conversation is on screen, so it can suppress
+  // exactly the notification that would be redundant and no other. Best-effort
+  // in every direction: no worker, no controller, or a worker that has been
+  // killed and restarted all mean it simply notifies, which is the safe way for
+  // this to fail.
+  useEffect(() => {
+    try {
+      navigator.serviceWorker?.controller?.postMessage({
+        type: 'meera:open-chat',
+        id: openChat?.id ?? null,
+      })
+    } catch { /* not supported here; the worker just keeps notifying */ }
+  }, [openChat])
+
   // A notification that lands you on the home screen has made you do the work
   // twice: you already told the phone which conversation you cared about by
   // tapping it. `?chat=<id>` is what the service worker navigates to, and the

@@ -7,12 +7,23 @@ const app = fs.readFileSync('src/App.jsx', 'utf8')
 
 // What separates a notification that feels professional from one that annoys.
 
-test('nobody is notified while they are looking at the app', () => {
-  // A banner for the message you are reading is the commonest way a messaging
-  // app feels cheap — and the app already shows it: the Realtime INSERT puts it
-  // in the thread, and a call rings through CallOverlay.
+test('only a GENUINELY redundant notification is suppressed', () => {
+  // "Focused" alone is too blunt twice over: a message from a different
+  // conversation still deserves telling you, and a push that shows nothing
+  // costs Chrome's notification budget — spend it and the browser substitutes
+  // its own "This site has been updated in the background", which is worse than
+  // the banner this removes.
   expect(sw).toMatch(/c\.focused && c\.visibilityState === 'visible'/)
-  expect(sw).toMatch(/if \(looking\) return/)
+  expect(sw).toMatch(/looking && \(thisChat \|\| data\.urgent\)/)
+  expect(sw).toMatch(/openChatId && String\(data\.url \|\| ''\)\.includes\(openChatId\)/)
+})
+
+test('a killed worker fails toward notifying, not toward silence', () => {
+  // openChatId is deliberately not persisted: a restarted worker knows nothing,
+  // so it notifies. A missed message is the outcome push exists to prevent.
+  expect(sw).toMatch(/let openChatId = null/)
+  expect(sw).not.toMatch(/openChatId.*(localStorage|indexedDB|caches)/)
+  expect(app).toMatch(/type: 'meera:open-chat'/)
 })
 
 test('a tap lands on the conversation, not the home screen', () => {
@@ -45,5 +56,5 @@ test('a ring stays on screen and a message does not', () => {
 test('the worker VERSION moved, or browsers keep the old one', () => {
   // public/sw.js changed in this commit; without a bump the new push handler
   // never activates and every rule above is fiction.
-  expect(sw).toMatch(/const VERSION = 'meera-v3'/)
+  expect(sw).toMatch(/const VERSION = 'meera-v4'/)
 })

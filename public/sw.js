@@ -8,7 +8,7 @@
 
 // Bump on every service-worker change, or browsers keep serving the old one and
 // new handlers (push, notificationclick) never activate.
-const VERSION = 'meera-v3'
+const VERSION = 'meera-v4'
 const SHELL = `${VERSION}-shell`
 
 // Precache only the entry point. Hashed build assets are picked up at runtime.
@@ -37,6 +37,16 @@ self.addEventListener('activate', (event) => {
 // --- Web Push --------------------------------------------------------------
 // The payload arrives encrypted end-to-end (RFC 8291) and is decrypted by the
 // browser before it gets here, so the push service never saw this text.
+// Which conversation the app currently has open, as the page last reported it.
+// Deliberately NOT persisted: if the worker is killed and restarts this is null
+// again, so the failure direction is "show a notification that was not strictly
+// needed" rather than "stay silent about a message". That is the right way
+// round — a missed message is the one outcome push exists to prevent.
+let openChatId = null
+self.addEventListener('message', (event) => {
+  if (event.data?.type === 'meera:open-chat') openChatId = event.data.id ?? null
+})
+
 self.addEventListener('push', (event) => {
   let data = {}
   try {
@@ -46,16 +56,23 @@ self.addEventListener('push', (event) => {
   }
   const title = data.title || 'Meera'
   event.waitUntil((async () => {
-    // DO NOT notify somebody who is already looking at Meera.
+    // Suppress ONLY what is genuinely redundant, and never more.
     //
-    // A banner for the message you are reading is the single most common way a
-    // messaging app feels unprofessional, and the app already shows it: the
-    // Realtime INSERT puts it in the thread, and a call rings through
-    // CallOverlay. A call is still let through when the app is merely OPEN but
-    // not focused, because a phone in a pocket is not "already looking".
+    // A banner for the message you are reading is the commonest way a messaging
+    // app feels unprofessional — the Realtime INSERT already put it in the
+    // thread. But "focused" alone is too blunt in two directions. A message
+    // from a DIFFERENT conversation still deserves telling you, and, more
+    // seriously, a push event that shows nothing costs Chrome's notification
+    // budget: spend it and the browser substitutes its own "This site has been
+    // updated in the background", which is worse than the banner this removes.
+    //
+    // So: only when they are looking at THIS conversation, or when it is a ring
+    // and CallOverlay is already on screen. Both are rare and both are exactly
+    // redundant, which keeps the budget intact.
     const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true })
     const looking = clients.some((c) => c.focused && c.visibilityState === 'visible')
-    if (looking) return
+    const thisChat = openChatId && String(data.url || '').includes(openChatId)
+    if (looking && (thisChat || data.urgent)) return
 
     return self.registration.showNotification(title, {
       body: data.body || '',
