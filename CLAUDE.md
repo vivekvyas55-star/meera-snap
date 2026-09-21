@@ -3,6 +3,12 @@
 > transactional recovery setup, and separate provider/hook modules. Historical
 > notes below describe earlier versions; do not replay their SQL instructions.
 >
+> **Live as of 21 Sep 2026.** `public/sw.js` is at **meera-v4** — bump VERSION
+> on every change to it or browsers keep the old worker and new handlers never
+> activate. Notifications deep-link to `/?chat=<id>` and suppress only a
+> genuinely redundant banner; see "Web Push" for why wholesale suppression is a
+> bug rather than a nicety.
+>
 > **Live as of 18 Sep 2026.** Production is `mqxfggwncoazgmcswedi`. Applied
 > today: `202609150070` (a pending friend request was a read on the whole
 > profile row, birth year included), `202609150080` (a recipient could reset a
@@ -1497,6 +1503,32 @@ they fall through to the glare branch and answer the caller with "busy".
 `startCall` no longer refuses when a friend is offline; it rings, and only gives
 up early if push reported zero deliveries AND they aren't in the app.
 
+**A notification must not interrupt somebody already reading the message, and
+must not be silenced wholesale either.** Both halves matter, and the second one
+bit within an hour of shipping the first.
+
+- **A tap lands on the CONVERSATION.** The payload carries `/?chat=<id>` and
+  App.jsx opens it, using the same idiom as the `?add=` Snapcode link and
+  stripping the param immediately so a reload or a shared URL cannot reopen it.
+  Landing on the chat list makes the user say twice which conversation they
+  meant. Only a uuid travels: the payload is encrypted end to end, but a URL
+  ends up in history and in the OS. A **call routes nowhere** — the ring is a
+  full-screen overlay wherever the app already is.
+- **Suppression is narrow on purpose.** The first version was
+  `if (looking) return` — silence every push while the app is focused — and
+  that is wrong twice. A message from a DIFFERENT conversation still deserves
+  telling you. And **a push event that shows no notification spends Chrome's
+  notification budget**; spend it and the browser substitutes its own "This
+  site has been updated in the background", which is worse than the banner the
+  suppression was removing. So it suppresses only the conversation actually on
+  screen, or a ring while `CallOverlay` is already up.
+- The page reports the open chat to the worker (`meera:open-chat`), and
+  `openChatId` is **deliberately not persisted**. A worker that has been killed
+  and restarted knows nothing and simply notifies — a missed message is the one
+  outcome push exists to prevent, so that is the direction to fail in.
+- A peer who is no longer visible opens nothing, **silently**: a toast naming
+  somebody you can no longer see would leak the thing the block was for.
+
 **Platform reality.** Android/desktop Chrome work from a normal tab. **iOS 16.4+
 works only for a Home-Screen-installed PWA** — in a Safari tab `PushManager`
 doesn't exist, so `blockedReason()` tells the user to install rather than showing
@@ -2096,6 +2128,18 @@ RPC below was already applied and already reachable.
   `pair_prompt` id is refused with "The daily question has changed" every single
   time. The surface that WRITES has to read from the function the writer checks.
   A silent `catch` there rendered a raising RPC as a dead button.
+- **FOUR tiles, and no alias in visible copy.** Just us was a fifth tile and is
+  gone: its real door is the friend sheet inside a conversation, so the tile was
+  a convenience link making a fifth action compete with the four surfaces that
+  belong here. Its picker sheet went with it rather than being left unreachable,
+  and `tests/nav.test.jsx` asserts its ABSENCE with the reason. The selected
+  label reads "Your private space" and the privacy line "Only you and this
+  person can see it" — the avatar row already says who, and the rotating alias
+  is a privacy affordance, not a caption. The `alias` prop was removed from
+  `UsPair` rather than left unused, so nothing invites it back into copy.
+- **The question card is `clamp(18px, 5vw, 22px)` and one padding step down.**
+  At 360px it was taller than the fold on its own, pushing the answer field off
+  the screen whose whole point is answering.
 - The four doors are ONE segmented control, deliberately not a second tab bar:
   it would sit directly above the real one, cost ~52px on the screen that
   finally has content, and imply the four are peers you switch between. They are
