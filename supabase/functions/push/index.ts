@@ -115,19 +115,12 @@ async function encryptPayload(plaintext: string, p256dh: string, authSecret: str
 // lock screen ("Your account was compromised, tap here") with Meera's name and
 // icon on it. The client picks a `kind`; the wording is ours.
 //
-// The sender's name is included — the payload is encrypted end to end, so the
-// push service never sees it — but message CONTENT never is. A notification is
-// a nudge; the app is where content lives. That keeps message bodies off the
-// lock screen of a phone someone else might be holding, consistent with the
-// reverse-privacy and ephemerality choices elsewhere in the app.
-const KINDS: Record<string, { body: (who: string) => string; tag: string; urgent: boolean }> = {
-  chat:    { body: (w) => `${w} sent you a message`,    tag: 'chat',  urgent: false },
-  snap:    { body: (w) => `${w} sent you a snap`,       tag: 'chat',  urgent: false },
-  voice:   { body: (w) => `${w} sent you a voice note`, tag: 'chat',  urgent: false },
-  sticker: { body: (w) => `${w} sent you a sticker`,    tag: 'chat',  urgent: false },
-  call:    { body: (w) => `${w} is calling…`,           tag: 'call',  urgent: true  },
-  game:    { body: (w) => `${w} invited you to play`,   tag: 'game',  urgent: false },
-  game_accept: { body: (w) => `${w} accepted your game invite`, tag: 'game', urgent: false },
+// Names and content never enter notification text, even on an unlocked phone.
+const KINDS: Record<string, { tag: string; urgent: boolean }> = {
+  chat: { tag: 'chat', urgent: false }, snap: { tag: 'chat', urgent: false },
+  voice: { tag: 'chat', urgent: false }, sticker: { tag: 'chat', urgent: false },
+  call: { tag: 'call', urgent: true }, game: { tag: 'game', urgent: false },
+  game_accept: { tag: 'game', urgent: false },
 }
 
 // --- handler ---------------------------------------------------------------
@@ -186,26 +179,11 @@ Deno.serve(async (req) => {
     return json({ sent: 0, reason: 'no subscriptions' })
   }
 
-  const { data: sender } = await admin
-    .from('profiles')
-    .select('display_name, username')
-    .eq('id', user.id)
-    .maybeSingle()
-  // M3: the VERB is composed server-side from KINDS, but the SUBJECT is the
-  // sender's own display_name, which has no length or content limit in SQL —
-  // the 40-char cap was only a React prop. Without this a friend can put
-  // "Meera Security — verify at evil.tld" on your lock screen under Meera's
-  // own name and icon. Collapse whitespace (newlines split a notification into
-  // fake lines) and cut it short.
-  const who = ((sender?.display_name?.trim() || sender?.username || 'Someone')
-    .replace(/\s+/g, ' ')
-    .slice(0, 32)) || 'Someone'
-
   const spec = KINDS[kind]
   const urgent = spec.urgent
   const payload = JSON.stringify({
     title: 'Meera',
-    body: spec.body(who),
+    body: 'Open Meera to view your update.',
     tag: `${spec.tag}:${user.id}`, // per-sender, so two friends don't overwrite each other
     // Land on the CONVERSATION, not the home screen. Tapping a notification is
     // the user saying which chat they care about; dropping them on the chat

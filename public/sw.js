@@ -8,7 +8,7 @@
 
 // Bump on every service-worker change, or browsers keep serving the old one and
 // new handlers (push, notificationclick) never activate.
-const VERSION = 'meera-v4'
+const VERSION = 'meera-v5'
 const SHELL = `${VERSION}-shell`
 
 // Precache only the entry point. Hashed build assets are picked up at runtime.
@@ -54,7 +54,7 @@ self.addEventListener('push', (event) => {
   } catch {
     data = { title: 'Meera', body: event.data ? event.data.text() : '' }
   }
-  const title = data.title || 'Meera'
+  const title = 'Meera'
   event.waitUntil((async () => {
     // Suppress ONLY what is genuinely redundant, and never more.
     //
@@ -75,7 +75,7 @@ self.addEventListener('push', (event) => {
     if (looking && (thisChat || data.urgent)) return
 
     return self.registration.showNotification(title, {
-      body: data.body || '',
+      body: 'Open Meera to view your update.',
       icon: '/icons/icon-192.png',
       badge: '/icons/icon-192.png',
       // Same tag replaces rather than stacks — ten chats shouldn't mean ten

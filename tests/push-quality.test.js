@@ -56,5 +56,5 @@ test('a ring stays on screen and a message does not', () => {
 test('the worker VERSION moved, or browsers keep the old one', () => {
   // public/sw.js changed in this commit; without a bump the new push handler
   // never activates and every rule above is fiction.
-  expect(sw).toMatch(/const VERSION = 'meera-v4'/)
+  expect(sw).toMatch(/const VERSION = 'meera-v5'/)
 })
