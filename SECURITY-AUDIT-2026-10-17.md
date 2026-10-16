@@ -45,4 +45,4 @@ Sources: https://supabase.com/docs/guides/storage/buckets/fundamentals ; https:/
 
 ## Release
 
-Production backend applied. Frontend deployment and header receipts pending final release verification.
+Production backend applied. Code SHA 20797d8 pushed to GitHub and deployed as dpl_FS3dw73jY4m47igoeLEMgosCPohf, READY at https://meera.bigadtruck.com. Served entry /assets/index-DTz6AbHr.js matches the tested build. All six configured security headers verified over HTTP. Signed-in Chrome chat-list smoke check loaded with no captured console errors; no message or media was sent. Storage verification confirmed private=false is NOT set: public is false, with 52428800 byte limit and the expected MIME allowlist.
