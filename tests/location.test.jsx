@@ -17,7 +17,7 @@ function fakeGeolocation() {
     clearWatch: vi.fn((id) => watchers.delete(id)),
     getCurrentPosition: vi.fn(),
     watchers,
-    emit: (coords) => act(() => watchers.forEach((w) => w.ok({ coords }))),
+    emit: (coords) => act(async () => { await Promise.all([...watchers.values()].map((w) => w.ok({ coords }))) }),
     fail: (code) => act(() => watchers.forEach((w) => w.err({ code }))),
   }
   return api
@@ -66,7 +66,7 @@ test('sharing starts exactly one watch and publishes the first fix', async () =>
   render({ active: true, onFix })
   await waitFor(() => expect(geo.watchPosition).toHaveBeenCalledTimes(1))
 
-  geo.emit({ latitude: 12.9, longitude: 77.6, accuracy: 20 })
+  await geo.emit({ latitude: 12.9, longitude: 77.6, accuracy: 20 })
   expect(onFix).toHaveBeenCalledWith({ lat: 12.9, lng: 77.6, accuracy: 20 })
 })
 
@@ -77,14 +77,14 @@ test('a chatty watch is throttled down to one write, not one per fix', async () 
 
   // watchPosition on a moving phone can fire every second. Each of these is a
   // real move; only the first may reach the database.
-  geo.emit({ latitude: 12.9, longitude: 77.6, accuracy: 20 })
-  geo.emit({ latitude: 12.91, longitude: 77.6, accuracy: 20 })
-  geo.emit({ latitude: 12.92, longitude: 77.6, accuracy: 20 })
+  await geo.emit({ latitude: 12.9, longitude: 77.6, accuracy: 20 })
+  await geo.emit({ latitude: 12.91, longitude: 77.6, accuracy: 20 })
+  await geo.emit({ latitude: 12.92, longitude: 77.6, accuracy: 20 })
   expect(onFix).toHaveBeenCalledTimes(1)
 
   // ...until the minute is up.
   advance(MIN_WRITE_MS + 1000)
-  geo.emit({ latitude: 12.93, longitude: 77.6, accuracy: 20 })
+  await geo.emit({ latitude: 12.93, longitude: 77.6, accuracy: 20 })
   expect(onFix).toHaveBeenCalledTimes(2)
 })
 
@@ -94,12 +94,12 @@ test('the stored row is adopted, so re-opening an unmoved map writes nothing', a
   render({ active: true, seed, onFix })
   await waitFor(() => expect(geo.watchPosition).toHaveBeenCalled())
 
-  geo.emit({ latitude: 12.9, longitude: 77.6, accuracy: 20 })
+  await geo.emit({ latitude: 12.9, longitude: 77.6, accuracy: 20 })
   expect(onFix).not.toHaveBeenCalled()
 
   // But a phone that has sat still for the whole heartbeat still checks in.
   advance(HEARTBEAT_MS + 1000)
-  geo.emit({ latitude: 12.9, longitude: 77.6, accuracy: 20 })
+  await geo.emit({ latitude: 12.9, longitude: 77.6, accuracy: 20 })
   expect(onFix).toHaveBeenCalledTimes(1)
 })
 
@@ -121,14 +121,14 @@ test('re-sharing after Ghost publishes immediately rather than throttling', asyn
   const onFix = vi.fn()
   const view = render({ active: true, onFix })
   await waitFor(() => expect(geo.watchPosition).toHaveBeenCalled())
-  geo.emit({ latitude: 12.9, longitude: 77.6, accuracy: 20 })
+  await geo.emit({ latitude: 12.9, longitude: 77.6, accuracy: 20 })
   expect(onFix).toHaveBeenCalledTimes(1)
 
   // Go Ghost deletes the row; the position we remember writing is gone with it.
   view.rerender({ active: false, onFix })
   view.rerender({ active: true, onFix })
   await waitFor(() => expect(geo.watchPosition).toHaveBeenCalledTimes(2))
-  geo.emit({ latitude: 12.9, longitude: 77.6, accuracy: 20 })
+  await geo.emit({ latitude: 12.9, longitude: 77.6, accuracy: 20 })
   expect(onFix).toHaveBeenCalledTimes(2)
 })
 
@@ -175,7 +175,7 @@ test('backgrounding the app stops the watch; coming back resumes it', async () =
 
   document.hidden = false
   act(() => document.dispatchEvent(new Event('visibilitychange')))
-  expect(geo.watchPosition).toHaveBeenCalledTimes(2)
+  await waitFor(() => expect(geo.watchPosition).toHaveBeenCalledTimes(2))
 })
 
 test('Safari has no geolocation permission descriptor, and is allowed anyway', async () => {
@@ -193,4 +193,48 @@ test('Safari has no geolocation permission descriptor, and is allowed anyway', a
 
   setPermission(undefined)
   await expect(watchAllowed()).resolves.toBe(true)
+})
+
+
+test('restoring permission restarts live updates without toggling sharing', async () => {
+  const status = new EventTarget()
+  status.state = 'denied'
+  Object.defineProperty(navigator, 'permissions', { configurable: true, value: { query: vi.fn(async () => status) } })
+  const onReady = vi.fn()
+  const view = render({ active: true, onFix: vi.fn(), onReady })
+  await act(async () => {})
+  expect(geo.watchPosition).not.toHaveBeenCalled()
+  status.state = 'granted'
+  act(() => status.dispatchEvent(new Event('change')))
+  expect(geo.watchPosition).toHaveBeenCalledTimes(1)
+  expect(onReady).toHaveBeenCalled()
+  status.state = 'denied'
+  act(() => status.dispatchEvent(new Event('change')))
+  expect(geo.watchers.size).toBe(0)
+  view.unmount()
+  status.state = 'granted'
+  act(() => status.dispatchEvent(new Event('change')))
+  expect(geo.watchPosition).toHaveBeenCalledTimes(1)
+})
+
+test('a failed database write does not suppress the next unchanged fix', async () => {
+  const onFix = vi.fn().mockResolvedValueOnce(false).mockResolvedValue(true)
+  render({ active: true, onFix })
+  await waitFor(() => expect(geo.watchPosition).toHaveBeenCalled())
+  const coords = { latitude: 12.9, longitude: 77.6, accuracy: 20 }
+  await geo.emit(coords)
+  await geo.emit(coords)
+  expect(onFix).toHaveBeenCalledTimes(2)
+  await geo.emit(coords)
+  expect(onFix).toHaveBeenCalledTimes(2)
+})
+
+test('late geolocation callbacks after unmount cannot publish', async () => {
+  const onFix = vi.fn()
+  const view = render({ active: true, onFix })
+  await waitFor(() => expect(geo.watchPosition).toHaveBeenCalled())
+  const callback = geo.watchPosition.mock.calls[0][0]
+  view.unmount()
+  await act(async () => callback({ coords: { latitude: 12, longitude: 77, accuracy: 20 } }))
+  expect(onFix).not.toHaveBeenCalled()
 })

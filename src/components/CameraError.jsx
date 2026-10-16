@@ -27,7 +27,10 @@ export default function CameraError({ error, kind, blocked, retrying, onRetry })
           </button>
         </>
       ) : (
-        kind === 'denied' && <p className="cam-error-help">{unblockSteps()}</p>
+        kind === 'denied' && <>
+          <p className="cam-error-help">{unblockSteps()}</p>
+          <button type="button" className="cam-error-retry" disabled={retrying} onClick={onRetry}>I’ve updated settings</button>
+        </>
       )}
     </div>
   )

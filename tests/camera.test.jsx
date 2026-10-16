@@ -51,3 +51,15 @@ test('a released camera is re-acquired rather than left black', async () => {
   await act(async () => { await result.current.start() })
   expect(getUserMedia).toHaveBeenCalledTimes(2)
 })
+
+
+test('denied camera does not re-prompt on automatic start; explicit retry can recover', async () => {
+  getUserMedia.mockRejectedValueOnce(Object.assign(new Error('denied'), { name: 'NotAllowedError' }))
+  const { result } = renderHook(useCamera)
+  await act(async () => { await result.current.start() })
+  await act(async () => { await result.current.start(); await result.current.start() })
+  expect(getUserMedia).toHaveBeenCalledTimes(1)
+  await act(async () => { await result.current.retry() })
+  expect(getUserMedia).toHaveBeenCalledTimes(2)
+  expect(result.current.ready).toBe(true)
+})

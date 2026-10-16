@@ -63,5 +63,13 @@ export async function checkSharedPlay(db, asUser, A, B, C) {
   await create(A,'date',{text:'A tiny adventure'})
   await db.query('delete from public.friendships where user_a=$1 and user_b=$2',[A,B])
   assert.equal((await q('select count(*)::int n from public.shared_play'))[0].n,0,'unfriending immediately removes shared content')
+  await db.query('delete from public.locations')
+  assert.equal((await asUser(A,()=>q('select refresh_live_location(12,77) ok')))[0].ok,false,'automatic fix cannot create a share')
+  await db.query("insert into public.locations(user_id,lat,lng,sharing,expires_at) values($1,12,77,true,now()+interval '1 hour')",[A])
+  assert.equal((await asUser(B,()=>q('select refresh_live_location(13,78) ok')))[0].ok,false,'cannot update someone else')
+  assert.equal((await asUser(A,()=>q('select refresh_live_location(13,78) ok')))[0].ok,true)
+  await db.query("update public.locations set expires_at=now()-interval '1 second' where user_id=$1",[A])
+  assert.equal((await asUser(A,()=>q('select refresh_live_location(14,79) ok')))[0].ok,false,'expired sharing cannot be resurrected')
+  await db.query('delete from public.locations')
   console.log('PASS shared play: secrets, acceptance, turns, retry, expiry, shared dates and blocked access')
 }

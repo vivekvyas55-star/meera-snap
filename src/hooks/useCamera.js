@@ -48,6 +48,7 @@ export function useCamera() {
   // two permission prompts back to back, and the first stream thrown away by
   // the second one's stop().
   const pendingRef = useRef(null)
+  const deniedRef = useRef(false)
 
   const stop = useCallback(() => {
     genRef.current += 1
@@ -95,6 +96,7 @@ export function useCamera() {
 
   const acquire = useCallback(
     async (mode) => {
+      if (deniedRef.current) return
       setError(null)
       setErrorKind(null)
       const fail = (kind, message) => {
@@ -149,6 +151,7 @@ export function useCamera() {
           setReady(true)
           return
         } catch (e) {
+          if (gen !== genRef.current) return
           lastErr = e
           if (e.name === 'NotAllowedError') break // no point retrying a denial
         }
@@ -157,6 +160,7 @@ export function useCamera() {
         // Dismissed-this-once and blocked-forever are the same error; only the
         // Permissions API separates them, and it decides whether we offer a
         // Retry or send the user to their browser settings.
+        deniedRef.current = true
         const denied = await probeCameraBlocked()
         setBlocked(denied)
         fail(
@@ -197,6 +201,8 @@ export function useCamera() {
   // prevent. It re-probes rather than trusting the last answer, because the
   // user may have just fixed the grant in their browser settings.
   const retry = useCallback(async () => {
+    if (await probeCameraBlocked() === true) { setBlocked(true); return }
+    deniedRef.current = false
     setBlocked(null)
     return start()
   }, [start])

@@ -661,6 +661,14 @@ export async function setMyLocation(me, lat, lng, sharing) {
   if (error) throw error
 }
 
+// Unlike an explicit Share action, a background fix must never insert a row
+// or renew an expired share. The server checks expiry and ownership atomically.
+export async function refreshLiveLocation(lat, lng) {
+  const { data, error } = await supabase.rpc('refresh_live_location', { latitude: lat, longitude: lng })
+  if (error) throw error
+  return data === true
+}
+
 // Go Ghost: delete the row so no coordinates linger server-side (data-min).
 export async function stopSharingLocation(me) {
   const { error } = await supabase.from('locations').delete().eq('user_id', me)

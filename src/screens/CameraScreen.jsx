@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { listFriendsWithProfiles, postStory, saveToMemory, sendSnap } from '../lib/db'
+import { useCall } from '../hooks/useCall'
 import { useCamera } from '../hooks/useCamera'
 import { useAuth } from '../hooks/useAuth'
 import { useToast } from '../hooks/useToast'
@@ -60,6 +61,8 @@ const CTX_FILTER_SUPPORTED = (() => {
 })()
 
 export default function CameraScreen({ active, onSent, onEditing }) {
+  const calling = !!useCall()?.call
+  active = active && !calling
   const { profile } = useAuth()
   const me = profile.id
   const toast = useToast()

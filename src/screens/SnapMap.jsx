@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
-import { getMyLocation, getProfile, getVisibleLocations, setMyLocation, stopSharingLocation } from '../lib/db'
+import { getMyLocation, refreshLiveLocation, getProfile, getVisibleLocations, setMyLocation, stopSharingLocation } from '../lib/db'
 import { useAuth } from '../hooks/useAuth'
 import { useAlias } from '../hooks/useAliasClock'
 import { isSecureContext } from '../hooks/useCamera'
@@ -43,6 +43,7 @@ export default function SnapMap({ onBack }) {
   const mapRef = useRef(null)
   const markersRef = useRef({})
   const profileCache = useRef({}) // user_id -> profile, so a reload isn't N+1 again
+  const loadGeneration = useRef(0)
   const didFitRef = useRef(false) // the map is framed once, never re-framed under the user
   // null = not known yet. Defaulting to false rendered the Ghost panel and its
   // Share button while getMyLocation was still in flight, so a tap during that
@@ -67,6 +68,7 @@ export default function SnapMap({ onBack }) {
   // never resurrect the row they just deleted.
   const publishOk = useRef(false)
   const [liveBlocked, setLiveBlocked] = useState(false)
+  const [liveError, setLiveError] = useState(null)
 
   useEffect(() => {
     const map = L.map(mapEl.current, { zoomControl: false, attributionControl: false }).setView([20, 0], 2)
@@ -79,24 +81,23 @@ export default function SnapMap({ onBack }) {
   }, [])
 
   const load = useCallback(async () => {
+    const version = ++loadGeneration.current
     const map = mapRef.current
     if (!map) return
     // A failed fetch must not render an empty map — that is indistinguishable
     // from every friend being in Ghost Mode, which is a claim about THEIR
     // privacy that we have no basis to make.
     const locs = await getVisibleLocations().catch(() => null)
+    if (version !== loadGeneration.current) return
     if (locs === null) { setCount(null); return }
-    if (mapRef.current !== map) return // unmounted/re-inited during the await
+    if (mapRef.current !== map || version !== loadGeneration.current) return // unmounted/re-inited during the await
+    await Promise.all(locs.filter(loc => loc.user_id !== me && !profileCache.current[loc.user_id]).map(async loc => { const prof = await getProfile(loc.user_id).catch(() => null); if (prof) profileCache.current[loc.user_id] = prof }))
+    if (mapRef.current !== map || version !== loadGeneration.current) return
     Object.values(markersRef.current).forEach((m) => m.remove())
     markersRef.current = {}
     const pts = []
     for (const loc of locs) {
       let prof = loc.user_id === me ? profile : profileCache.current[loc.user_id]
-      if (!prof) {
-        prof = await getProfile(loc.user_id).catch(() => null)
-        if (mapRef.current !== map) return // bailed mid-loop
-        if (prof) profileCache.current[loc.user_id] = prof
-      }
       const marker = L.marker([loc.lat, loc.lng], {
         icon: L.divIcon({ className: 'map-pin', html: avatarHtml(prof), iconSize: [42, 42], iconAnchor: [21, 21] }),
       }).addTo(map)
@@ -163,12 +164,12 @@ export default function SnapMap({ onBack }) {
   // The table is a handful of tiny rows and profiles are cached, so a slow
   // refetch is cheap — and it runs only while you are sharing and looking at it.
   useEffect(() => {
-    if (!sharing) return
-    const t = setInterval(() => {
-      if (!document.hidden) load().catch(() => {})
-    }, 120_000)
-    return () => clearInterval(t)
-  }, [sharing, load])
+    const refresh = () => { if (!document.hidden) load().catch(() => {}) }
+    const t = setInterval(refresh, 15_000)
+    window.addEventListener('online', refresh)
+    document.addEventListener('visibilitychange', refresh)
+    return () => { clearInterval(t); window.removeEventListener('online', refresh); document.removeEventListener('visibilitychange', refresh) }
+  }, [load])
 
   // Keep the write guard in step with the stored state. goGhost also clears it
   // synchronously, before its own await — that is the half that matters.
@@ -180,11 +181,24 @@ export default function SnapMap({ onBack }) {
   // the toast: an automatic refresh shouldn't announce itself every minute.
   const publishFix = useCallback(
     async ({ lat, lng }) => {
-      if (!publishOk.current) return
+      if (!publishOk.current) return false
+      if (myLoc?.expires_at && Date.parse(myLoc.expires_at) <= Date.now()) {
+        publishOk.current = false
+        setSharingState(false)
+        setMyLoc(null)
+        return false
+      }
       try {
-        await setMyLocation(me, lat, lng, true)
+        const updated = await refreshLiveLocation(lat, lng)
+        if (!updated) {
+          publishOk.current = false
+          setSharingState(false)
+          setMyLoc(null)
+          return false
+        }
       } catch {
-        return // transient — the watch will hand us another fix soon enough
+        setLiveError('Location could not sync. Check your connection, then retry.')
+        return false // retry the next fix instead of throttling a failed write
       }
       if (!publishOk.current) {
         // Go Ghost landed while this write was in flight. Undo it, or the row
@@ -192,6 +206,7 @@ export default function SnapMap({ onBack }) {
         stopSharingLocation(me).catch(() => {})
         return
       }
+      setLiveError(null)
       lastFix.current = { lat, lng, at: Date.now() }
       setMyLoc((prev) => ({
         ...prev,
@@ -204,7 +219,7 @@ export default function SnapMap({ onBack }) {
       setNow(Date.now())
       load().catch(() => {})
     },
-    [me, load]
+    [me, load, myLoc?.expires_at]
   )
 
   // What is already stored counts as "the last thing we wrote", so re-opening
@@ -227,13 +242,14 @@ export default function SnapMap({ onBack }) {
   const enableLive = useCallback(async () => {
     const ok = await requestLocationAccess()
     setPermission(await locationPermission())
-    if (ok) { setLiveBlocked(false); setLiveRetry((n) => n + 1) }
+    if (ok) { setLiveError(null); setLiveBlocked(false); setLiveRetry((n) => n + 1) }
+    else setLiveError('Could not get a location. Check Location Services and site permissions, then retry.')
   }, [])
 
   // The fix for the reported bug: while — and only while — sharing is on, the
   // position refreshes itself. Ghost Mode is still the default and still deletes
   // the row, and nothing here asks the device for a position when sharing is off.
-  useLiveLocation({ active: sharing === true, seed, onFix: publishFix, onBlocked, retryToken: liveRetry })
+  useLiveLocation({ active: sharing === true, seed, onFix: publishFix, onBlocked, retryToken: liveRetry, onReady: () => setLiveBlocked(false), onError: (err) => { if (err?.code !== 1) setLiveError(err?.code === 3 ? "Location timed out. Check device Location Services, then retry." : "Live location could not update. Check your connection and retry.") } })
 
   const goGhost = async () => {
     publishOk.current = false
@@ -257,6 +273,7 @@ export default function SnapMap({ onBack }) {
     publishOk.current = true
     try {
       await setMyLocation(me, lat, lng, true)
+      setLiveError(null)
       lastFix.current = { lat, lng, at: Date.now() }
       setLiveBlocked(false)
       setSharingState(true)
@@ -379,6 +396,8 @@ export default function SnapMap({ onBack }) {
                 {/* We will not raise a permission prompt nobody asked for, so
                     when the grant isn't already there the honest thing is to say
                     the dot is frozen rather than to let it quietly go stale. */}
+                {liveError && <div className="map-updated" role="status">{liveError}</div>}
+                {(liveError || liveBlocked) && <button type="button" className="map-enable-live" onClick={enableLive}>Retry location access</button>}
                 {liveBlocked && (
                   <div className="map-updated">
                     {permission === 'denied' ? (
@@ -395,7 +414,7 @@ export default function SnapMap({ onBack }) {
                           Turn on live updates
                         </button>
                         {' '}
-                        Granted once, your browser remembers it — Meera will not ask again.
+                        Your browser controls how long access lasts. Choose persistent access if it offers that option.
                         It still only ever checks while sharing is on and the map is open.
                       </>
                     )}

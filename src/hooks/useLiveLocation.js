@@ -58,10 +58,11 @@ export async function locationPermission() {
 
 /**
  * Ask for the grant, from a user gesture only. Resolves true once it exists —
- * and once it does the browser remembers it, so this is asked once and never
- * again.
+ * the browser decides how long the grant persists. A one-time grant may
+ * require another explicit request in a later session.
  */
-export function requestLocationAccess() {
+export async function requestLocationAccess() {
+  if (await locationPermission() === 'denied') return false
   return new Promise((resolve) => {
     if (!navigator.geolocation) return resolve(false)
     navigator.geolocation.getCurrentPosition(() => resolve(true), () => resolve(false), {
@@ -88,16 +89,16 @@ export function requestLocationAccess() {
  * @param onBlocked called once if we may not watch under the existing grant
  * @param onError  called for geolocation errors (denial included)
  */
-export default function useLiveLocation({ active, seed = null, onFix, onBlocked, onError, retryToken = 0, options = WATCH_OPTIONS }) {
+export default function useLiveLocation({ active, seed = null, onFix, onBlocked, onError, onReady, retryToken = 0, options = WATCH_OPTIONS }) {
   const lastRef = useRef(null)
   // Callbacks change identity every render (they close over map state). Holding
   // them in a ref is what keeps the watch itself depending on `active` alone —
   // restarting a geolocation watch per render would be both a battery bug and,
   // on some platforms, a fresh prompt.
-  const handlers = useRef({ onFix, onBlocked, onError })
+  const handlers = useRef({ onFix, onBlocked, onError, onReady })
   useEffect(() => {
-    handlers.current = { onFix, onBlocked, onError }
-  }, [onFix, onBlocked, onError])
+    handlers.current = { onFix, onBlocked, onError, onReady }
+  }, [onFix, onBlocked, onError, onReady])
 
   // Adopt the stored row as "what we last wrote", so opening the map on an
   // unmoved phone costs no write at all.
@@ -120,6 +121,9 @@ export default function useLiveLocation({ active, seed = null, onFix, onBlocked,
     let id = null
     let cancelled = false
     let allowed = false
+    let permissionStatus = null
+    let publishing = false
+    let deniedThisSession = false
 
     const stop = () => {
       if (id !== null) {
@@ -127,19 +131,27 @@ export default function useLiveLocation({ active, seed = null, onFix, onBlocked,
         id = null
       }
     }
-    const onPosition = (pos) => {
+    const onPosition = async (pos) => {
+      if (cancelled || !allowed || document.hidden || publishing) return
       const c = pos?.coords
       if (!c) return
       const next = { lat: c.latitude, lng: c.longitude, accuracy: c.accuracy }
       if (!fixDecision(lastRef.current, next, Date.now()).publish) return
-      lastRef.current = { lat: next.lat, lng: next.lng, at: Date.now() }
-      handlers.current.onFix?.(next)
+      publishing = true
+      try {
+        const published = await handlers.current.onFix?.(next)
+        if (!cancelled && published !== false) lastRef.current = { lat: next.lat, lng: next.lng, at: Date.now() }
+      } catch (err) {
+        if (!cancelled) handlers.current.onError?.(err)
+      } finally { publishing = false }
     }
     const onFailure = (err) => {
+      if (cancelled) return
       // A denial mid-session must not turn into a retry loop against a bubble
       // the user has already dismissed. Timeouts are normal and are ignored.
       if (err?.code === PERMISSION_DENIED) {
         allowed = false
+        deniedThisSession = true
         stop()
         handlers.current.onBlocked?.()
       }
@@ -149,24 +161,42 @@ export default function useLiveLocation({ active, seed = null, onFix, onBlocked,
       if (cancelled || !allowed || id !== null) return
       id = navigator.geolocation.watchPosition(onPosition, onFailure, options)
     }
-    // No location work at all while the app is in the background.
-    const onVisibility = () => (document.hidden ? stop() : start())
-    document.addEventListener('visibilitychange', onVisibility)
-
-    watchAllowed().then((ok) => {
+    const applyPermission = (state) => {
       if (cancelled) return
-      allowed = ok
-      if (!ok) {
-        handlers.current.onBlocked?.()
-        return
-      }
+      allowed = state === 'granted' || (state === 'unknown' && !deniedThisSession)
+      if (!allowed) { stop(); handlers.current.onBlocked?.(); return }
+      handlers.current.onReady?.()
       if (!document.hidden) start()
-    })
+    }
+    const permissionChanged = () => applyPermission(permissionStatus.state)
+    const checkPermission = async () => {
+      try {
+        const status = await navigator.permissions?.query({ name: 'geolocation' })
+        if (cancelled) return
+        if (status && status !== permissionStatus) {
+          permissionStatus?.removeEventListener?.('change', permissionChanged)
+          permissionStatus = status
+          status.addEventListener?.('change', permissionChanged)
+        }
+        applyPermission(status?.state ?? 'unknown')
+      } catch { applyPermission('unknown') }
+    }
+    // Returning from browser settings rechecks the grant; it never prompts
+    // when the browser reports prompt/denied.
+    const onVisibility = () => {
+      if (document.hidden) stop()
+      else checkPermission()
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+    window.addEventListener('focus', checkPermission)
+    checkPermission()
 
     return () => {
       cancelled = true
       allowed = false
       document.removeEventListener('visibilitychange', onVisibility)
+      window.removeEventListener('focus', checkPermission)
+      permissionStatus?.removeEventListener?.('change', permissionChanged)
       stop()
     }
   }, [active, options, retryToken])
