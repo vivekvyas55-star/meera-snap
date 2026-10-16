@@ -4,6 +4,7 @@ import { pgcrypto } from '@electric-sql/pglite/contrib/pgcrypto'
 import fs from 'node:fs'
 import assert from 'node:assert/strict'
 import { checkIntimateGames } from './intimate-db.mjs'
+import { checkSharedPlay } from './shared-play-db.mjs'
 const db = new PGlite({ extensions: { citext, pgcrypto } })
 await db.exec(`
  create role anon; create role authenticated; create role service_role bypassrls;
@@ -1485,4 +1486,5 @@ await asUser(A,()=>assert.rejects(
   query('insert into public.pair_totals(user_a,user_b,messages) values($1,$2,9999)',[A,B]),/permission denied/))
 void tMsg
 console.log('PASS pair totals survive the purge, need both opt-ins, and cannot be written by a client')
+await checkSharedPlay(db, asUser, A, B, C)
 await db.close()

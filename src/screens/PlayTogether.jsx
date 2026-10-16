@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Confirm from '../components/Confirm'
 import SoloPlay from './SoloPlay'
+import SharedPlay from '../components/SharedPlay'
 import PlayMoments from '../components/PlayMoments'
 import { BackIcon, CheckIcon, CloseIcon, GamepadIcon } from '../components/Icons'
 import { useAuth } from '../hooks/useAuth'
@@ -475,6 +476,7 @@ export default function PlayTogether({ onBack }) {
         <GameRoom key={inviteId} me={me} friend={chosen} incoming={mark === 'O'} accepted={accepted} inviteId={inviteId} room={room} mark={mark} game={roomGame} onClose={closeGame} />
       ) : (
         <div className="play-grid">
+          {selected && <SharedPlay key={selected} me={me} other={selected} />}
           <button type="button" className="play-card" style={{ background: 'var(--card)' }} onClick={() => setOpen('moments')}><span className="eyebrow">A little surprise</span><h2>Little moments</h2><p>Secret missions, drawing challenges and a mystery date jar. Play now, reply later.</p></button>
           {rooms.length > 0 && (
             <section className="game-resume-list" aria-label="Your game rooms">

@@ -19,6 +19,7 @@ export default function CallOverlay() {
   const alias = useAlias()
   const [elapsed, setElapsed] = useState(0)
   const [speakerOn, setSpeakerOn] = useState(true)
+  const [playbackBlocked, setPlaybackBlocked] = useState(false)
   const remoteElRef = useRef(null)
   const call = ctx?.call
 
@@ -29,7 +30,7 @@ export default function CallOverlay() {
     const s = ctx?.remoteStream
     if (el && s && el.srcObject !== s) {
       el.srcObject = s
-      el.play?.().catch(() => {}) // mobile autoplay can need an explicit play()
+      el.play?.().then(() => setPlaybackBlocked(false)).catch(() => setPlaybackBlocked(true))
     }
   }
   const attachLocal = (el) => {
@@ -89,7 +90,7 @@ export default function CallOverlay() {
   // default route — earpiece for voice, loudspeaker for video.
   useEffect(() => {
     if (call?.state !== 'connected') return
-    remoteElRef.current?.play?.().catch(() => {})
+    remoteElRef.current?.play?.().then(() => setPlaybackBlocked(false)).catch(() => setPlaybackBlocked(true))
     const wantSpeaker = !!call.video
     setSpeakerOn(wantSpeaker)
     routeAudio(wantSpeaker)
@@ -130,7 +131,7 @@ export default function CallOverlay() {
     )
   }
 
-  const status = call.state === 'connected' ? mmss : call.state === 'connecting' ? 'Connecting…' : 'Calling…'
+  const status = call.state === 'connected' ? mmss : call.state === 'connecting' ? 'Connecting…' : call.ringing ? 'Ringing…' : 'Reaching their device…'
   const showRemoteVideo = isVideo && remoteStream
 
   return (
@@ -155,6 +156,7 @@ export default function CallOverlay() {
         <div className="call-top">
           <div className="call-name light">{name}</div>
           <div className="call-sub light">{status}</div>
+          {playbackBlocked && <button className="btn-dark" onClick={() => remoteElRef.current?.play?.().then(() => setPlaybackBlocked(false)).catch(() => setPlaybackBlocked(true))}>Tap to hear the call</button>}
         </div>
 
         <div className="call-controls">

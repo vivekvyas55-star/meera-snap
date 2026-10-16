@@ -26,7 +26,7 @@ vi.mock('../src/hooks/useOnlinePresence', () => ({ useOnline: () => { const s = 
 vi.mock('../src/hooks/useToast', () => ({ useToast: () => mocks.toast }))
 vi.mock('../src/lib/db', () => ({ logCall: mocks.logCall }))
 vi.mock('../src/lib/push', () => ({ notify: mocks.notify }))
-vi.mock('../src/lib/rtc', () => ({ ICE_SERVERS: [], rtcSupported: true }))
+vi.mock('../src/lib/rtc', () => ({ getIceServers: async () => [], rtcSupported: true }))
 
 import { CallProvider } from '../src/hooks/CallProvider'
 import { useCall } from '../src/hooks/useCall'
@@ -45,7 +45,7 @@ beforeEach(() => {
   mocks.notify.mockResolvedValue({ data: { sent: 1 }, error: null })
   navigator.mediaDevices = { getUserMedia: vi.fn(async () => { throw Object.assign(new Error('denied'), { name: 'NotAllowedError' }) }) }
 })
-afterEach(() => { cleanup(); vi.useRealTimers(); vi.clearAllMocks(); delete navigator.mediaDevices })
+afterEach(() => { cleanup(); vi.useRealTimers(); vi.clearAllMocks(); vi.unstubAllGlobals(); delete navigator.mediaDevices })
 
 // --- the ring repeat vs. an ended call -------------------------------------
 // startCall re-broadcasts the invite every 3s while ringing (a phone woken by a
@@ -134,7 +134,7 @@ test('a failed push does not cancel a call to a friend who is in the app', async
   expect(mocks.toast).not.toHaveBeenCalled()
 })
 
-test('a push that reports no subscriptions still gives up on an offline friend', async () => {
+test('missing push and presence do not cancel before an inbox can reconnect', async () => {
   // Released by hand rather than deferred on a timer: `await act()` spends at
   // least one macrotask turn, so a setTimeout(0) resolution races the assertion
   // below and the call was sometimes already torn down by the time it ran. The
@@ -149,9 +149,9 @@ test('a push that reports no subscriptions still gives up on an offline friend',
   await act(async () => { started = result.current.startCall({ id: 'friend', username: 'friend' }, false) })
   expect(result.current.call?.state).toBe('outgoing')
   await act(async () => { release(); await started })
-  expect(result.current.call).toBe(null)
-  expect(signalled('cancel')).toHaveLength(1)
-  expect(mocks.toast).toHaveBeenCalledWith('friend isn’t available right now')
+  expect(result.current.call?.state).toBe('outgoing')
+  expect(signalled('cancel')).toHaveLength(0)
+  expect(mocks.toast).not.toHaveBeenCalled()
 })
 
 test('presence that arrives during the push round trip is respected', async () => {
@@ -169,4 +169,50 @@ test('presence that arrives during the push round trip is respected', async () =
   await act(async () => { release(); await started })
   expect(result.current.call?.state).toBe('outgoing')
   expect(signalled('cancel')).toHaveLength(0)
+})
+
+function workingMedia() {
+  const track={stop:vi.fn()},stream={getTracks:()=>[track]}
+  navigator.mediaDevices.getUserMedia.mockResolvedValue(stream)
+  vi.stubGlobal('MediaStream',class { constructor(tracks=[]){this.tracks=tracks}addTrack(t){this.tracks.push(t)}getTracks(){return this.tracks} })
+  const peers=[]
+  vi.stubGlobal('RTCPeerConnection',class {
+    constructor(){this.signalingState='stable';peers.push(this)}
+    addTrack(){}
+    close(){}
+    async createOffer(){return {type:'offer',sdp:'offer-1'}}
+    async createAnswer(){return {type:'answer',sdp:'answer-1'}}
+    async setLocalDescription(d){this.localDescription=d;this.signalingState=d.type==='offer'?'have-local-offer':'stable'}
+    async setRemoteDescription(d){this.remoteDescription=d;this.signalingState=d.type==='answer'?'stable':'have-remote-offer'}
+    async addIceCandidate(){}
+  })
+  return peers
+}
+test('lost accept is retried and duplicate offer resends answer without tearing down',async()=>{
+  vi.useFakeTimers();const peers=workingMedia(),{result}=mount()
+  act(()=>invite('reliable-room'))
+  await act(async()=>{await result.current.accept()})
+  expect(signalled('accept')).toHaveLength(1)
+  await act(async()=>vi.advanceTimersByTime(1600))
+  expect(signalled('accept')).toHaveLength(2)
+  const payload={from:'friend',room:'reliable-room',sdp:{type:'offer',sdp:'offer-1'}}
+  await act(async()=>{mocks.handlers.offer({payload})})
+  expect(signalled('answer')).toHaveLength(1)
+  await act(async()=>{mocks.handlers.offer({payload})})
+  expect(signalled('answer')).toHaveLength(2)
+  expect(peers).toHaveLength(1)
+  expect(result.current.call.state).toBe('connecting')
+})
+test('duplicate accepts cannot build two peers and offer retries stop after answer',async()=>{
+  vi.useFakeTimers();const peers=workingMedia(),{result}=mount()
+  await act(async()=>{await result.current.startCall({id:'friend'},false)})
+  const payload={from:'friend',room:result.current.call.room}
+  await act(async()=>{mocks.handlers.accept({payload});mocks.handlers.accept({payload})})
+  expect(peers).toHaveLength(1)
+  expect(signalled('offer')).toHaveLength(1)
+  await act(async()=>vi.advanceTimersByTime(2100))
+  expect(signalled('offer')).toHaveLength(2)
+  await act(async()=>{mocks.handlers.answer({payload:{...payload,sdp:{type:'answer',sdp:'answer-1'}}})})
+  await act(async()=>vi.advanceTimersByTime(2100))
+  expect(signalled('offer')).toHaveLength(2)
 })

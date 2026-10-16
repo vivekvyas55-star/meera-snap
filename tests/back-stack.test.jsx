@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { resetBackStack } from '../src/lib/backStack'
 import { useBackLayer } from '../src/hooks/useBackLayer'
 
@@ -97,8 +97,7 @@ test('a layer unmounted while open does not leave a dead step', async () => {
   render(<Host />)
   fireEvent.click(screen.getByText('open profile'))
   fireEvent.click(screen.getByText('sign out'))
-  await act(async () => { await new Promise((r) => setTimeout(r, 20)) })
-  expect(onPushedEntry()).toBe(false)
+  await waitFor(() => expect(onPushedEntry()).toBe(false))
 })
 
 test('a Back the user pressed is never mistaken for one we asked for', async () => {

@@ -19,11 +19,14 @@ export function watchFriends(me, onFriends) {
   }
   refresh()
   const interval = setInterval(refresh, 30000)
+  const wake = () => { if (document.visibilityState === 'visible') refresh() }
+  document.addEventListener('visibilitychange', wake)
+  window.addEventListener('online', wake)
   const topic = `updates:${me}:${crypto.randomUUID()}`
   const ch = supabase.channel(topic, { config: { private: true } })
     .on('postgres_changes', { event: '*', schema: 'public', table: 'friendships' }, refresh)
     .subscribe(status => trackChannel(topic, status))
-  return () => { alive = false; clearInterval(interval); supabase.removeChannel(ch) }
+  return () => { alive = false; clearInterval(interval); document.removeEventListener('visibilitychange', wake); window.removeEventListener('online', wake); supabase.removeChannel(ch) }
 }
 
 const transmitters = new Map()

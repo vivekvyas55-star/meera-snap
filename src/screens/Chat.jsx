@@ -42,6 +42,7 @@ import SnapViewer from '../components/SnapViewer'
 import PlayChip from '../components/PlayChip'
 import IntimateChip from '../components/IntimateChip'
 import IntimateSession from '../components/IntimateSession'
+import SharedPlay from '../components/SharedPlay'
 import { usePlayState } from '../hooks/usePlayState'
 import Portal from '../components/Portal'
 import Sheet from '../components/Sheet'
@@ -611,6 +612,8 @@ export default function Chat({ friend, onBack, onOpenPlay }) {
           <IntimateChip label={intimateChip} onOpen={() => setJustUs(true)} />
         </div>
       )}
+
+      <SharedPlay key={friend.id} me={me} other={friend.id} compact continuations={onOpenPlay && play.state.key !== 'idle' ? [{ key: 'board', text: play.state.label, open: () => onOpenPlay(play.room) }] : []} />
 
       {anniv && (() => {
         // Only surface on a day that is actually one: the anniversary, or a

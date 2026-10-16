@@ -29,6 +29,7 @@ import {
   SparkIcon,
 } from '../components/Icons'
 import UsPair from '../components/UsPair'
+import SharedPlay from '../components/SharedPlay'
 import Memories from './Memories'
 import Together from './Together'
 import '../styles/privacy.css'
@@ -262,10 +263,11 @@ export default function Us({ me, onBack, openPlay, onPlayOpened, onOpenChat }) {
             {/* No alias in visible copy: the avatar row above already says WHO,
                 and the rotating alias is a privacy affordance, not a caption. */}
             <p className="us-selected">Your private space</p>
+            <SharedPlay key={who} me={me} other={who} continuations={(waiting || []).filter(item => item.person.id === who).map(item => ({ ...item, open: () => openWaiting(item) }))} />
             <UsPair
               me={me}
               friend={friends?.find((p) => p.id === who) ?? null}
-              waiting={Array.isArray(waiting) ? waiting.length : 0}
+              waiting={Array.isArray(waiting) ? waiting.filter(item => item.person.id === who).length : 0}
               onOpenChat={onOpenChat}
               onOpenPlay={() => setShowPlay(true)}
               onOpenMemories={() => setShowMemories(true)}

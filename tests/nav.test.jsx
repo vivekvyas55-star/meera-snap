@@ -213,6 +213,7 @@ vi.mock('../src/lib/db', () => ({
   listFriendsWithProfiles,
   listActiveGameRooms,
   listPromptStatus,
+  getStreaks: vi.fn(async () => []),
   setStatusNote: vi.fn(async () => {}),
   clearStatusNote: vi.fn(async () => {}),
 }))
@@ -222,6 +223,8 @@ vi.mock('../src/hooks/useAliasClock', () => ({ useAlias: () => (p) => p?.usernam
 vi.mock('../src/screens/Memories', () => ({ default: () => <div>MEMORIES</div> }))
 vi.mock('../src/screens/Together', () => ({ default: () => <div>TOGETHER</div> }))
 vi.mock('../src/screens/PlayTogether', () => ({ default: () => <div>PLAY</div> }))
+vi.mock('../src/components/UsPair', () => ({ default: () => <div>PAIR</div> }))
+vi.mock('../src/components/SharedPlay', () => ({ default: () => <div>SHARED PLAY</div> }))
 
 const { default: Us } = await import('../src/screens/Us')
 

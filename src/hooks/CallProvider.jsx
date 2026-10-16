@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { setCallActive } from '../lib/callState'
 import { sendSignal, signalReceiver } from '../lib/privateRealtime'
-import { ICE_SERVERS, rtcSupported } from '../lib/rtc'
+import { getIceServers, rtcSupported } from '../lib/rtc'
 import { useAuth } from './useAuth'
-import { useOnline } from './useOnlinePresence'
 import { useToast } from '../hooks/useToast'
 import { logCall } from '../lib/db'
 import { notify } from '../lib/push'
@@ -20,15 +19,14 @@ import { CallCtx } from './useCall'
 const CONNECT_TIMEOUT_MS = 40000
 // 'disconnected' is often a transient ICE blip on mobile networks that recovers
 // on its own; wait this long for it to come back before ending the call.
-const DISCONNECT_GRACE_MS = 6000
+const DISCONNECT_GRACE_MS = 15000
 
 export function CallProvider({ children }) {
   const { profile } = useAuth()
   const me = profile?.id
   const toast = useToast()
-  const isOnline = useOnline()
 
-  const [call, setCall] = useState(null) // { state, peer, video, muted, camOff, startedAt }
+  const [call, renderCall] = useState(null) // { state, peer, video, muted, camOff, startedAt }
   const [localStream, setLocalStream] = useState(null)
   const [remoteStream, setRemoteStream] = useState(null)
 
@@ -38,6 +36,12 @@ export function CallProvider({ children }) {
   const roomHandlers = useRef({})
   const pendingIce = useRef([])
   const callRef = useRef(null)
+  // Signaling can deliver two events before React renders. Publish transitions
+  // synchronously so duplicate accepts cannot create a second peer connection.
+  const setCall = useCallback(next => {
+    callRef.current = typeof next === 'function' ? next(callRef.current) : next
+    renderCall(callRef.current)
+  }, [])
   const meRef = useRef(me)
   const profileRef = useRef(profile)
   const genRef = useRef(0) // bumped by teardown so an in-flight getUserMedia knows it's stale
@@ -45,6 +49,8 @@ export function CallProvider({ children }) {
   const dropTimer = useRef(null) // grace period for a transient WebRTC disconnect
   const startingRef = useRef(false)
   const ringRepeat = useRef(null) // re-broadcasts the invite while ringing
+  const handshakeRepeat = useRef(null)
+  const offerBusy = useRef(false)
   const loggedRef = useRef(false) // one call-log per call (caller side)
   // Rooms whose call is over, with the moment they stop mattering. The caller
   // repeats its invite every 3s for the invite's whole validity, so without
@@ -52,14 +58,8 @@ export function CallProvider({ children }) {
   // very next repeat — "am I already showing this room?" is false the instant
   // teardown clears the call.
   const endedRooms = useRef(new Map())
-  // useOnline() returns a fresh function whenever presence re-syncs; held in a
-  // ref so a check made AFTER an await sees the presence we have now, not the
-  // one captured when the callback was created.
-  const isOnlineRef = useRef(isOnline)
-  callRef.current = call
   meRef.current = me
   profileRef.current = profile
-  isOnlineRef.current = isOnline
 
   const teardown = useCallback(() => {
     genRef.current += 1
@@ -72,6 +72,8 @@ export function CallProvider({ children }) {
     clearTimeout(watchdog.current)
     clearTimeout(dropTimer.current)
     clearInterval(ringRepeat.current)
+    clearInterval(handshakeRepeat.current)
+    offerBusy.current = false
     try {
       pcRef.current?.close()
     } catch { /* already closed */ }
@@ -88,7 +90,7 @@ export function CallProvider({ children }) {
     startingRef.current = false
     loggedRef.current = false
     setCall(null)
-  }, [])
+  }, [setCall])
 
   const signalInbox = useCallback(async (toId, event, payload) => {
     const from = meRef.current
@@ -145,14 +147,17 @@ export function CallProvider({ children }) {
       // devices that won't hand out the same camera twice.
       window.dispatchEvent(new Event('meera:camera-release'))
       let stream
+      let iceServers
       try {
+        iceServers = await getIceServers(callRef.current?.peer?.id)
+        if (gen !== genRef.current) return null
         stream = await navigator.mediaDevices.getUserMedia({
-          audio: true,
-          video: wantVideo ? { facingMode: 'user' } : false,
+          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+          video: wantVideo ? { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 24, max: 30 } } : false,
         })
       } catch (err) {
         if (gen === genRef.current) {
-          toast(err?.name === 'NotAllowedError' ? 'Camera / mic permission denied' : 'Could not start the call')
+          toast(err?.name === 'NotAllowedError' ? 'Camera / mic permission denied' : iceServers ? 'Could not start the camera / microphone' : 'Call connection service is unavailable. Try again.')
           teardown()
         }
         return null
@@ -163,19 +168,42 @@ export function CallProvider({ children }) {
       }
       localRef.current = stream
       setLocalStream(stream)
-      const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS })
+      const pc = new RTCPeerConnection({ iceServers })
+      let restarting = false
       stream.getTracks().forEach((t) => pc.addTrack(t, stream))
       pc.onicecandidate = (e) => e.candidate && sendRoom('ice', { candidate: e.candidate })
-      pc.ontrack = (e) => setRemoteStream(e.streams[0])
+      const received = new MediaStream()
+      pc.ontrack = (e) => {
+        if (pcRef.current !== pc) return
+        if (e.streams?.[0]) setRemoteStream(e.streams[0])
+        else { received.addTrack(e.track); setRemoteStream(new MediaStream(received.getTracks())) }
+      }
       pc.onconnectionstatechange = () => {
         const s = pc.connectionState
+        if (pcRef.current !== pc) return
         if (s === 'connected') {
           clearTimeout(dropTimer.current) // recovered from a blip
           clearTimeout(watchdog.current)
+          clearInterval(handshakeRepeat.current)
           setCall((c) => (c ? { ...c, state: 'connected', startedAt: c.startedAt ?? performance.now() } : c))
           return
         }
         if (s === 'failed' || s === 'disconnected') {
+          // Only the caller makes a restart offer, avoiding negotiation glare.
+          // The existing tracks stay alive while Wi-Fi/mobile routing recovers.
+          if (!restarting && callRef.current?.role === 'caller' && pc.signalingState === 'stable') {
+            restarting = true
+            pc.createOffer({ iceRestart: true }).then(async offer => {
+              if (pcRef.current !== pc) return
+              await pc.setLocalDescription(offer)
+              if (pcRef.current !== pc) return
+              sendRoom('offer', { sdp: pc.localDescription || offer })
+              clearInterval(handshakeRepeat.current)
+              handshakeRepeat.current = setInterval(() => {
+                if (pcRef.current === pc && pc.signalingState === 'have-local-offer') sendRoom('offer', { sdp: pc.localDescription || offer })
+              }, 2000)
+            }).catch(() => { /* grace timer reports an unrecovered failure */ })
+          }
           // 'failed' is terminal; 'disconnected' gets a grace window to recover.
           // Either way, when we do give up, log the call before teardown so a
           // connected-then-dropped call still leaves a record for both parties.
@@ -188,9 +216,10 @@ export function CallProvider({ children }) {
             if (c) {
               logEnd(c, c.state === 'connected' ? 'ended' : 'missed')
               if (c.state === 'connected') toast('Call ended')
+              signalInbox(c.peer.id, 'hangup', { room: c.room })
             }
             teardown()
-          }, s === 'failed' ? 0 : DISCONNECT_GRACE_MS)
+          }, DISCONNECT_GRACE_MS)
         }
       }
       pcRef.current = pc
@@ -209,7 +238,13 @@ export function CallProvider({ children }) {
       }
       ch.on('broadcast', { event: 'offer' }, async ({ payload }) => {
         const pc = pcRef.current
-        if (!pc) return
+        if (!pc || callRef.current?.role !== 'callee' || offerBusy.current) return
+        // Re-send the cached answer if its first delivery was lost.
+        if (pc.remoteDescription?.sdp === payload.sdp?.sdp && pc.localDescription?.type === 'answer') {
+          sendRoom('answer', { sdp: pc.localDescription }); return
+        }
+        offerBusy.current = true
+        clearInterval(handshakeRepeat.current)
         try {
           await pc.setRemoteDescription(payload.sdp)
           await drainIce()
@@ -217,11 +252,14 @@ export function CallProvider({ children }) {
           await pc.setLocalDescription(answer)
           if (pcRef.current === pc && callRef.current?.room === room) sendRoom('answer', { sdp: answer })
         } catch { if (pcRef.current === pc) teardown() }
+        finally { offerBusy.current = false }
       })
         .on('broadcast', { event: 'answer' }, async ({ payload }) => {
           const pc = pcRef.current
+          if (!pc || callRef.current?.role !== 'caller' || pc.signalingState !== 'have-local-offer') return
           try {
             await pc?.setRemoteDescription(payload.sdp)
+            clearInterval(handshakeRepeat.current)
             if (pcRef.current === pc) await drainIce()
           } catch { if (pcRef.current === pc) teardown() }
         })
@@ -264,7 +302,7 @@ export function CallProvider({ children }) {
       // invites for the call we're ALREADY showing must be ignored — without
       // this they fall through to the glare/busy branch below and answer the
       // caller's own ring with "busy".
-      if (c && c.room === payload.room) return
+      if (c && c.room === payload.room) { signalInbox(payload.from, 'ringing', { room: payload.room }); return }
       if (c) {
         // Glare — both dialled each other. Lower user id stays the caller; the
         // other flips to the incoming side so exactly one call connects.
@@ -275,6 +313,7 @@ export function CallProvider({ children }) {
           // Left running, it would fire mid-ring on the incoming call we're
           // flipping to and tear it down with "Couldn't connect the call".
           clearTimeout(watchdog.current)
+          clearInterval(ringRepeat.current)
           if (roomRef.current) { roomRef.current.close(); roomRef.current = null }
           setCall({ state: 'incoming', peer: payload.peer, video: !!payload.video, room: payload.room, role: 'callee' })
           armWatchdog(payload.expiresAt - Date.now())
@@ -284,8 +323,13 @@ export function CallProvider({ children }) {
         return
       }
       setCall({ state: 'incoming', peer: payload.peer, video: !!payload.video, room: payload.room, role: 'callee' })
+      signalInbox(payload.from, 'ringing', { room: payload.room })
           armWatchdog(payload.expiresAt - Date.now())
     })
+      .on('broadcast', { event: 'ringing' }, ({ payload }) => {
+        const c=callRef.current
+        if(c?.state==='outgoing'&&c.peer.id===payload.from&&c.room===payload.room)setCall({...c,ringing:true})
+      })
       .on('broadcast', { event: 'accept' }, async ({ payload }) => {
         const c = callRef.current
         if (!c || c.state !== 'outgoing' || payload.from !== c.peer?.id || payload.room !== c.room) return
@@ -297,7 +341,13 @@ export function CallProvider({ children }) {
         try {
           const offer = await pc.createOffer()
           await pc.setLocalDescription(offer)
-          if (pcRef.current === pc && callRef.current?.room === c.room) sendRoom('offer', { sdp: offer })
+          if (pcRef.current === pc && callRef.current?.room === c.room) {
+            sendRoom('offer', { sdp: pc.localDescription || offer })
+            clearInterval(handshakeRepeat.current)
+            handshakeRepeat.current=setInterval(()=>{
+              if(pcRef.current===pc&&pc.signalingState==='have-local-offer')sendRoom('offer',{sdp:pc.localDescription || offer})
+            },2000)
+          }
         } catch { if (pcRef.current === pc) teardown() }
       })
       .on('broadcast', { event: 'decline' }, ({ payload }) => {
@@ -328,7 +378,7 @@ export function CallProvider({ children }) {
       }
     }
     return () => ch.close()
-  }, [me, joinRoom, setupPeer, signalInbox, armWatchdog, teardown])
+  }, [me, joinRoom, setupPeer, signalInbox, armWatchdog, teardown, setCall])
 
   // --- public actions ---
   const startCall = useCallback(
@@ -361,27 +411,10 @@ export function CallProvider({ children }) {
 
       setTimeout(() => { startingRef.current = false }, 600)
 
-      // Push wakes a closed app. If the friend is neither in the app nor
-      // reachable by push, there is genuinely nobody to ring — say so and log
-      // the missed call immediately rather than making the caller wait out the
-      // full 40s watchdog.
-      const res = await notify(peer.id, 'call')
-      // Only a push that actually ran and reported zero subscriptions is
-      // evidence nobody can be woken. A 500, a cold start, a network blip or a
-      // rejected invoke all come back with no data — that says nothing about
-      // the friend, and treating it as "unavailable" cancelled calls to people
-      // sitting in the app. Presence is re-read here, after the await: it is
-      // false for the first second or two of app start and during any re-sync.
-      const unreachable = res?.data != null && !(res.data.sent > 0)
-      if (unreachable && !isOnlineRef.current(peer.id)) {
-        const c = callRef.current
-        if (c?.room === room && c.state === 'outgoing') {
-          signalInbox(peer.id, 'cancel', { room })
-          toast(`${peer.display_name || peer.username} isn’t available right now`)
-          logEnd(c, 'missed')
-          teardown()
-        }
-      }
+      // Push can wake a closed app; it is not an availability verdict.
+      await notify(peer.id, 'call')
+      // No push subscription and absent presence are not proof of an offline
+      // phone. Let the ring timeout run while the inbox reconnects.
     },
     [toast, armWatchdog, signalInbox, teardown] // eslint-disable-line react-hooks/exhaustive-deps
   )
@@ -401,7 +434,11 @@ export function CallProvider({ children }) {
       return
     }
     signalInbox(c.peer.id, 'accept', { room: c.room })
-  }, [joinRoom, setupPeer, armWatchdog, signalInbox])
+    clearInterval(handshakeRepeat.current)
+    handshakeRepeat.current=setInterval(()=>{
+      if(pcRef.current===pc&&!pc.remoteDescription)signalInbox(c.peer.id,'accept',{room:c.room})
+    },1500)
+  }, [joinRoom, setupPeer, armWatchdog, signalInbox, setCall])
 
   const decline = useCallback(() => {
     const c = callRef.current
@@ -426,14 +463,14 @@ export function CallProvider({ children }) {
     if (!track) return
     track.enabled = !track.enabled
     setCall((c) => (c ? { ...c, muted: !track.enabled } : c))
-  }, [])
+  }, [setCall])
 
   const toggleCam = useCallback(() => {
     const track = localRef.current?.getVideoTracks()[0]
     if (!track) return
     track.enabled = !track.enabled
     setCall((c) => (c ? { ...c, camOff: !track.enabled } : c))
-  }, [])
+  }, [setCall])
 
   // Anything above this provider needs to know a call is live — App locks the
   // app on `hidden`, which would unmount us mid-call.

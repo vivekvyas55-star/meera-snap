@@ -87,3 +87,6 @@
 # The client half ships either way: getPairTotals() answers null on PGRST202, so
 # the totals row simply does not render on a database without this.
 202609150100_pair_totals
+
+# Shared play, Postcard Island and call relay applied 2026-10-17.
+# meera-shared-play-purge scheduled every 15 minutes (cron job 10).
