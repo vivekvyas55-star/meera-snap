@@ -45,4 +45,8 @@ Metered workspace meeraconnect: credential “Meera voice and video calls” cre
 
 ## Frontend release
 
-Release tests are green; GitHub push and Vercel production deployment are the next release steps. Record the resulting SHA and verified asset receipt below after deployment.
+Deployed code SHA: 6aeb9c9 (integrate/live), pushed to GitHub.
+Vercel deployment dpl_CXw16heiyMoyvWHS7fW5FYQ7rF3J returned READY and aliased https://meera.bigadtruck.com.
+Verified production entry index-BgPzHlVR.js contains get_call_ice; SharedPlay-CjQIO238.js, PostcardIsland-DXG0MTdh.js and three.module-D_N2ohP0.js returned HTTP 200. Signed-in production browser displayed Continue together and all five game choices without creating an invitation or sending a message.
+
+Operational follow-up: conduct an authorized two-phone call over Wi-Fi/mobile data, then test accept/reconnect and audio/video playback. Monitor Metered quota. New shared-game push notifications remain a future improvement.
