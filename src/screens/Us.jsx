@@ -78,6 +78,7 @@ export default function Us({ me, onBack, openPlay, onPlayOpened, onOpenChat }) {
   const [showMemories, setShowMemories] = useState(false)
   const [showTogether, setShowTogether] = useState(false)
   const [showPlay, setShowPlay] = useState(Boolean(openPlay))
+  const [playPerson, setPlayPerson] = useState(null)
   const [showMap, setShowMap] = useState(false)
 
   const [note, setNote] = useState('')
@@ -216,11 +217,11 @@ export default function Us({ me, onBack, openPlay, onPlayOpened, onOpenChat }) {
 
   if (showMemories) return <Memories me={me} onBack={closeMemories} />
   if (showTogether) return <Together me={me} onBack={closeTogether} />
-  if (showPlay) return <PlayTogether onBack={closePlay} />
+  if (showPlay) return <PlayTogether initialOther={playPerson ?? who} onBack={closePlay} />
   if (showMap) return <SnapMap onBack={closeMap} />
 
   const openWaiting = (item) => {
-    if (item.to === 'play') setShowPlay(true)
+    if (item.to === 'play') { setPlayPerson(item.person.id); setShowPlay(true) }
     else onOpenChat?.(item.person)
   }
 
@@ -292,7 +293,7 @@ export default function Us({ me, onBack, openPlay, onPlayOpened, onOpenChat }) {
             <HeartIcon width={20} height={20} aria-hidden="true" />
             <span>Together</span>
           </button>
-          <button type="button" className="us-door" onClick={() => setShowPlay(true)}>
+          <button type="button" className="us-door" onClick={() => { setPlayPerson(null); setShowPlay(true) }}>
             <GamepadIcon width={20} height={20} aria-hidden="true" />
             <span>Play</span>
           </button>

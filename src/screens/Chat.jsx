@@ -202,7 +202,13 @@ export default function Chat({ friend, onBack, onOpenPlay }) {
   const [sched, setSched] = useState(undefined)
   const [schedList, setSchedList] = useState(false)   // the "waiting to send" sheet
   const [schedCompose, setSchedCompose] = useState(null) // the text being scheduled
+  const [voiceDraft, setVoiceDraft] = useState(null)
   const recTimer = useRef(null)
+  const voiceGeneration = useRef(0)
+  useEffect(() => {
+    setVoiceDraft(null)
+    return () => { voiceGeneration.current += 1 }
+  }, [me, friend.id])
   const { recording, start: startRec, stop: stopRec } = useAudioRecorder()
 
   const startingVoiceRef = useRef(false)
@@ -226,16 +232,12 @@ export default function Chat({ friend, onBack, onOpenPlay }) {
   }
   const finishVoice = async (cancel) => {
     clearInterval(recTimer.current)
+    const generation = voiceGeneration.current
     const blob = await stopRec(cancel)
-    if (cancel || !blob) return
-    try {
-      await sendVoiceNote(me, friend.id, blob, replyingTo?.id ?? null)
-      setReplyingTo(null)
-      load()
-    } catch (err) {
-      toast(err.message)
-    }
+    if (cancel || !blob || generation !== voiceGeneration.current) return
+    setVoiceDraft({ blob, me, otherId: friend.id, replyTo: replyingTo?.id ?? null, clientId: crypto.randomUUID() })
   }
+
   const pickSticker = async (emoji) => {
     setStickers(false)
     try {
@@ -753,7 +755,11 @@ export default function Chat({ friend, onBack, onOpenPlay }) {
         </div>
       )}
 
-      {recording ? (
+      {voiceDraft?.me === me && voiceDraft?.otherId === friend.id ? (
+        <VoiceDraft key={voiceDraft.clientId} draft={voiceDraft}
+          onDiscard={() => setVoiceDraft(null)}
+          onSent={() => { setVoiceDraft(null); setReplyingTo(null); load() }} />
+      ) : recording ? (
         <div className="composer">
           <button type="button" className="circle filled" onClick={() => finishVoice(true)} aria-label="Cancel">
             <CloseIcon />
@@ -761,7 +767,7 @@ export default function Chat({ friend, onBack, onOpenPlay }) {
           <div className="recording-pill">
             <span className="rec-dot" /> Recording… {recSecs}s
           </div>
-          <button type="button" className="circle dark" onClick={() => finishVoice(false)} aria-label="Send voice note">
+          <button type="button" className="circle dark" onClick={() => finishVoice(false)} aria-label="Review voice note">
             <ArrowIcon />
           </button>
         </div>
@@ -787,7 +793,7 @@ export default function Chat({ friend, onBack, onOpenPlay }) {
             onChange={onDraftChange}
             onBlur={() => setTyping(false)}
             onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
+              if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing && e.keyCode !== 229) {
                 e.preventDefault()
                 submit(e)
               }
@@ -1164,8 +1170,11 @@ const TAPBACKS = ['❤️', '👍', '👎', '😂', '😮', '😢']
 // Forward a chat message: pick one or more friends, send its text on to each.
 // Every recipient gets a fresh send (its own ephemeral message), not a shared
 // reference — so each copy lives and clears on its own schedule.
-function ForwardSheet({ me, message, onClose }) {
+export function ForwardSheet({ me, message, onClose }) {
   const toast = useToast()
+  const alias = useAlias()
+  const sendingRef = useRef(false)
+  const [loadAttempt, setLoadAttempt] = useState(0)
   // undefined = not asked, null = the read failed, [] = you really have nobody.
   // `[]` + a swallowed error told somebody sitting INSIDE a conversation that
   // they had no one to forward to.
@@ -1173,36 +1182,43 @@ function ForwardSheet({ me, message, onClose }) {
   const [selected, setSelected] = useState([])
   const [sending, setSending] = useState(false)
   useEffect(() => {
+    let active = true
+    setFriends(undefined)
     listFriendsWithProfiles(me)
-      .then((l) => setFriends(l.filter((f) => f.status === 'accepted')))
-      .catch(() => setFriends(null))
-  }, [me])
+      .then((l) => { if (active) setFriends(l.filter((f) => f.status === 'accepted')) })
+      .catch(() => { if (active) setFriends(null) })
+    return () => { active = false }
+  }, [me, loadAttempt])
   const toggle = (id) =>
     setSelected((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]))
   const send = async () => {
-    if (selected.length === 0) return
+    if (selected.length === 0 || sendingRef.current) return
+    sendingRef.current = true
     setSending(true)
     // Report per-recipient: one failure shouldn't silently swallow the rest.
     let ok = 0
+    const failed = []
     for (const id of selected) {
       try {
         await sendChat(me, id, message.body)
         ok += 1
-      } catch { /* counted below */ }
+      } catch { failed.push(id) }
     }
     if (ok === selected.length) toast(`Forwarded to ${ok} ${ok === 1 ? 'friend' : 'friends'}`)
     else if (ok > 0) toast(`Forwarded to ${ok} of ${selected.length}`)
     else toast('Couldn’t forward that message')
+    sendingRef.current = false
     setSending(false)
-    onClose()
+    if (failed.length) setSelected(failed)
+    else onClose()
   }
   return (
     <Portal>
-      <Sheet onClose={onClose} label="Forward message">
+      <Sheet onClose={() => { if (!sendingRef.current) onClose() }} label="Forward message">
           <h2 style={{ margin: '0 0 12px', fontWeight: 300, fontSize: 20 }}>Forward to</h2>
           {friends === undefined && <div className="empty" role="status">Loading your people…</div>}
           {friends === null && (
-            <div className="empty" role="alert">Couldn’t load your people. Close and try again.</div>
+            <div className="empty" role="alert">Couldn’t load your people. <button type="button" className="pill-btn" onClick={() => setLoadAttempt((n) => n + 1)}>Try again</button></div>
           )}
           {friends?.length === 0 && <div className="empty">No one to forward to.</div>}
           {(friends ?? []).map((f) => (
@@ -1214,11 +1230,11 @@ function ForwardSheet({ me, message, onClose }) {
               aria-pressed={selected.includes(f.profile.id)}
             >
               <Avatar profile={f.profile} size="sm" />
-              <span style={{ flex: 1, textAlign: 'left' }}>{f.profile.display_name || f.profile.username}</span>
+              <span style={{ flex: 1, textAlign: 'left' }}>{alias(f.profile)}</span>
               {selected.includes(f.profile.id) && <CheckIcon width={16} height={16} />}
             </button>
           ))}
-          {friends.length > 0 && (
+          {friends?.length > 0 && (
             <button
               className="btn-dark"
               style={{ marginTop: 14 }}
@@ -1753,4 +1769,51 @@ function messageTime(iso) {
   if (sameDay) return time
   const day = d.toLocaleDateString([], { month: 'short', day: 'numeric' })
   return `${day}, ${time}`
+}
+
+// A recording stays in memory until explicitly sent/discarded or chat is left.
+// Reuse the insertion id on retry: a lost response must not duplicate a note.
+export function VoiceDraft({ draft, onDiscard, onSent }) {
+  const [url, setUrl] = useState(null)
+  const [sending, setSending] = useState(false)
+  const [failed, setFailed] = useState(false)
+  const busy = useRef(false)
+  const alive = useRef(false)
+  const audio = useRef(null)
+  useEffect(() => {
+    alive.current = true
+    const source = URL.createObjectURL(draft.blob)
+    setUrl(source)
+    const player = audio.current
+    return () => {
+      alive.current = false
+      if (player) { player.pause(); player.removeAttribute('src'); player.load() }
+      URL.revokeObjectURL(source)
+    }
+  }, [draft.blob])
+  const send = async () => {
+    if (busy.current) return
+    busy.current = true
+    setSending(true)
+    setFailed(false)
+    try {
+      await sendVoiceNote(draft.me, draft.otherId, draft.blob, draft.replyTo, draft.clientId)
+      if (alive.current) onSent()
+    } catch {
+      if (alive.current) setFailed(true)
+    } finally {
+      busy.current = false
+      if (alive.current) setSending(false)
+    }
+  }
+  return <div style={{ padding: '10px 16px', borderTop: '1px solid var(--line)' }}>
+    <p role="status" style={{ margin: '0 0 8px', fontSize: 13 }}>
+      {sending ? 'Sending voice note…' : failed ? 'Couldn’t send. Your recording is ready to retry.' : 'Preview your voice note. Leaving chat discards it.'}
+    </p>
+    <audio ref={audio} controls src={url ?? undefined} aria-label="Recorded voice note preview" style={{ width: '100%', height: 36 }} />
+    <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+      <button type="button" className="pill-btn" disabled={sending} onClick={onDiscard}>Discard recording</button>
+      <button type="button" className="pill-btn" disabled={sending} onClick={send}>{failed ? 'Retry voice note' : 'Send voice note'}</button>
+    </div>
+  </div>
 }

@@ -8,12 +8,12 @@ export const SHARED_GAMES = {
   story: { title: 'Story Relay', icon: '✎', detail: 'Eight sentences, two imaginations. Take turns making it wonderfully strange.', prompt: 'A tiny dragon arrived at the door holding our takeaway.' },
 }
 export const titleFor = row => row.kind === 'date' ? 'Date jar' : SHARED_GAMES[row.kind]?.title || 'Shared activity'
-export const isPendingFor = (row, me) => row.status === 'pending' ? row.creator !== me : row.status === 'active' && row.turn === me
+export const isPendingFor = (row, me) => row.status === 'pending' ? row.creator !== me : row.kind !== 'island' && row.status === 'active' && row.turn === me
 export function activityLabel(row, me) {
   if (row.status === 'dismissed') return 'Passed · no pressure'
   if (row.status === 'done') return row.kind === 'date' ? 'You both like this · choose a time in chat' : 'Finished together'
   if (row.kind === 'date') return (row.data.likes || []).includes(me) ? 'Waiting for their interest' : 'Would you like to try this?'
-  if (row.status === 'pending') return row.creator === me ? 'Invitation sent · they can join later' : 'Invited you · join when you’re free'
+  if (row.status === 'pending') return row.creator === me ? 'Invitation saved · they can join later' : 'Invited you · join when you’re free'
   if (row.kind === 'island') return 'Island ready · both can explore together'
   return row.turn === me ? 'Your turn' : 'Their turn · come back whenever'
 }
@@ -21,3 +21,29 @@ async function rpc(name, args) { const { data, error } = await supabase.rpc(name
 export const listSharedPlay = other => rpc('shared_play_list', { other })
 export const createSharedPlay = (other, game, body, requestId) => rpc('shared_play_create', { other, game, body, request_id: requestId })
 export const actSharedPlay = (row, action, value, requestId) => rpc('shared_play_act', { activity: row.id, expected_revision: row.revision, action, value, request_id: requestId })
+
+// Local inspiration only: never reads messages or automatically sends an invitation.
+export const SHARED_IDEAS = {
+  pick: [
+    { prompt: 'Which tiny superpower would I choose?', a: 'Talk to every cat', b: 'Always find the best snack' },
+    { prompt: 'Our surprise weekend starts with…', a: 'A train to somewhere new', b: 'A blanket fort and movies' },
+    { prompt: 'Which ridiculous job would suit me?', a: 'Professional cloud namer', b: 'Penguin dance instructor' },
+  ],
+  emoji: [
+    { prompt: '🦁👑', answer: 'The Lion King' },
+    { prompt: '🍫🏭', answer: 'Chocolate factory' },
+    { prompt: '☔💃', answer: 'Dancing in the rain' },
+  ],
+  word: [{ text: 'moonlight' }, { text: 'pancake' }, { text: 'jellyfish' }, { text: 'adventure' }],
+  story: [
+    { text: 'Our taxi driver was a penguin, and apparently we were late for the moon.' },
+    { text: 'The fortune cookie contained a tiny key and both our names.' },
+    { text: 'We opened the fridge and found a beach with two empty deckchairs.' },
+  ],
+  date: [
+    { text: 'Pick a snack for each other without telling each other what it is.' },
+    { text: 'Take a sunset walk and invent stories about the houses we pass.' },
+    { text: 'Make a three-song playlist each, then explain every choice.' },
+    { text: 'Have a ten-minute drawing date: portraits with our eyes closed.' },
+  ],
+}

@@ -94,7 +94,7 @@ export default function IslandWorld({data,slot,fallback}){
     if(!reduced)ripples.forEach((r,i)=>r.scale.x=1+Math.sin(time*.001+i)*.2)
     renderer.render(scene,camera)
    };frame=requestAnimationFrame(render)
-   const lost=e=>{e.preventDefault();setFailed(true)};renderer.domElement.addEventListener('webglcontextlost',lost)
+   const lost=e=>{e.preventDefault();dispose();setFailed(true)};renderer.domElement.addEventListener('webglcontextlost',lost)
    dispose=()=>{cancelAnimationFrame(frame);observer.disconnect();renderer.domElement.removeEventListener('webglcontextlost',lost);scene.traverse(obj=>{obj.geometry?.dispose();if(obj.material&&!materials.has(obj.material.color?.getStyle())){if(obj.isSprite)obj.material.dispose()}});materials.forEach(m=>m.dispose());textures.forEach(t=>t.dispose());renderer.dispose();renderer.domElement.remove()}
   }).catch(()=>{if(alive)setFailed(true)})
   return()=>{alive=false;dispose()}

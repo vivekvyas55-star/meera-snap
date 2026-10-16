@@ -30,12 +30,12 @@ export function IslandMap({ data, slot }) {
 
 export default function PostcardIsland({ initial, me, onClose }) {
   useBackLayer(true, onClose)
-  const [row,setRow]=useState(initial), [error,setError]=useState(''),[peerAt,setPeerAt]=useState(0),[now,setNow]=useState(Date.now()),[connected,setConnected]=useState(true)
-  const current=useRef(row),busy=useRef(false),mounted=useRef(true),held=useRef(null),pending=useRef(null),lastMove=useRef(0)
+  const [row,setRow]=useState(initial), [error,setError]=useState(''),[peerAt,setPeerAt]=useState(0),[now,setNow]=useState(Date.now()),[connected,setConnected]=useState(true),[showHelp,setShowHelp]=useState(false)
+  const current=useRef(row),busy=useRef(false),mounted=useRef(true),held=useRef(null),pending=useRef(null),lastMove=useRef(0),refreshGeneration=useRef(0)
   const slot=me===row.user_a?'a':'b', other=me===row.user_a?row.user_b:row.user_a
   const audio=useIslandAudio(row.data.delivered.length)
   const merge=useCallback(next=>{if(mounted.current&&next&&next.revision>=current.current.revision){current.current=next;setRow(next)}},[])
-  const refresh=useCallback(async()=>{try{const rows=await listSharedPlay(other);if(!mounted.current)return;const next=rows.find(r=>r.id===initial.id);if(!next){setConnected(false);setError('This island expired or is no longer available.');return}merge(next);setConnected(true)}catch{if(mounted.current){setConnected(false);setError('Connection interrupted. Your island is saved. Reconnecting…')}}},[other,initial.id,merge])
+  const refresh=useCallback(async()=>{const generation=++refreshGeneration.current;try{const rows=await listSharedPlay(other);if(!mounted.current||generation!==refreshGeneration.current)return;const next=rows.find(r=>r.id===initial.id);if(!next){setConnected(false);setError('This island expired or is no longer available.');return}merge(next);setConnected(true);setError(previous=>previous.startsWith('Connection interrupted.')||previous.startsWith('This island expired')?'':previous)}catch{if(mounted.current&&generation===refreshGeneration.current){setConnected(false);setError('Connection interrupted. Your island is saved. Reconnecting…')}}},[other,initial.id,merge])
   useEffect(()=>{
     mounted.current=true
     const ping=()=>sendSignal(me,other,'island-update',{room:initial.id}).catch(()=>{})
@@ -69,23 +69,26 @@ export default function PostcardIsland({ initial, me, onClose }) {
     }finally{busy.current=false}
   },[initial.id,slot,merge,me,other,refresh])
   useEffect(()=>{
-    const down=e=>{if(keys[e.key]){e.preventDefault();if(!e.repeat){held.current=keys[e.key];move(keys[e.key])}}}
+    const down=e=>{if(e.target?.closest?.('button,input,textarea,select,[contenteditable="true"]'))return;if(keys[e.key]){e.preventDefault();if(!e.repeat){held.current=keys[e.key];move(keys[e.key])}}}
     const up=()=>{held.current=null}
     window.addEventListener('keydown',down);window.addEventListener('keyup',up);window.addEventListener('blur',up)
     const tick=setInterval(()=>{if(held.current&&held.current!=='interact')move(held.current)},260)
     return()=>{clearInterval(tick);window.removeEventListener('keydown',down);window.removeEventListener('keyup',up);window.removeEventListener('blur',up)}
   },[move])
-  const p=row.data[slot], finished=row.status==='done', stopped=row.status==='dismissed'
+  const p=row.data[slot], partner=row.data[slot==='a'?'b':'a'], finished=row.status==='done', stopped=row.status==='dismissed'
   return <Portal><section className="island-screen" role="dialog" aria-modal="true" aria-label="Postcard Island">
     <header><div><span className="island-eyebrow">MEERA · LIVE CO-OP</span><h2>Postcard Island</h2></div><div className="island-toolbar"><button className="island-sound" onClick={audio.toggle} aria-pressed={audio.enabled}>{audio.enabled?'♫ Sound on':'♫ Sound off'}</button><button onClick={onClose} aria-label="Leave island">×</button></div></header>
     <div className="island-body">
       <div className="island-meta"><span>{connected?'Island saved':'Reconnecting…'}</span><span>{peerAt&&now-peerAt<12000?'Partner is here':'Waiting for partner to open island'}</span></div>
+      <div className="island-deliveries" aria-label={`${row.data.delivered.length} of 5 deliveries complete`}>{ISLAND_STOPS.map(([, ,name],i)=><span key={name} className={row.data.delivered.includes(i)?'is-done':''}>{row.data.delivered.includes(i)?'✓ ':''}{name}</span>)}</div>
       <IslandWorld data={row.data} slot={slot} fallback={<IslandMap data={row.data} slot={slot}/>}/>
       {audio.unavailable&&<p className="island-hint">Audio is unavailable on this browser. You can still play.</p>}
       <div className="island-mission"><span className="island-eyebrow">{row.data.delivered.length}/5 LETTERS DELIVERED</span><h3>{finished?'A little island. A lovely team.':stopped?'This adventure has ended':p.bag>=0?`Deliver to the ${ISLAND_STOPS[p.bag][2]}`:'Collect a letter at the post office'}</h3><p>{finished?'All five neighbours got their post. Start another island from the game menu.':stopped?'You can start a new island together.':row.data.bridge?'The north is open. The lighthouse is waiting.':'Meet on the two gold pads to unlock the lighthouse route.'}</p></div>
+      {!finished&&!stopped&&<p className="island-partner">Partner: {partner.bag>=0?`delivering to the ${ISLAND_STOPS[partner.bag][2]}`:'ready to collect a letter'}.</p>}
       {error&&<p role="alert" className="island-error">{error}</p>}
       {!finished&&!stopped&&<div className="island-controls"><div className="island-dpad">{[['up','↑'],['left','←'],['down','↓'],['right','→']].map(([command,label])=><button key={command} className={`island-${command}`} aria-label={`Move ${command}`} onPointerDown={e=>{e.preventDefault();e.currentTarget.setPointerCapture(e.pointerId);held.current=command;move(command)}} onPointerUp={()=>{held.current=null}} onPointerCancel={()=>{held.current=null}} onLostPointerCapture={()=>{held.current=null}} onClick={e=>{if(e.detail===0)move(command)}}>{label}</button>)}</div><button className="island-interact" onClick={()=>move('interact')}>✉<span>{p.bag>=0?'Deliver letter':'Collect letter'}</span></button></div>}
-      <p className="island-hint">Walk beside a building, then collect or deliver. Hold arrows to walk · keyboard WASD or arrow keys · space to interact.</p>
+      <button className="island-help" aria-expanded={showHelp} onClick={()=>setShowHelp(value=>!value)}>How to play {showHelp?'−':'+'}</button>
+      {showHelp&&<div className="island-hint">Collect a letter beside the post office, then follow the gold ring to its destination. Hold an arrow to walk. Meet on both gold pads to open the north. On a keyboard, use WASD or arrows and Space to interact. Your progress stays saved when you leave.</div>}
       <button className="island-exit" onClick={onClose}>Back to activities · keep island saved</button>
     </div>
   </section></Portal>

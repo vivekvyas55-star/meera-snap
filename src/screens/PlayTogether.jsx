@@ -8,7 +8,7 @@ import { useAuth } from '../hooks/useAuth'
 import { useBackLayer } from '../hooks/useBackLayer'
 import { useAlias } from '../hooks/useAliasClock'
 import { peerAlias } from '../lib/alias'
-import { rematchGame, listFriendsWithProfiles, resolveGameInvite, syncGameRoom, endGameRoom, listActiveGameRooms, isVisibleTo, clearViewedChats, listMessages, sendChat, pairKey, markChatsOpened } from '../lib/db'
+import { rematchGame, listFriendsWithProfiles, resolveGameInvite, getGameInvite, syncGameRoom, endGameRoom, listActiveGameRooms, isVisibleTo, clearViewedChats, listMessages, sendChat, pairKey, markChatsOpened } from '../lib/db'
 import { useToast } from '../hooks/useToast'
 import { sendSignal, signalReceiver } from '../lib/privateRealtime'
 import { peerPresence, pieceToMove, playState, scoreboard } from '../lib/gameState'
@@ -366,7 +366,7 @@ export function TicTacToe(props) {
   return <GameRoom {...props} game="ttt" />
 }
 
-export default function PlayTogether({ onBack }) {
+export default function PlayTogether({ onBack, initialOther = '' }) {
   useEffect(() => {
     window.dispatchEvent(new CustomEvent('meera:play-visibility', { detail: true }))
     return () => window.dispatchEvent(new CustomEvent('meera:play-visibility', { detail: false }))
@@ -380,40 +380,62 @@ export default function PlayTogether({ onBack }) {
   const [rooms, setRooms] = useState([])
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
-  const [friends, setFriends] = useState([]); const [selected, setSelected] = useState(''); const [invite, setInvite] = useState(null); const [room, setRoom] = useState(null); const [mark, setMark] = useState(null); const [accepted, setAccepted] = useState(false); const [inviteId, setInviteId] = useState(null)
+  const [friends, setFriends] = useState([]); const [selected, setSelected] = useState(initialOther); const [invite, setInvite] = useState(null); const [room, setRoom] = useState(null); const [mark, setMark] = useState(null); const [accepted, setAccepted] = useState(false); const [inviteId, setInviteId] = useState(null)
   // `pick` is the game being invited; `roomGame` is the game of the room that
   // is open. They are separate because the room's game is decided by the row,
   // and browsing the catalogue behind an open board must not change it.
+  const inviteRef = useRef(null)
+  inviteRef.current = invite
+  const inviteVersion = useRef(0)
+  const answeredInvites = useRef(new Set())
   const [pick, setPick] = useState('ttt'); const [roomGame, setRoomGame] = useState('ttt')
   useEffect(() => {
     let alive = true
+    let refreshing = false
     const refresh = async () => {
+      if (refreshing) return
+      refreshing = true
+      const version = inviteVersion.current
       try {
         const [people, games] = await Promise.all([listFriendsWithProfiles(me), listActiveGameRooms()])
         if (!alive) return
         setFriends(people.filter((f) => f.status === 'accepted' && f.profile).map((f) => f.profile))
         setRooms(games); setLoadError('')
-        const pending = games.find((game) => game.recipient_id === me && game.status === 'pending')
+        const pending = games.find((game) => game.recipient_id === me && game.status === 'pending' && !answeredInvites.current.has(game.id))
         const peer = pending && people.find((f) => f.profile?.id === pending.sender_id)?.profile
-        // Merge, never overwrite. An invitation arrives by realtime broadcast
-        // before active_game_rooms() can see it, and this poll runs every six
-        // seconds — clearing here made the invite card appear and then vanish
-        // on its own. Only the server having a pending row, the invite
-        // expiring, or the user answering it may remove the card.
-        setInvite((current) => {
-          if (pending && peer) return { ...pending, peer }
-          if (!current) return null
-          const expired = current.expires_at && new Date(current.expires_at) <= new Date()
-          return expired ? null : current
+        // A missing list row is not an answer: it can lag a realtime invite.
+        // Check that exact invitation before retiring the banner, and never
+        // let a slow response replace a newer invite or undo a local answer.
+        const current = inviteRef.current
+        let resolved = false
+        if (!pending && current?.id) {
+          try {
+            const row = await getGameInvite(current.id)
+            resolved = !!row && (row.status !== 'pending' || !!row.ended_at || Date.parse(row.expires_at) <= Date.now())
+          } catch { /* retain the banner and retry on the next poll */ }
+        }
+        if (!alive || version !== inviteVersion.current) return
+        if (resolved && current?.id) answeredInvites.current.add(current.id)
+        setInvite((latest) => {
+          if (pending && peer && !answeredInvites.current.has(pending.id)) return { ...pending, peer }
+          if (!latest) return null
+          const expired = latest.expires_at && new Date(latest.expires_at) <= new Date()
+          return expired || (resolved && latest.id === current?.id) ? null : latest
         })
+        if (resolved && current?.id) {
+          try {
+            const cached = JSON.parse(sessionStorage.getItem(`meera:pending-game:${me}`) || 'null')
+            if (cached?.id === current.id) sessionStorage.removeItem(`meera:pending-game:${me}`)
+          } catch {}
+        }
       } catch { if (alive) setLoadError('Could not load your games. Check your connection; we’ll retry shortly.') }
-      finally { if (alive) setLoading(false) }
+      finally { refreshing = false; if (alive) setLoading(false) }
     }
     refresh()
     const timer = setInterval(() => { if (document.visibilityState === 'visible') refresh() }, 6000)
     return () => { alive = false; clearInterval(timer) }
   }, [me])
-  useEffect(() => { const receiver = signalReceiver(me).on('broadcast', { event: 'game_invite' }, ({ payload, peer }) => { if (payload?.room && GAMES[payload.game]) { const next = { ...payload, id: payload.invite_id, peer }; setInvite(next); try { sessionStorage.setItem(`meera:pending-game:${me}`, JSON.stringify(next)) } catch {} } }).subscribe(); return () => receiver.close() }, [me])
+  useEffect(() => { const receiver = signalReceiver(me).on('broadcast', { event: 'game_invite' }, ({ payload, peer }) => { if (payload?.room && GAMES[payload.game] && !answeredInvites.current.has(payload.invite_id)) { inviteVersion.current++; const next = { ...payload, id: payload.invite_id, peer }; setInvite(next); try { sessionStorage.setItem(`meera:pending-game:${me}`, JSON.stringify(next)) } catch {} } }).subscribe(); return () => receiver.close() }, [me])
   useEffect(() => { try { const raw = sessionStorage.getItem(`meera:pending-game:${me}`); if (raw) setInvite(JSON.parse(raw)) } catch {} }, [me])
   useEffect(() => { try { const raw = sessionStorage.getItem(`meera:resume-game:${me}`); if (!raw) return; const saved = JSON.parse(raw); if (!saved?.room || !saved?.peer?.id) return; setSelected(saved.peer.id); setRoom(saved.room); setInviteId(saved.id || null); setMark(saved.mark === 'O' ? 'O' : 'X'); setAccepted(true); setRoomGame(saved.game || 'ttt'); setOpen('room'); sessionStorage.removeItem(`meera:resume-game:${me}`) } catch {} }, [me])
   // Opened from a conversation with no game running yet: preselect that friend
@@ -441,18 +463,21 @@ export default function PlayTogether({ onBack }) {
       const next = invite
       if (!next.id) throw new Error('Please ask for a new invitation.')
       await resolveGameInvite(next.id, 'accepted')
+      inviteVersion.current++; answeredInvites.current.add(next.id)
       setRoom(next.room); setInviteId(next.id); setMark('O'); setAccepted(true); setRoomGame(next.game || 'ttt'); setOpen('room'); setSelected(next.peer.id); setInvite(null)
       notify(next.peer.id, 'game_accept')
       try { sessionStorage.removeItem(`meera:pending-game:${me}`) } catch {}
     } catch (error) { toast(error.message || 'Could not accept. Try again.') }
     finally { actionBusy.current = false; setActionLoading(false) }
   }
-  const closeGame = () => { setOpen(null); setRoom(null); setMark(null); setAccepted(false); setInviteId(null) }
+  const closeGame = useCallback(() => { setOpen(null); setRoom(null); setMark(null); setAccepted(false); setInviteId(null) }, [])
+  useBackLayer(open === 'room', closeGame)
   const dismissInvite = async () => {
     if (actionBusy.current) return
     actionBusy.current = true; setActionLoading(true)
     try {
-      if (invite?.id) await resolveGameInvite(invite.id, 'dismissed')
+      if (invite?.id) { await resolveGameInvite(invite.id, 'dismissed'); answeredInvites.current.add(invite.id) }
+      inviteVersion.current++
       setInvite(null); sessionStorage.removeItem(`meera:pending-game:${me}`)
     } catch { toast('Could not dismiss the invitation. Try again.') }
     finally { actionBusy.current = false; setActionLoading(false) }
@@ -469,14 +494,36 @@ export default function PlayTogether({ onBack }) {
   if (open === 'moments') return <PlayMoments me={me} friends={friends} initialFriend={selected} onBack={closeSolo} />
   if (open === 'solo') return <SoloPlay me={me} onBack={closeSolo} />
   return <div className="app screen">
-    <div className="header"><button type="button" className="circle filled" onClick={onBack} aria-label="Back"><BackIcon /></button><h1>Play</h1></div>
+    <div className="header"><button type="button" className="circle filled" onClick={open === 'room' ? closeGame : onBack} aria-label="Back"><BackIcon /></button><h1>Play</h1></div>
     <div className="list profile-list">
       {invite && <Invite busy={actionLoading} invite={invite} onAccept={accept} onDismiss={dismissInvite} />}
       {open === 'room' && chosen ? (
         <GameRoom key={inviteId} me={me} friend={chosen} incoming={mark === 'O'} accepted={accepted} inviteId={inviteId} room={room} mark={mark} game={roomGame} onClose={closeGame} />
       ) : (
         <div className="play-grid">
-          {selected && <SharedPlay key={selected} me={me} other={selected} />}
+          <div className="pg-setup">
+            <label className="eyebrow" htmlFor="play-person">Who’s playing?</label>
+            {loading ? <span className="play-sub" role="status">Loading your people…</span>
+              : loadError ? <span className="play-sub" role="alert">{loadError}</span>
+              : friends.length === 0 ? <span className="play-sub play-empty">Add a friend to start a private game.</span>
+              : <div className="pg-setup-row">
+                  <select id="play-person" aria-label="Choose a friend to play" value={selected} onChange={(e) => setSelected(e.target.value)}>
+                    <option value="">Choose friend</option>
+                    {/* The one place on this screen that carries the @handle as
+                        well as the alias, and for the same reason the send and
+                        add sheets do: this is where you COMMIT to opening a
+                        private room with a particular person. Aliases are three
+                        characters derived from a name, so two friends can wear
+                        the same one for half an hour — inviting the wrong person
+                        into a private game is a worse privacy failure than the
+                        handle sitting in a collapsed dropdown. Still never
+                        display_name. */}
+                    {friends.map((f) => <option key={f.id} value={f.id}>{nameOf(alias, f)}{f.username ? ` · @${f.username}` : ''}</option>)}
+                  </select>
+                </div>}
+            {!selected && friends.length > 0 && <span className="play-sub">Choose someone to discover co-op adventures and shared games.</span>}
+          </div>
+          {chosen && <SharedPlay key={selected} me={me} other={selected} />}
           <button type="button" className="play-card" style={{ background: 'var(--card)' }} onClick={() => setOpen('moments')}><span className="eyebrow">A little surprise</span><h2>Little moments</h2><p>Secret missions, drawing challenges and a mystery date jar. Play now, reply later.</p></button>
           {rooms.length > 0 && (
             <section className="game-resume-list" aria-label="Your game rooms">
@@ -523,26 +570,8 @@ export default function PlayTogether({ onBack }) {
             })}
           </div>
           <div className="pg-setup">
-            <span className="eyebrow">Play {gameOf(pick).title} with</span>
-            {loading ? <span className="play-sub" role="status">Loading your people…</span>
-              : loadError ? <span className="play-sub" role="alert">{loadError}</span>
-              : friends.length === 0 ? <span className="play-sub play-empty">Add a friend to start a private game.</span>
-              : <div className="pg-setup-row">
-                  <select aria-label="Choose a friend to play" value={selected} onChange={(e) => setSelected(e.target.value)}>
-                    <option value="">Choose friend</option>
-                    {/* The one place on this screen that carries the @handle as
-                        well as the alias, and for the same reason the send and
-                        add sheets do: this is where you COMMIT to opening a
-                        private room with a particular person. Aliases are three
-                        characters derived from a name, so two friends can wear
-                        the same one for half an hour — inviting the wrong person
-                        into a private game is a worse privacy failure than the
-                        handle sitting in a collapsed dropdown. Still never
-                        display_name. */}
-                    {friends.map((f) => <option key={f.id} value={f.id}>{nameOf(alias, f)}{f.username ? ` · @${f.username}` : ''}</option>)}
-                  </select>
-                  <button type="button" className="btn-dark" disabled={!chosen || actionLoading} onClick={inviteGame}>{actionLoading ? 'Sending…' : 'Invite'}</button>
-                </div>}
+            <span className="play-sub">{chosen ? `Invite ${nameOf(alias, chosen)} to ${gameOf(pick).title}` : 'Choose a friend above to send an invitation.'}</span>
+            <button type="button" className="btn-dark" disabled={!chosen || actionLoading} onClick={inviteGame}>{actionLoading ? 'Sending…' : 'Invite'}</button>
           </div>
           {/* On your own. ONE door, not a shelf: everything solo lives on
               "Your little break" (screens/SoloPlay.jsx), and a game reachable

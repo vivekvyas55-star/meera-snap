@@ -130,7 +130,11 @@ export default function SoloPlay({ me = '', onBack }) {
   const totalsRef = useRef(totals)
   totalsRef.current = totals
 
-  const home = useCallback(() => setView('home'), [])
+  const home = useCallback(() => {
+    setView('home')
+    setStore(soloForDay(day))
+    setRunnerBest(readRunnerBest() ?? 0)
+  }, [day])
   // Back closes the open game first and the screen second, one layer at a
   // time. TinyEscape and MoodGarden register their own overlays themselves.
   useBackLayer(view !== 'home', home)
@@ -243,6 +247,10 @@ export default function SoloPlay({ me = '', onBack }) {
         <h1>Your little break</h1>
       </div>
       <div className="list profile-list solo-list">
+        <button type="button" className="pill-btn" onClick={() => {
+          const options = ['run', 'detective', 'flip']
+          setView(options[Math.floor(Math.random() * options.length)])
+        }}>Surprise me · pick a quick game</button>
         {/* 1 — Continue your game */}
         <section className="solo-card solo-continue" aria-labelledby="solo-run-h">
           <span className="eyebrow">Continue your game</span>
