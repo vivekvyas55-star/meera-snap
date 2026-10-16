@@ -1,3 +1,5 @@
+import VerifyPrivateIdentity from '../components/VerifyPrivateIdentity'
+import { encryptedBody } from '../lib/privateMessages'
 import VoicePlayer from '../components/VoicePlayer'
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
@@ -395,6 +397,7 @@ export default function Chat({ friend, onBack, onOpenPlay }) {
           }
           const row = payload.new
           if (!row?.id || row.user_b !== user_b) return
+          if (encryptedBody(row.body)) { load(); return }
           eventRef.current.set(row.id, Date.now())
           setMessages(cur => mergeMessages(cur, [row]))
         }
@@ -466,23 +469,26 @@ export default function Chat({ friend, onBack, onOpenPlay }) {
         // because no snap id ever arrived, so your own snaps sat for the full
         // 31 days instead of clearing after three visits. The recipient's copy
         // is governed by the open count, not this.
-        if (m && (['chat', 'sticker'].includes(m.kind) || (m.kind === 'snap' && m.sender_id === me))) recordSeen(id)
+        if (m && !m.encryptionLocked && (['chat', 'sticker'].includes(m.kind) || (m.kind === 'snap' && m.sender_id === me))) recordSeen(id)
       }
     }, { root, threshold: [0.35, 0.7] })
     root.querySelectorAll('[data-message-id]').forEach(el => observer.observe(el))
     return () => observer.disconnect()
   }, [messages, recordSeen, me])
 
-  const submit = (e) => {
+  const draftSending = useRef(false)
+  const submit = async (e) => {
     e.preventDefault()
     const text = draft.trim()
-    if (!text) return
+    if (!text || draftSending.current) return
+    draftSending.current = true
     try {
-      enqueue({ me, otherId: friend.id, text, replyTo: replyingTo?.id ?? null })
-      setDraft('')
+      await enqueue({ me, otherId: friend.id, text, replyTo: replyingTo?.id ?? null })
+      setDraft(current => current.trim() === text ? '' : current)
       setTyping(false)
       setReplyingTo(null)
     } catch (err) { toast(err.message) }
+    finally { draftSending.current = false }
   }
 
   useEffect(() => {
@@ -547,6 +553,7 @@ export default function Chat({ friend, onBack, onOpenPlay }) {
 
   return (
     <div className="app screen">
+      <VerifyPrivateIdentity other={friend.id} onVerified={load} />
       <div className="header">
         <button className="circle filled" onClick={leave} aria-label="Back">
           <BackIcon />
@@ -710,7 +717,7 @@ export default function Chat({ friend, onBack, onOpenPlay }) {
             <div className="msg-pending-tag">
               <span className="chip">{p.error || 'Pending'}</span>
               <button className="link-btn" onClick={() => { setDraft(p.text); removeQueued(p.tempId) }}>Edit</button>
-              {p.error && <button className="link-btn" onClick={() => retryQueued(p.tempId)}>Retry</button>}
+              {p.error && <button className="link-btn" onClick={() => retryQueued(p.tempId).catch(err => toast(err.message))}>Retry</button>}
             </div>
           </div>
         ))}
@@ -1563,6 +1570,8 @@ function MessageRow({
   }
 
   const reactionEmojis = Object.values(message.reactions ?? {})
+
+  if (message.encryptionLocked) return <div className="msg"><p>Encrypted content. Verify this person’s identity to open it.</p></div>
 
   return (
     <div

@@ -90,3 +90,6 @@
 
 # Shared play, Postcard Island and call relay applied 2026-10-17.
 # meera-shared-play-purge scheduled every 15 minutes (cron job 10).
+
+# Candidate only: requires complete privacy acceptance gate before production.
+202610170160_private_identity

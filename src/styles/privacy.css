@@ -687,3 +687,6 @@
   line-height: 1.45;
 }
 .pc-pending strong { font-weight: 650; }
+
+/* Private content enrollment and recovery. */
+.privacy-gate{width:min(100%,480px);margin:auto;padding:var(--space-6,24px);min-height:100svh;display:flex;flex-direction:column;gap:16px;justify-content:center}.privacy-gate h1{margin:0;font-size:32px;font-weight:400}.privacy-gate p{line-height:1.55;margin:0}.privacy-form,.privacy-form label{display:flex;flex-direction:column;gap:10px}.privacy-form{gap:18px}.privacy-form input:not([type=checkbox]){width:100%;box-sizing:border-box;font:inherit;font-size:16px;padding:14px;border:1px solid var(--line);border-radius:12px;color:var(--ink);background:var(--card)}.privacy-recovery{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:16px}.privacy-form .privacy-confirm{flex-direction:row;align-items:flex-start;font-size:14px}.privacy-code{display:block;overflow-wrap:anywhere;line-height:1.6;padding:12px;border-radius:12px;background:var(--card);font-size:14px}.privacy-warning{font-size:13px;color:var(--muted)}

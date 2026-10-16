@@ -1487,4 +1487,22 @@ await asUser(A,()=>assert.rejects(
 void tMsg
 console.log('PASS pair totals survive the purge, need both opt-ins, and cannot be written by a client')
 await checkSharedPlay(db, asUser, A, B, C)
+// Candidate encryption: immutable public identity, owner-only opaque backup,
+// and old-client downgrade rejection. Run after legacy fixture coverage.
+await query('delete from public.scheduled_messages');
+await query('delete from public.blocks');
+await query("insert into public.friendships(user_a,user_b,requested_by,status) values($1,$2,$1,'accepted') on conflict(user_a,user_b) do update set status='accepted'",[A,B]);
+const pub = {kty:'EC',crv:'P-256',x:'public-x',y:'public-y'};
+await asUser(A,()=>query('insert into private_identities(user_id,public_jwk,recovery_backup) values($1,$2,$3)',[A,JSON.stringify(pub),JSON.stringify({v:1,cipher:'opaque'})]));
+await asUser(A,()=>assert.rejects(query('update private_identities set public_jwk=$1 where user_id=$2',[JSON.stringify(pub),A]),/permission denied/));
+await asUser(B,async()=>{
+ assert.equal((await query('select * from private_identities where user_id=$1',[A])).length,0);
+ assert.deepEqual((await query('select private_peer_identity($1) k',[A]))[0].k,pub);
+ await assert.rejects(query("insert into messages(user_a,user_b,sender_id,kind,body) values($1,$2,$2,'chat','plaintext')",[A,B]),/Encrypted messaging required/);
+});
+await asUser(C,async()=>assert.equal((await query('select private_peer_identity($1) k',[A]))[0].k,null));
+await db.exec('set role anon');
+await assert.rejects(query('select * from private_identities'),/permission denied/);
+await db.exec('reset role');
+console.log('PASS private identity owner-only backup, immutable key, friend scope and plaintext downgrade rejection');
 await db.close()

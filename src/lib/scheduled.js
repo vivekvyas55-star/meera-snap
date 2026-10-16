@@ -1,3 +1,4 @@
+import { privateContentEnabled } from './privateMessages'
 import { supabase } from './supabase'
 import { pairKey } from './db'
 
@@ -148,6 +149,7 @@ export function atCap(rows) {
 
 // The RPC takes the wall clock, never an instant — see istNow above.
 export async function scheduleMessage(otherId, body, date, time) {
+  if (privateContentEnabled()) throw new Error('Scheduled sending is unavailable for encrypted conversations. Send directly instead.')
   const { data, error } = await supabase.rpc('schedule_message', {
     other: otherId, body, local_date: date, local_time: time,
   })

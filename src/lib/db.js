@@ -1,3 +1,4 @@
+import { privateContentEnabled, protectMessage, revealMessage, protectMedia, revealMedia } from './privateMessages'
 import { supabase } from './supabase'
 import { downscaleImage, makeThumbnail } from './image'
 import { notify } from './push'
@@ -272,7 +273,7 @@ export async function listMessages(me, otherId, before = null) {
   }
 
   return {
-    messages: collected.slice().reverse(),
+    messages: await Promise.all(collected.slice().reverse().map(revealMessage)),
     // Null when nothing came back at all. Returning the cursor we were HANDED
     // would tell Chat there is more history behind a page that was empty, and
     // loadOlder would ask for the same window again forever.
@@ -282,7 +283,8 @@ export async function listMessages(me, otherId, before = null) {
 }
 
 // Idempotency is enforced by (sender_id, client_id) in the database.
-async function insertMessage(row) {
+async function insertMessage(row, protectedRow = false) {
+  if (!protectedRow) row = await protectMessage(row)
   const { data, error } = await supabase.from('messages').insert(row).select().single()
   if (!error) return data
   // thumb_path arrives with a migration. If the frontend ships before that
@@ -291,7 +293,7 @@ async function insertMessage(row) {
   // optimisation; a failed send is not an acceptable price for it.
   if ('thumb_path' in row && /thumb_path/.test(error.message ?? '')) {
     const { thumb_path: _drop, ...rest } = row
-    return insertMessage(rest)
+    return insertMessage(rest, true)
   }
   // Same treatment for the save-consent flag, and for the same reason: the
   // bundle can ship before 202609140033 is applied, and a send must not fail
@@ -302,7 +304,7 @@ async function insertMessage(row) {
   // would be a broken promise in the direction that matters.
   if ('allow_save' in row && /allow_save/.test(error.message ?? '')) {
     const { allow_save: _drop, ...rest } = row
-    return insertMessage(rest)
+    return insertMessage(rest, true)
   }
   if (row.client_id) {
     const existing = await supabase.from('messages').select('*').eq('sender_id', row.sender_id).eq('client_id', row.client_id).maybeSingle()
@@ -350,7 +352,7 @@ export async function listLatestPerFriend(me) {
     const other = m.user_a === me ? m.user_b : m.user_a
     if (!isVisibleTo(m, me)) continue
     const cur = byFriend[other]
-    if (!cur || m.created_at > cur.created_at) byFriend[other] = m
+    if (!cur || m.created_at > cur.created_at) byFriend[other] = await revealMessage(m)
   }
   return byFriend
 }
@@ -380,9 +382,9 @@ async function uploadSnapThumb(me, clientId, blob) {
 
 export async function sendSnap(me, otherId, { blob, viewSeconds, caption, allowSave = null, clientId = crypto.randomUUID(), uploadId = clientId }) {
   const body = await downscaleImage(blob, 1600, 0.85)
-  const path = `${me}/snaps/${uploadId}.${mediaExtension(body)}`
-  await uploadMedia(path, body)
-  const thumbPath = await uploadSnapThumb(me, uploadId, body)
+  const path = privateContentEnabled() ? `${me}/snaps/${crypto.randomUUID()}.meera` : `${me}/snaps/${uploadId}.${mediaExtension(body)}`
+  await uploadMedia(path, privateContentEnabled() ? await protectMedia(body, otherId, path) : body)
+  const thumbPath = privateContentEnabled() ? null : await uploadSnapThumb(me, uploadId, body)
   const data = await insertMessage({ ...pairFilter(me, otherId), sender_id: me, client_id: clientId, kind: 'snap', body: caption || null, media_path: path, thumb_path: thumbPath, media_type: 'image', view_seconds: viewSeconds, allow_save: await resolveAllowSave(me, otherId, allowSave), delivered_at: new Date().toISOString() })
   notify(otherId, 'snap')
   return data
@@ -392,9 +394,9 @@ export async function sendSnapMedia(me, otherId, { file, viewSeconds, caption, r
   const isVideo = file.type?.startsWith('video/')
   if (!isVideo && !file.type?.startsWith('image/')) throw new Error('Choose an image or video')
   const body = isVideo ? file : await downscaleImage(file, 1600, 0.8)
-  const path = `${me}/snaps/${clientId}.${mediaExtension(body)}`
-  await uploadMedia(path, body)
-  const thumbPath = isVideo ? null : await uploadSnapThumb(me, clientId, body)
+  const path = privateContentEnabled() ? `${me}/snaps/${crypto.randomUUID()}.meera` : `${me}/snaps/${clientId}.${mediaExtension(body)}`
+  await uploadMedia(path, privateContentEnabled() ? await protectMedia(body, otherId, path) : body)
+  const thumbPath = privateContentEnabled() || isVideo ? null : await uploadSnapThumb(me, clientId, body)
   const data = await insertMessage({ ...pairFilter(me, otherId), sender_id: me, client_id: clientId, kind: 'snap', body: caption || null, media_path: path, thumb_path: thumbPath, media_type: isVideo ? 'video' : 'image', has_audio: Boolean(isVideo), reply_to: replyTo, view_seconds: viewSeconds === undefined ? (isVideo ? null : 45) : viewSeconds, allow_save: await resolveAllowSave(me, otherId, allowSave), delivered_at: new Date().toISOString() })
   notify(otherId, 'snap')
   return data
@@ -417,8 +419,8 @@ export async function markChatsOpened(otherId, ids, visit) {
 
 // Send a recorded voice note (audio blob) as a chat-ephemeral message.
 export async function sendVoiceNote(me, otherId, blob, replyTo = null, clientId = crypto.randomUUID()) {
-  const path = `${me}/voice/${clientId}.${mediaExtension(blob)}`
-  await uploadMedia(path, blob)
+  const path = privateContentEnabled() ? `${me}/voice/${crypto.randomUUID()}.meera` : `${me}/voice/${clientId}.${mediaExtension(blob)}`
+  await uploadMedia(path, privateContentEnabled() ? await protectMedia(blob, otherId, path) : blob)
   const data = await insertMessage({ ...pairFilter(me, otherId), sender_id: me, client_id: clientId, kind: 'voice', media_path: path, media_type: 'audio', reply_to: replyTo, delivered_at: new Date().toISOString() })
   notify(otherId, 'voice')
   return data
@@ -870,7 +872,7 @@ export async function listKeptTogether(otherId, limit = 200) {
     if (/function|schema cache|does not exist/i.test(error.message)) return null
     throw error
   }
-  return data ?? []
+  return Promise.all((data ?? []).map(revealMessage))
 }
 
 // Skip to the next question of the day. Stored PER PAIR, not per person — a
@@ -958,10 +960,11 @@ export async function answerPrompt(me, otherId, promptId, body, day) {
 const SIGNED_TTL = 300
 const SIGNED_REFRESH_BEFORE = 30 * 1000 // re-mint this long before expiry
 let mediaGeneration = 0
-export function clearMediaCache() { mediaGeneration += 1; urlCache.clear() }
+export function clearMediaCache() { mediaGeneration += 1; for (const item of urlCache.values()) if (item.url.startsWith("blob:")) URL.revokeObjectURL(item.url); urlCache.clear() }
 const urlCache = new Map() // media_path -> { url, expiresAt }
 
 export function forgetSignedUrl(path) {
+  const item = urlCache.get(path); if (item?.url.startsWith("blob:")) URL.revokeObjectURL(item.url)
   urlCache.delete(path)
 }
 
@@ -974,8 +977,17 @@ export async function signedUrl(path, expiresIn = SIGNED_TTL) {
     .createSignedUrl(path, expiresIn)
   if (error) throw error
   if (generation !== mediaGeneration) throw new Error('Account changed while loading media')
-  urlCache.set(path, { url: data.signedUrl, ttl: expiresIn, expiresAt: Date.now() + expiresIn * 1000 })
-  return data.signedUrl
+  let url = data.signedUrl
+  if (path.endsWith('.meera')) {
+    const response = await fetch(url, { cache: 'no-store' })
+    if (!response.ok) throw new Error('Could not download private media')
+    const blob = await revealMedia(await response.blob(), path)
+    if (generation !== mediaGeneration) throw new Error('Private content was locked')
+    url = URL.createObjectURL(blob)
+  }
+  forgetSignedUrl(path)
+  urlCache.set(path, { url, ttl: expiresIn, expiresAt: Date.now() + expiresIn * 1000 })
+  return url
 }
 
 // A signed URL that is deliberately NOT cached, for the one surface where the
@@ -1134,6 +1146,7 @@ export async function markStoryViewed(storyId, me) {
 // memories — a private gallery of your own saved snaps (owner-only)
 // --------------------------------------------------------------------------
 export async function saveToMemory(me, blob, caption) {
+  if (privateContentEnabled()) throw new Error('Cloud Memories is not yet encrypted. Keep this content in its encrypted conversation.')
   const isVideo = blob.type?.startsWith('video')
   const id = crypto.randomUUID()
   const body = isVideo ? blob : await downscaleImage(blob, 1600, 0.85)

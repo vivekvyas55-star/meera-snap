@@ -1,3 +1,5 @@
+let secureStorage = null
+export function configureOutbox(adapter) { secureStorage = adapter }
 // Store each item separately so another tab cannot overwrite unrelated pending drafts.
 const LEGACY_KEY = 'meera_outbox'
 const PREFIX = 'meera:outbox:'
@@ -5,15 +7,23 @@ const MAX_ITEMS = 200
 export const OUTBOX_EVENT = 'meera:outbox'
 const changed = () => { if (typeof window !== 'undefined') window.dispatchEvent(new Event(OUTBOX_EVENT)) }
 function persist(item) {
+  if (secureStorage) return secureStorage.set(item)
+  return persistLegacy(item)
+}
+function persistLegacy(item) {
   try { localStorage.setItem(PREFIX + item.tempId, JSON.stringify(item)) }
   catch { throw new Error('Could not save your message on this device. Free some storage and try again.') }
 }
 function read() {
+  if (secureStorage) return secureStorage.read()
+  return legacyOutbox()
+}
+export function legacyOutbox() {
   const legacy = localStorage.getItem(LEGACY_KEY)
   if (legacy) {
     const items = parse(legacy)
     if (Array.isArray(items)) {
-      items.filter(valid).forEach(item => { if (!localStorage.getItem(PREFIX + item.tempId)) persist(item) })
+      items.filter(valid).forEach(item => { if (!localStorage.getItem(PREFIX + item.tempId)) persistLegacy(item) })
       // Damaged legacy entries are KEPT, and only them: a draft we cannot read
       // is still the user's text, so it stays on disk for recovery rather than
       // being cleared. Rewriting the key with just the damaged ones also means
@@ -59,20 +69,21 @@ export function enqueue({ me, otherId, text, replyTo = null, tempId = crypto.ran
   if (existing) return existing
   if (items.length >= MAX_ITEMS) throw new Error('Your pending queue is full. Send or remove pending messages before adding another.')
   const item = { me, otherId, text, replyTo, tempId, createdAt: new Date().toISOString() }
-  persist(item)
+  const saved = persist(item)
+  if (saved?.then) return saved.then(() => { changed(); return item })
   changed()
   return item
 }
 export function outboxFor(me, otherId) { return read().filter(i => i.me === me && i.otherId === otherId) }
 export function clearOutbox(me) {
-  read().filter(i => i.me === me).forEach(i => localStorage.removeItem(PREFIX + i.tempId))
+  read().filter(i => i.me === me).forEach(i => removeQueued(i.tempId))
   changed()
 }
-export function retryQueued(tempId) {
-  const raw = localStorage.getItem(PREFIX + tempId)
-  if (raw) { const item = JSON.parse(raw); delete item.error; persist(item); changed() }
+export async function retryQueued(tempId) {
+  const item = read().find(i => i.tempId === tempId)
+  if (item) { delete item.error; await persist(item); changed() }
 }
-export function removeQueued(tempId) { localStorage.removeItem(PREFIX + tempId); changed() }
+export function removeQueued(tempId) { if (secureStorage) secureStorage.remove(tempId); else localStorage.removeItem(PREFIX + tempId); changed() }
 let flushing = false
 // Set when flushOutbox is called while a flush is already running. The work
 // list is read ONCE at the top of a pass, so a message enqueued mid-flight
@@ -90,12 +101,13 @@ export async function flushOutbox(sendFn, me) {
   try {
     do {
       again = false
+      await secureStorage?.refresh?.()
       for (const item of read().filter(i => i.me === me && !i.error)) {
         try { await sendFn(item) }
         catch (err) {
           if (looksOffline(err) || !err.code || /^5/.test(String(err.status))) return { sent, dropped: [] }
           // Preserve failed text; an invalid item must not block the rest of the queue.
-          if (localStorage.getItem(PREFIX + item.tempId)) persist({ ...item, error: err.message })
+          if (secureStorage ? secureStorage.has(item.tempId) : localStorage.getItem(PREFIX + item.tempId)) await persist({ ...item, error: err.message })
           changed()
           continue
         }

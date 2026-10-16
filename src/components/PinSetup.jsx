@@ -22,7 +22,7 @@ const STAGES = { current: 'Enter your current passcode', next: 'Choose a passcod
 // A handful of codes are so common that offering them is worse than offering
 // nothing: they are the first things anyone tries, and the three-try lockout
 // gives an attacker exactly enough attempts to walk this list.
-const OBVIOUS = new Set(['0000', '1111', '1234', '2222', '3333', '4444', '5555', '6666', '7777', '8888', '9999', '4321'])
+const OBVIOUS = new Set(['0000', '1111', '1234', '2222', '3333', '4444', '5555', '6666', '7777', '8888', '9999', '4321', '9934', '9943'])
 
 export default function PinSetup({ onClose, onDone, mandatory = false }) {
   const changing = hasPin()
@@ -112,7 +112,7 @@ export default function PinSetup({ onClose, onDone, mandatory = false }) {
         )}
         <div className="field-hint">
           {canHashPin()
-            ? 'Four digits. It is stored only on this phone, and only as a hash — nobody, including us, can read it back.'
+            ? 'Four digits for the screen lock, stored as a salted hash on this device. This is separate from your account password and privacy passphrase.'
             : 'A passcode can only be set over https, because the browser will not hash it otherwise.'}
         </div>
         {canHashPin() && (

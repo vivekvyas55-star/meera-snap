@@ -33,25 +33,11 @@ const MAX_ENTRIES = 60 // ~3 KB each; a hard ceiling so we never fill the quota
 let cache = null
 
 function load() {
-  if (cache) return cache
-  try {
-    const raw = localStorage.getItem(KEY)
-    const parsed = raw ? JSON.parse(raw) : null
-    cache = parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {}
-  } catch {
-    cache = {}
-  }
-  return cache
+  // Remove obsolete plaintext cache; previews now live only in memory.
+  try { localStorage.removeItem(KEY) } catch {}
+  return cache || (cache = {})
 }
-
-function persist(map) {
-  cache = map
-  try {
-    localStorage.setItem(KEY, JSON.stringify(map))
-  } catch {
-    // Quota or private mode. The in-memory cache still serves this session.
-  }
-}
+function persist(map) { cache = map }
 
 // Keep the newest MAX_ENTRIES. Stories expire after 48h, so the store is
 // naturally small; this is the backstop, not the mechanism.
@@ -146,3 +132,5 @@ export function clearStoryThumbs() {
     // nothing to do
   }
 }
+
+if (typeof window !== 'undefined') window.addEventListener('meera:vault-locked', clearStoryThumbs)

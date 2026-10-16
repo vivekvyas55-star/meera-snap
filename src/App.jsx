@@ -1,3 +1,4 @@
+import PrivateContentGate from './components/PrivateContentGate'
 import ErrorBoundary from './components/ErrorBoundary'
 import OfflineBar from './components/OfflineBar'
 import SchemaDriftBar from './components/SchemaDriftBar'
@@ -623,6 +624,7 @@ export default function App() {
         <OnlinePresenceProvider>
           <AliasClockProvider>
             <CallProvider>
+              <PrivateContentGate>
               <OutboxDelivery />
               <NotificationStack />
               <OfflineBar />
@@ -630,6 +632,7 @@ export default function App() {
               <RealtimeAccountBar />
               <SessionShell />
               <CallOverlay />
+              </PrivateContentGate>
               {/* An OVERLAY, not an early return. This used to be
                   `if (!unlocked) return <PinLock/>` above the whole provider
                   tree, so every loss of visibility — a one-second glance at a
