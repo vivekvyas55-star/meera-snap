@@ -39,4 +39,4 @@ User reports iPhone Safari/Chrome and home-screen app. This pass prioritizes per
 4. Check device Location Services. Test a network interruption followed by recovery and verify the pin's updated timestamp advances after a successful write.
 5. Go Ghost: confirm own row disappears, friend pins still refresh, and an expired timed share does not restart itself.
 
-Frontend deployment receipt will be appended after release verification.
+Frontend code SHA 30edcb4 pushed to GitHub. Vercel dpl_4nr58aSt5Z2sRAbHbZ97KR6NDSrj is READY, aliased to https://meera.bigadtruck.com. Live entry /assets/index-jn7Hv-Rq.js matches the tested build; SnapMap-BgIVZOty.js matches local bytes.
