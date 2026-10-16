@@ -5,9 +5,9 @@ import { istDay } from './questionDay'
 import { record, failureCode } from './telemetry'
 import { isThreadEvent } from './threadEvent'
 
-// Storage objects are immutable once written (every upload gets a fresh uuid
-// path), so they can be cached hard. supabase-js defaults this to 3600.
-const UPLOAD_CACHE = '86400'
+// Require revalidation of new media rather than a day-long browser cache.
+// This does not remove copies a recipient has already downloaded.
+const UPLOAD_CACHE = '0'
 
 // Every pair-keyed table stores the two uuids in sorted order so a conversation
 // has exactly one representation regardless of who is looking at it.
@@ -953,13 +953,10 @@ export async function answerPrompt(me, otherId, promptId, body, day) {
 // grid was a full re-download, on every view. Handing back the SAME url string
 // until it nears expiry lets the browser cache actually do its job.
 //
-// This does mean a URL stays valid for the cache window rather than 5 minutes.
-// That is not a meaningful loss here: the recipient can already download the
-// media (SnapViewer has a Save button), and ephemerality in this app is a UI
-// contract, not a security property — see the README caveat. Do not mistake a
-// short signed-URL expiry for enforcement.
-const SIGNED_TTL = 3600
-const SIGNED_REFRESH_BEFORE = 5 * 60 * 1000 // re-mint this long before expiry
+// Bearer URLs remain usable until expiry even after a relationship changes.
+// Keep the reuse window short; this cannot revoke downloaded copies.
+const SIGNED_TTL = 300
+const SIGNED_REFRESH_BEFORE = 30 * 1000 // re-mint this long before expiry
 let mediaGeneration = 0
 export function clearMediaCache() { mediaGeneration += 1; urlCache.clear() }
 const urlCache = new Map() // media_path -> { url, expiresAt }
@@ -971,13 +968,13 @@ export function forgetSignedUrl(path) {
 export async function signedUrl(path, expiresIn = SIGNED_TTL) {
   const generation = mediaGeneration
   const hit = urlCache.get(path)
-  if (hit && hit.expiresAt - Date.now() > SIGNED_REFRESH_BEFORE) return hit.url
+  if (hit && hit.ttl === expiresIn && hit.expiresAt - Date.now() > SIGNED_REFRESH_BEFORE) return hit.url
   const { data, error } = await supabase.storage
     .from('media')
     .createSignedUrl(path, expiresIn)
   if (error) throw error
   if (generation !== mediaGeneration) throw new Error('Account changed while loading media')
-  urlCache.set(path, { url: data.signedUrl, expiresAt: Date.now() + expiresIn * 1000 })
+  urlCache.set(path, { url: data.signedUrl, ttl: expiresIn, expiresAt: Date.now() + expiresIn * 1000 })
   return data.signedUrl
 }
 

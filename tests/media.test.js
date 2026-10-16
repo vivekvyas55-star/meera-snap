@@ -28,3 +28,10 @@ test('cache is invalidated on account transition, including in-flight signing',a
  const pending=signedUrl('other');clearMediaCache();finish({data:{signedUrl:'stale'}})
  await expect(pending).rejects.toThrow('Account changed')
 })
+test('media URLs default to five minutes and a shorter request never reuses a longer URL',async()=>{
+ mocks.signed.mockResolvedValueOnce({data:{signedUrl:'five-minutes'}}).mockResolvedValueOnce({data:{signedUrl:'short'}})
+ expect(await signedUrl('private')).toBe('five-minutes')
+ expect(mocks.signed).toHaveBeenLastCalledWith('private',300)
+ expect(await signedUrl('private',15)).toBe('short')
+ expect(mocks.signed).toHaveBeenLastCalledWith('private',15)
+})
