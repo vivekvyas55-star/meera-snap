@@ -35,4 +35,10 @@ Baseline: `89f00c6`, `integrate/live`, integrate worktree. Three parallel agents
 5. Continue profile, onboarding, permission-denied and offline UX coverage. Production bundle still has a large-chunk warning.
 
 ## Deployment
-Pending final verification. No Supabase migration or backend change is required for this release.
+Release commit: `72d3d02`, pushed to GitHub `integrate/live`.
+- 99 test files / 1,093 tests passed; source lint, production build and diff checks passed.
+- Production deployment: https://meera-lpfoi98pe-meeraapplication.vercel.app
+- Vercel reports successful deployment and alias https://meera.bigadtruck.com.
+- Production document HTTP 200; entry asset `/assets/index-jRB9yhPT.js` matches the locally tested build and returns HTTP 200.
+- No Supabase migration or backend change was required.
+- Final authenticated browser verification was unavailable; do not treat HTTP checks as a complete real-device acceptance test.
